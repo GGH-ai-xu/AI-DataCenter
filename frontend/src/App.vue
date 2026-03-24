@@ -2,15 +2,18 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAppStore } from './stores/app'
+import { generateMockGpus, generateMockSystem, generateMockProcesses, generateMockAlerts } from './services/mock'
 
 const router = useRouter()
 const route = useRoute()
 const store = useAppStore()
 const wsConnected = ref(false)
+const mockMode = ref(false)
 const currentTime = ref('')
 let ws = null
 let reconnectTimer = null
 let clockTimer = null
+let mockTimer = null
 
 const navItems = [
   { path: '/', label: '监控大屏', icon: '◉' },
@@ -49,20 +52,43 @@ function connectWs() {
   ws.onclose = () => {
     wsConnected.value = false
     store.wsConnected = false
-    reconnectTimer = setTimeout(connectWs, 3000)
+    // WebSocket连不上时自动切换到Mock模式
+    if (!mockMode.value) {
+      startMock()
+    }
+    reconnectTimer = setTimeout(connectWs, 10000)
   }
 
   ws.onerror = () => ws?.close()
+}
+
+function startMock() {
+  mockMode.value = true
+  wsConnected.value = true
+  store.wsConnected = true
+  mockTimer = setInterval(() => {
+    store.updateFromWs({
+      gpus: generateMockGpus(),
+      system: generateMockSystem(),
+      processes: generateMockProcesses(),
+      alerts: generateMockAlerts(),
+    })
+  }, 1500)
 }
 
 onMounted(() => {
   updateClock()
   clockTimer = setInterval(updateClock, 1000)
   connectWs()
+  // 3秒后如果WebSocket没连上，启动Mock
+  setTimeout(() => {
+    if (!wsConnected.value) startMock()
+  }, 3000)
 })
 
 onUnmounted(() => {
   clearInterval(clockTimer)
+  clearInterval(mockTimer)
   clearTimeout(reconnectTimer)
   ws?.close()
 })
@@ -91,7 +117,7 @@ onUnmounted(() => {
       <div class="header-right">
         <div class="ws-status" :class="wsConnected ? 'ws-status--on' : 'ws-status--off'">
           <span class="ws-dot"></span>
-          {{ wsConnected ? '实时连接' : '断开连接' }}
+          {{ mockMode ? '演示模式' : wsConnected ? '实时连接' : '断开连接' }}
         </div>
         <div class="header-clock stat-value">{{ currentTime }}</div>
       </div>
