@@ -38,9 +38,22 @@ class AppState:
     alert_engine: AlertEngine
     scheduler: SchedulerEngine
     _collect_task: asyncio.Task | None = None
+    _cleanup_task: asyncio.Task | None = None
+    _agent_fail_count: int = 0
 
 
 app_state = AppState()
+
+
+async def cleanup_loop():
+    """定期清理过期历史数据（每24小时）"""
+    while True:
+        await asyncio.sleep(86400)
+        try:
+            await app_state.store.cleanup_old_data(days=7)
+            logger.info("数据库过期数据清理完成")
+        except Exception as e:
+            logger.error(f"数据库清理失败: {e}")
 
 
 async def collect_loop():
@@ -56,6 +69,8 @@ async def collect_loop():
             processes = await app_state.agent.get_processes()
 
             if gpus:
+                app_state._agent_fail_count = 0
+
                 # 存储历史数据
                 await app_state.store.save_gpu_snapshot(gpus)
 
@@ -75,6 +90,12 @@ async def collect_loop():
                     "processes": processes,
                     "alerts": alerts,
                 })
+            else:
+                app_state._agent_fail_count += 1
+                if app_state._agent_fail_count == 10:
+                    logger.critical("Agent连续10次无数据，可能已断开连接")
+                elif app_state._agent_fail_count % 50 == 0:
+                    logger.critical(f"Agent持续不可用，已连续{app_state._agent_fail_count}次失败")
 
         except Exception as e:
             logger.error(f"数据采集异常: {e}")
@@ -120,6 +141,7 @@ async def lifespan(app: FastAPI):
 
     # 启动采集循环
     app_state._collect_task = asyncio.create_task(collect_loop())
+    app_state._cleanup_task = asyncio.create_task(cleanup_loop())
     logger.info("后端服务启动完成")
 
     yield
@@ -127,6 +149,8 @@ async def lifespan(app: FastAPI):
     # 关闭
     if app_state._collect_task:
         app_state._collect_task.cancel()
+    if app_state._cleanup_task:
+        app_state._cleanup_task.cancel()
     await app_state.agent.close()
     await app_state.store.close()
     logger.info("后端服务已关闭")

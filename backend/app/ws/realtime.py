@@ -30,7 +30,8 @@ class ConnectionManager:
             return
         message = json.dumps(data, ensure_ascii=False)
         dead = set()
-        for ws in self._connections:
+        # 遍历快照，避免并发修改导致RuntimeError
+        for ws in list(self._connections):
             try:
                 await ws.send_text(message)
             except Exception:

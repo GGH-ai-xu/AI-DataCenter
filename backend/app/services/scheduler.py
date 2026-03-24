@@ -91,10 +91,33 @@ class SchedulerEngine:
         """执行调度动作列表"""
         results = []
         for action in actions:
-            act = action["action"]
-            target = action["target"]
-            reason = action["reason"]
+            act = action.get("action")
+            target = action.get("target", {})
+            reason = action.get("reason", "")
             result = {"action": act, "reason": reason, "success": False}
+
+            # 校验动作参数合法性
+            if act == "set_power_limit":
+                gpu_idx = target.get("gpu_index")
+                power = target.get("power_limit")
+                if not isinstance(gpu_idx, int) or gpu_idx < 0:
+                    result["error"] = f"无效GPU索引: {gpu_idx}"
+                    results.append(result)
+                    continue
+                if not isinstance(power, (int, float)) or not (100 <= power <= 350):
+                    result["error"] = f"功耗限制超出安全范围(100-350W): {power}"
+                    results.append(result)
+                    continue
+            elif act in ("pause_task", "resume_task"):
+                pid = target.get("pid")
+                if not isinstance(pid, int) or pid <= 0:
+                    result["error"] = f"无效PID: {pid}"
+                    results.append(result)
+                    continue
+            else:
+                result["error"] = f"未知动作类型: {act}"
+                results.append(result)
+                continue
 
             try:
                 if act == "set_power_limit":

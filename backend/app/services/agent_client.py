@@ -42,7 +42,11 @@ class AgentClient:
             client = await self._get_client()
             resp = await client.get("/api/gpus")
             resp.raise_for_status()
-            return resp.json().get("gpus", [])
+            gpus = resp.json().get("gpus", [])
+            if not isinstance(gpus, list):
+                logger.error(f"Agent返回的GPU数据格式异常: {type(gpus)}")
+                return []
+            return gpus
         except Exception as e:
             logger.error(f"获取GPU数据失败: {e}")
             return []
@@ -52,7 +56,10 @@ class AgentClient:
             client = await self._get_client()
             resp = await client.get("/api/system")
             resp.raise_for_status()
-            return resp.json()
+            data = resp.json()
+            if not isinstance(data, dict):
+                return None
+            return data
         except Exception:
             return None
 
@@ -61,7 +68,10 @@ class AgentClient:
             client = await self._get_client()
             resp = await client.get("/api/processes")
             resp.raise_for_status()
-            return resp.json().get("processes", [])
+            procs = resp.json().get("processes", [])
+            if not isinstance(procs, list):
+                return []
+            return procs
         except Exception:
             return []
 

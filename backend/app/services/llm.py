@@ -1,6 +1,7 @@
 """LLM集成服务 - 基于OpenAI兼容接口的AI能耗分析与调度建议"""
 
 import json
+import asyncio
 import logging
 from typing import Optional
 
@@ -69,6 +70,25 @@ class LLMService:
         self.client = AsyncOpenAI(api_key=api_key, base_url=base_url)
         self.model = model
 
+    async def _call_with_retry(self, max_retries: int = 2, **kwargs) -> str:
+        """带重试的LLM调用，区分暂时性和永久性错误"""
+        last_error = None
+        for attempt in range(max_retries + 1):
+            try:
+                response = await self.client.chat.completions.create(**kwargs)
+                return response.choices[0].message.content
+            except Exception as e:
+                last_error = e
+                err_str = str(e).lower()
+                # 认证/配额错误不重试
+                if any(k in err_str for k in ("401", "403", "invalid_api_key", "quota")):
+                    raise
+                if attempt < max_retries:
+                    wait = 2 ** attempt
+                    logger.warning(f"LLM调用失败(第{attempt+1}次)，{wait}s后重试: {e}")
+                    await asyncio.sleep(wait)
+        raise last_error
+
     async def chat(self, user_message: str, gpu_context: str = "") -> dict:
         """AI对话 - 基于实时数据回答用户问题"""
         messages = [
@@ -82,13 +102,12 @@ class LLMService:
         messages.append({"role": "user", "content": user_message})
 
         try:
-            response = await self.client.chat.completions.create(
+            reply = await self._call_with_retry(
                 model=self.model,
                 messages=messages,
                 temperature=0.7,
                 max_tokens=2000,
             )
-            reply = response.choices[0].message.content
             return {
                 "reply": reply,
                 "suggestions": self._extract_suggestions(reply),
@@ -111,7 +130,7 @@ class LLMService:
         )
 
         try:
-            response = await self.client.chat.completions.create(
+            content = await self._call_with_retry(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
@@ -120,12 +139,16 @@ class LLMService:
                 temperature=0.3,
                 max_tokens=2000,
             )
-            content = response.choices[0].message.content
-            # 解析JSON（兼容markdown代码块包裹）
+            # 解析JSON（兼容markdown代码块包裹，如 ```json ... ```）
             content = content.strip()
             if content.startswith("```"):
-                content = content.split("\n", 1)[1]
-                content = content.rsplit("```", 1)[0]
+                # 移除首行（可能是 ``` 或 ```json）
+                first_nl = content.find("\n")
+                if first_nl != -1:
+                    content = content[first_nl + 1:]
+                # 移除末尾 ```
+                if content.rstrip().endswith("```"):
+                    content = content.rstrip()[:-3].rstrip()
             return json.loads(content)
         except json.JSONDecodeError as e:
             logger.error(f"LLM返回的JSON解析失败: {e}")
@@ -152,7 +175,7 @@ class LLMService:
 5. 预估节能潜力（瓦特和百分比）"""
 
         try:
-            response = await self.client.chat.completions.create(
+            return await self._call_with_retry(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
@@ -161,7 +184,6 @@ class LLMService:
                 temperature=0.5,
                 max_tokens=3000,
             )
-            return response.choices[0].message.content
         except Exception as e:
             return f"报告生成失败：{str(e)}"
 

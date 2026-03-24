@@ -16,6 +16,8 @@ class AlertEngine:
         self.memory_threshold = memory_threshold
         # 防重复告警：记录最近已触发的告警（key -> timestamp）
         self._recent_alerts: dict[str, float] = {}
+        # 记录各GPU当前是否处于告警状态（用于恢复检测）
+        self._active_alerts: dict[str, bool] = {}
         self._cooldown = 60  # 同类告警冷却时间（秒）
 
     def check_gpu(self, gpu: dict) -> list[dict]:
@@ -26,32 +28,49 @@ class AlertEngine:
 
         # 温度告警
         temp = gpu.get("temperature", 0)
+        temp_key = f"{idx}:temperature"
         if temp >= 90:
+            self._active_alerts[temp_key] = True
             alerts.append(self._make_alert(
                 idx, "temperature", "critical",
                 f"GPU{idx} 温度过高: {temp}°C (临界值90°C)，需立即降频",
                 temp, 90, now
             ))
         elif temp >= self.temp_threshold:
+            self._active_alerts[temp_key] = True
             alerts.append(self._make_alert(
                 idx, "temperature", "warning",
                 f"GPU{idx} 温度偏高: {temp}°C (阈值{self.temp_threshold}°C)",
                 temp, self.temp_threshold, now
             ))
+        elif self._active_alerts.get(temp_key):
+            # 温度恢复正常，发送恢复通知
+            self._active_alerts[temp_key] = False
+            self._clear_cooldown(idx, "temperature")
+            alerts.append(self._make_alert(
+                idx, "temperature", "info",
+                f"GPU{idx} 温度恢复正常: {temp}°C",
+                temp, self.temp_threshold, now
+            ))
 
         # 功耗告警
         power = gpu.get("power_usage", 0)
+        power_key = f"{idx}:power"
         if power >= self.power_threshold:
+            self._active_alerts[power_key] = True
             alerts.append(self._make_alert(
                 idx, "power", "warning",
                 f"GPU{idx} 功耗较高: {power}W (阈值{self.power_threshold}W)",
                 power, self.power_threshold, now
             ))
+        elif self._active_alerts.get(power_key):
+            self._active_alerts[power_key] = False
+            self._clear_cooldown(idx, "power")
 
         # 显存告警
-        mem_total = gpu.get("memory_total", 1)
+        mem_total = gpu.get("memory_total", 0)
         mem_used = gpu.get("memory_used", 0)
-        if mem_total > 0:
+        if isinstance(mem_total, (int, float)) and mem_total > 0:
             mem_pct = mem_used / mem_total * 100
             if mem_pct >= self.memory_threshold:
                 alerts.append(self._make_alert(
@@ -91,3 +110,12 @@ class AlertEngine:
             return False
         self._recent_alerts[key] = now
         return True
+
+    def _clear_cooldown(self, gpu_index: int, alert_type: str):
+        """清除指定GPU和类型的冷却记录（恢复后重新计时）"""
+        keys_to_remove = [
+            k for k in self._recent_alerts
+            if k.startswith(f"{gpu_index}:{alert_type}:")
+        ]
+        for k in keys_to_remove:
+            del self._recent_alerts[k]
