@@ -1,7 +1,7 @@
 """GPU监控采集模块 - 通过pynvml直接读取GPU状态"""
 
 import time
-from typing import Optional
+from typing import List, Optional
 
 try:
     import pynvml
@@ -104,7 +104,7 @@ class GPUMonitor:
         except pynvml.NVMLError:
             return None
 
-    def get_all_gpus(self) -> list[dict]:
+    def get_all_gpus(self) -> List[dict]:
         """获取所有GPU的状态"""
         results = []
         for i in range(self._device_count):

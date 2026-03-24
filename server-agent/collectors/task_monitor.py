@@ -1,7 +1,7 @@
 """GPU任务/进程监控 - 获取占用GPU的进程列表"""
 
 import time
-from typing import Optional
+from typing import List, Optional
 
 try:
     import pynvml
@@ -16,7 +16,7 @@ except ImportError:
     PSUTIL_AVAILABLE = False
 
 
-def get_gpu_processes(gpu_index: int) -> list[dict]:
+def get_gpu_processes(gpu_index: int) -> List[dict]:
     """获取指定GPU上运行的进程列表"""
     if not NVML_AVAILABLE:
         return []
@@ -53,7 +53,7 @@ def get_gpu_processes(gpu_index: int) -> list[dict]:
     return result
 
 
-def get_all_gpu_processes(device_count: int) -> list[dict]:
+def get_all_gpu_processes(device_count: int) -> List[dict]:
     """获取所有GPU上的进程"""
     all_procs = []
     for i in range(device_count):
