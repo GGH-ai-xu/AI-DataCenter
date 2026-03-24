@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Build
+frontend/dist/
+*.egg-info/
+
+# Data
+backend/data/
+*.db
+
+# Environment
+.env
+!backend/.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude工作文件
+.claude/context-*.json
+.claude/plan.json
+.claude/review-report.md
+.claude/testing.md
+.claude/todo.json
+.claude/structured-request.json
+operations-log.md
+verification.md
