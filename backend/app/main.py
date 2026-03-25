@@ -74,6 +74,9 @@ async def collect_loop():
                 # 存储历史数据
                 await app_state.store.save_gpu_snapshot(gpus)
 
+                # 追踪进程生命周期
+                await app_state.store.track_processes(processes)
+
                 # 告警检测
                 alerts = app_state.alert_engine.check_all_gpus(gpus)
                 for alert in alerts:
@@ -176,12 +179,14 @@ from app.api.tasks import router as tasks_router
 from app.api.scheduler import router as scheduler_router
 from app.api.ai import router as ai_router
 from app.api.alerts import router as alerts_router
+from app.api.monitor import router as monitor_router
 
 app.include_router(gpu_router)
 app.include_router(tasks_router)
 app.include_router(scheduler_router)
 app.include_router(ai_router)
 app.include_router(alerts_router)
+app.include_router(monitor_router)
 
 
 @app.get("/api/health")

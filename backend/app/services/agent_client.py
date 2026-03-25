@@ -121,3 +121,29 @@ class AgentClient:
             return {"success": False, "error": e.response.text}
         except Exception as e:
             return {"success": False, "error": str(e)}
+
+    async def get_system_detail(self) -> Optional[dict]:
+        """获取完整系统信息（含磁盘、网络、每核CPU）"""
+        try:
+            client = await self._get_client()
+            resp = await client.get("/api/system/detail")
+            resp.raise_for_status()
+            data = resp.json()
+            if not isinstance(data, dict):
+                return None
+            return data
+        except Exception:
+            return None
+
+    async def get_training_logs(self) -> list[dict]:
+        """获取训练日志和指标"""
+        try:
+            client = await self._get_client()
+            resp = await client.get("/api/training/logs")
+            resp.raise_for_status()
+            logs = resp.json().get("training", [])
+            if not isinstance(logs, list):
+                return []
+            return logs
+        except Exception:
+            return []

@@ -16,8 +16,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from collectors.gpu_monitor import gpu_monitor
-from collectors.system_monitor import get_system_info
+from collectors.system_monitor import get_system_info, get_system_detail
 from collectors.task_monitor import get_all_gpu_processes
+from collectors.training_monitor import get_training_logs
 from controllers.power_control import set_power_limit
 from controllers.task_control import pause_task, resume_task, terminate_task
 from config import HOST, PORT, POWER_LIMIT_MIN, POWER_LIMIT_MAX
@@ -88,8 +89,14 @@ def get_gpu(index: int):
 
 @app.get("/api/system")
 def get_system():
-    """获取系统资源信息"""
+    """获取系统资源信息（基础）"""
     return get_system_info()
+
+
+@app.get("/api/system/detail")
+def get_system_full():
+    """获取完整系统资源信息（含磁盘、网络、每核CPU）"""
+    return get_system_detail()
 
 
 @app.get("/api/processes")
@@ -97,6 +104,14 @@ def get_processes():
     """获取所有GPU上的进程列表"""
     procs = get_all_gpu_processes(gpu_monitor.device_count)
     return {"processes": procs}
+
+
+@app.get("/api/training/logs")
+def get_training():
+    """获取GPU训练进程的日志和指标"""
+    procs = get_all_gpu_processes(gpu_monitor.device_count)
+    logs = get_training_logs(procs)
+    return {"training": logs}
 
 
 @app.post("/api/power-limit")

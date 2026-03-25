@@ -56,6 +56,21 @@ CREATE TABLE IF NOT EXISTS schedule_log (
     result TEXT,
     timestamp REAL NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS process_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    pid INTEGER NOT NULL,
+    gpu_index INTEGER NOT NULL,
+    username TEXT,
+    command TEXT,
+    gpu_memory_used INTEGER,
+    first_seen REAL NOT NULL,
+    last_seen REAL NOT NULL,
+    is_active INTEGER DEFAULT 1
+);
+
+CREATE INDEX IF NOT EXISTS idx_process_history_active ON process_history(is_active);
+CREATE INDEX IF NOT EXISTS idx_process_history_ts ON process_history(last_seen);
 """
 
 
@@ -223,3 +238,86 @@ class DataStore:
             (action, target, reason, result, time.time()),
         )
         await self._db.commit()
+
+    # ========== 进程历史 ==========
+
+    async def track_processes(self, processes: list[dict]):
+        """追踪进程生命周期：新进程记录first_seen，已有进程更新last_seen，消失进程标为inactive"""
+        now = time.time()
+        if not self._db or not processes:
+            # 没有进程数据时，标记所有活跃进程为inactive
+            await self._db.execute(
+                "UPDATE process_history SET is_active = 0 WHERE is_active = 1"
+            )
+            await self._db.commit()
+            return
+
+        current_pids = set()
+        for proc in processes:
+            pid = proc.get("pid", 0)
+            gpu_index = proc.get("gpu_index", -1)
+            if pid <= 0:
+                continue
+            current_pids.add(pid)
+
+            # 检查是否已有记录
+            cursor = await self._db.execute(
+                "SELECT id FROM process_history WHERE pid = ? AND is_active = 1",
+                (pid,),
+            )
+            row = await cursor.fetchone()
+
+            if row:
+                # 更新last_seen和显存
+                await self._db.execute(
+                    "UPDATE process_history SET last_seen = ?, gpu_memory_used = ? WHERE id = ?",
+                    (now, proc.get("gpu_memory_used", 0), dict(row)["id"]),
+                )
+            else:
+                # 新进程
+                await self._db.execute(
+                    """INSERT INTO process_history
+                       (pid, gpu_index, username, command, gpu_memory_used, first_seen, last_seen, is_active)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, 1)""",
+                    (pid, gpu_index, proc.get("username", "unknown"),
+                     proc.get("command", ""), proc.get("gpu_memory_used", 0), now, now),
+                )
+
+        # 标记消失的进程为inactive
+        if current_pids:
+            placeholders = ",".join("?" * len(current_pids))
+            await self._db.execute(
+                f"UPDATE process_history SET is_active = 0, last_seen = ? WHERE is_active = 1 AND pid NOT IN ({placeholders})",
+                (now, *current_pids),
+            )
+
+        await self._db.commit()
+
+    async def get_process_timeline(self, hours: float = 24.0) -> list[dict]:
+        """获取进程历史时间线"""
+        since = time.time() - hours * 3600
+        cursor = await self._db.execute(
+            """SELECT * FROM process_history
+               WHERE last_seen >= ?
+               ORDER BY first_seen DESC""",
+            (since,),
+        )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    async def get_user_stats(self) -> list[dict]:
+        """按用户统计当前资源占用"""
+        cursor = await self._db.execute(
+            """SELECT username,
+                      COUNT(DISTINCT pid) as task_count,
+                      COUNT(DISTINCT gpu_index) as gpu_count,
+                      SUM(gpu_memory_used) as total_memory,
+                      MIN(first_seen) as earliest_start,
+                      MAX(last_seen) as latest_activity
+               FROM process_history
+               WHERE is_active = 1
+               GROUP BY username
+               ORDER BY total_memory DESC"""
+        )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]

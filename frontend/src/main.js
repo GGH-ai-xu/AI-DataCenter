@@ -11,6 +11,7 @@ const routes = [
   { path: '/scheduler', name: 'Scheduler', component: () => import('./views/Scheduler.vue') },
   { path: '/ai', name: 'AIAssistant', component: () => import('./views/AIAssistant.vue') },
   { path: '/alerts', name: 'AlertCenter', component: () => import('./views/AlertCenter.vue') },
+  { path: '/monitor', name: 'MonitorCenter', component: () => import('./views/MonitorCenter.vue') },
 ]
 
 const router = createRouter({

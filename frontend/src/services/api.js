@@ -37,4 +37,10 @@ export const acknowledgeAlert = (id) => api.post(`/alerts/acknowledge/${id}`)
 // 健康检查
 export const healthCheck = () => api.get('/health')
 
+// 监控观察
+export const getSystemDetail = () => api.get('/monitor/system-detail')
+export const getTrainingProgress = () => api.get('/monitor/training')
+export const getUserStats = () => api.get('/monitor/users')
+export const getTaskHistory = (hours = 24) => api.get('/monitor/task-history', { params: { hours } })
+
 export default api

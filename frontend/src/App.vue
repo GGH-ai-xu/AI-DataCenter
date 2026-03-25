@@ -19,6 +19,7 @@ const navItems = [
   { path: '/', label: '监控大屏', icon: '◉' },
   { path: '/tasks', label: '任务管理', icon: '⚙' },
   { path: '/scheduler', label: '智能调度', icon: '⚡' },
+  { path: '/monitor', label: '观察中心', icon: '◎' },
   { path: '/ai', label: 'AI助手', icon: '✦' },
   { path: '/alerts', label: '告警中心', icon: '△' },
 ]
