@@ -63,6 +63,38 @@ SCHEDULER_PROMPT = """基于以下GPU集群实时状态，生成调度策略JSON
 4. 只返回JSON，不要额外文字"""
 
 
+INSIGHT_PROMPT = """基于以下AI数据中心集群实时状态，给出一句话趋势洞察和具体行动建议。
+当前时段：{time_period}
+集群指标：实时总功耗 {total_power}W，平均效率 {efficiency}分，节能比例 {saving_pct}%
+GPU状态：{gpu_summary}
+
+严格按JSON返回：
+{{"summary": "一句话洞察(30字内)", "risk_level": "low|medium|high", "detail": "详细分析(100字内)", "suggestions": ["建议1", "建议2"]}}"""
+
+PREDICTION_INTERPRET_PROMPT = """以下是AI数据中心未来{hours}小时的功耗预测结果：
+预测峰值：{peak}W（{peak_hour}:00），预测谷值：{valley}W（{valley_hour}:00）
+使用算法：EWA {ewa}次 / 线性回归 {linear}次 / 多项式 {poly}次，平均RMSE: {rmse}
+当前时段：{time_period}
+
+请用50字内给出趋势判断和操作建议。仅返回纯文本，不要JSON。"""
+
+ANOMALY_PROMPT = """分析以下GPU集群数据，识别阈值检测发现不了的异常模式。
+{gpu_data}
+可能的异常：功耗持续缓慢上升(散热退化)、利用率周期性骤降(任务异常)、GPU间负载严重不均(调度问题)、功耗-利用率不匹配(效率异常)。
+严格按JSON返回：
+{{"anomalies": [{{"type": "...", "gpu_index": 0, "description": "...", "severity": "warning|critical", "suggestion": "..."}}], "healthy": true}}
+如果一切正常，返回空数组和healthy=true。"""
+
+EVALUATE_PROMPT = """上次调度执行了以下操作：
+{actions}
+执行前集群状态：{before_state}
+执行后集群状态：{after_state}
+
+请评估调度效果，指出哪些操作有效、哪些需要改进。
+严格按JSON返回：
+{{"score": 0, "verdict": "一句话评价", "effective_actions": [], "ineffective_actions": [], "improvement": "改进建议"}}"""
+
+
 class LLMService:
     """LLM服务 - 支持对话和调度策略生成"""
 
@@ -186,6 +218,89 @@ class LLMService:
             )
         except Exception as e:
             return f"报告生成失败：{str(e)}"
+
+    def _parse_json_response(self, content: str) -> Optional[dict]:
+        """解析LLM返回的JSON（兼容markdown代码块包裹）"""
+        content = content.strip()
+        if content.startswith("```"):
+            first_nl = content.find("\n")
+            if first_nl != -1:
+                content = content[first_nl + 1:]
+            if content.rstrip().endswith("```"):
+                content = content.rstrip()[:-3].rstrip()
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON解析失败: {e}")
+            return None
+
+    async def analyze_insight(self, metrics_context: str) -> Optional[dict]:
+        """D2: AI趋势洞察 - 基于集群状态生成结构化洞察"""
+        try:
+            content = await self._call_with_retry(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": metrics_context},
+                ],
+                temperature=0.5,
+                max_tokens=500,
+            )
+            return self._parse_json_response(content)
+        except Exception as e:
+            logger.error(f"AI洞察分析失败: {e}")
+            return None
+
+    async def interpret_prediction(self, pred_context: str) -> Optional[str]:
+        """D3: AI预测解读 - 返回纯文本趋势判断"""
+        try:
+            content = await self._call_with_retry(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": pred_context},
+                ],
+                temperature=0.5,
+                max_tokens=200,
+            )
+            return content.strip()
+        except Exception as e:
+            logger.error(f"AI预测解读失败: {e}")
+            return None
+
+    async def detect_anomalies(self, gpu_data_str: str) -> Optional[dict]:
+        """D1: AI异常模式检测 - 识别阈值检测发现不了的异常"""
+        try:
+            content = await self._call_with_retry(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": gpu_data_str},
+                ],
+                temperature=0.3,
+                max_tokens=800,
+            )
+            return self._parse_json_response(content)
+        except Exception as e:
+            logger.error(f"AI异常检测失败: {e}")
+            return None
+
+    async def evaluate_schedule(self, context: str) -> Optional[dict]:
+        """D4: AI调度闭环反思 - 评估上次调度效果"""
+        try:
+            content = await self._call_with_retry(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": context},
+                ],
+                temperature=0.3,
+                max_tokens=600,
+            )
+            return self._parse_json_response(content)
+        except Exception as e:
+            logger.error(f"AI调度评估失败: {e}")
+            return None
 
     @staticmethod
     def _extract_suggestions(text: str) -> list[str]:

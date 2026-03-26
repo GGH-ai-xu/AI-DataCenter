@@ -9,6 +9,7 @@ const routes = [
   { path: '/gpu/:index', name: 'GpuDetail', component: () => import('./views/GpuDetail.vue') },
   { path: '/tasks', name: 'TaskManager', component: () => import('./views/TaskManager.vue') },
   { path: '/scheduler', name: 'Scheduler', component: () => import('./views/Scheduler.vue') },
+  { path: '/energy', name: 'EnergyOptimization', component: () => import('./views/EnergyOptimization.vue') },
   { path: '/ai', name: 'AIAssistant', component: () => import('./views/AIAssistant.vue') },
   { path: '/alerts', name: 'AlertCenter', component: () => import('./views/AlertCenter.vue') },
   { path: '/monitor', name: 'MonitorCenter', component: () => import('./views/MonitorCenter.vue') },

@@ -23,6 +23,8 @@ from app.services.data_store import DataStore
 from app.services.llm import LLMService
 from app.services.alert_engine import AlertEngine
 from app.services.scheduler import SchedulerEngine
+from app.services.energy_analytics import EnergyAnalytics
+from app.services.governance import GovernanceService
 from app.ws.realtime import ws_manager
 
 load_dotenv()
@@ -37,6 +39,8 @@ class AppState:
     llm: LLMService | None
     alert_engine: AlertEngine
     scheduler: SchedulerEngine
+    energy: EnergyAnalytics
+    governance: GovernanceService
     _collect_task: asyncio.Task | None = None
     _cleanup_task: asyncio.Task | None = None
     _agent_fail_count: int = 0
@@ -70,12 +74,21 @@ async def collect_loop():
 
             if gpus:
                 app_state._agent_fail_count = 0
+                priorities = await app_state.store.get_all_task_priorities()
+                enriched_processes = []
+                for proc in processes:
+                    cloned = dict(proc)
+                    cloned["priority"] = priorities.get(
+                        cloned.get("pid"),
+                        cloned.get("priority", "normal"),
+                    )
+                    enriched_processes.append(cloned)
 
                 # 存储历史数据
                 await app_state.store.save_gpu_snapshot(gpus)
 
                 # 追踪进程生命周期
-                await app_state.store.track_processes(processes)
+                await app_state.store.track_processes(enriched_processes)
 
                 # 告警检测
                 alerts = app_state.alert_engine.check_all_gpus(gpus)
@@ -83,14 +96,14 @@ async def collect_loop():
                     await app_state.store.save_alert(alert)
 
                 # 调度引擎tick
-                await app_state.scheduler.tick(gpus, processes)
+                await app_state.scheduler.tick(gpus, enriched_processes)
 
                 # WebSocket推送
                 await ws_manager.broadcast({
                     "type": "realtime",
                     "gpus": gpus,
                     "system": system,
-                    "processes": processes,
+                    "processes": enriched_processes,
                     "alerts": alerts,
                 })
             else:
@@ -116,6 +129,9 @@ async def lifespan(app: FastAPI):
     app_state.agent = AgentClient(agent_url)
     app_state.store = DataStore(db_path)
     await app_state.store.init()
+    removed_snapshots = await app_state.store.cleanup_untrusted_optimization_history()
+    if removed_snapshots:
+        logger.warning(f"已清理 {removed_snapshots} 条不可信的优化历史快照")
 
     # 告警引擎
     app_state.alert_engine = AlertEngine(
@@ -139,7 +155,19 @@ async def lifespan(app: FastAPI):
 
     # 调度引擎
     app_state.scheduler = SchedulerEngine(
-        app_state.agent, app_state.store, app_state.llm
+        app_state.agent,
+        app_state.store,
+        app_state.llm,
+        budget_limit_watts=int(os.getenv("POWER_BUDGET_WATTS", "1200")),
+        budget_enabled=os.getenv("POWER_BUDGET_ENABLED", "false").lower() in {"1", "true", "yes", "on"},
+    )
+
+    # 能耗分析引擎
+    app_state.energy = EnergyAnalytics(
+        app_state.store, app_state.llm, app_state.agent
+    )
+    app_state.governance = GovernanceService(
+        app_state.store, app_state.agent
     )
 
     # 启动采集循环
@@ -161,8 +189,9 @@ async def lifespan(app: FastAPI):
 
 # 创建FastAPI应用
 app = FastAPI(
-    title="AI数据中心能耗优化管理系统",
-    version="1.0.0",
+    title="GPU集群治理平台",
+    description="高校实验室GPU服务器智能运维与功率预算治理平台",
+    version="1.1.0",
     lifespan=lifespan,
 )
 
@@ -180,6 +209,8 @@ from app.api.scheduler import router as scheduler_router
 from app.api.ai import router as ai_router
 from app.api.alerts import router as alerts_router
 from app.api.monitor import router as monitor_router
+from app.api.energy import router as energy_router
+from app.api.governance import router as governance_router
 
 app.include_router(gpu_router)
 app.include_router(tasks_router)
@@ -187,6 +218,8 @@ app.include_router(scheduler_router)
 app.include_router(ai_router)
 app.include_router(alerts_router)
 app.include_router(monitor_router)
+app.include_router(energy_router)
+app.include_router(governance_router)
 
 
 @app.get("/api/health")

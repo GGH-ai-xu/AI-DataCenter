@@ -1,7 +1,6 @@
-"""GPU任务/进程监控 - 获取占用GPU的进程列表"""
+"""GPU任务/进程监控 - 获取真实占用 GPU 的进程列表"""
 
-import time
-from typing import List, Optional
+from typing import List
 
 try:
     import pynvml
@@ -17,7 +16,7 @@ except ImportError:
 
 
 def get_gpu_processes(gpu_index: int) -> List[dict]:
-    """获取指定GPU上运行的进程列表"""
+    """获取指定 GPU 上运行的真实进程列表"""
     if not NVML_AVAILABLE:
         return []
     try:
@@ -38,13 +37,12 @@ def get_gpu_processes(gpu_index: int) -> List[dict]:
             "cpu_percent": 0.0,
             "create_time": 0,
         }
-        # 用psutil补充进程详情
         if PSUTIL_AVAILABLE:
             try:
                 p = psutil.Process(proc.pid)
                 info["name"] = p.name()
                 info["username"] = p.username()
-                info["command"] = " ".join(p.cmdline()[:5])  # 截取前5段
+                info["command"] = " ".join(p.cmdline()[:5])
                 info["cpu_percent"] = p.cpu_percent()
                 info["create_time"] = p.create_time()
             except (psutil.NoSuchProcess, psutil.AccessDenied):
@@ -54,7 +52,7 @@ def get_gpu_processes(gpu_index: int) -> List[dict]:
 
 
 def get_all_gpu_processes(device_count: int) -> List[dict]:
-    """获取所有GPU上的进程"""
+    """获取所有真实 GPU 上的进程"""
     all_procs = []
     for i in range(device_count):
         all_procs.extend(get_gpu_processes(i))

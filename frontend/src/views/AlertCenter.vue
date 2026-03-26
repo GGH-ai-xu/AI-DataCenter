@@ -3,7 +3,7 @@
  * AlertCenter.vue - 告警中心
  * 展示历史告警列表，支持确认告警
  */
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { getAlerts, acknowledgeAlert } from '../services/api'
 import { useAppStore } from '../stores/app'
 
@@ -33,17 +33,38 @@ async function ackAlert(id) {
 const fmtTime = (ts) => new Date(ts * 1000).toLocaleString('zh-CN')
 
 const severityConfig = {
-  critical: { bg: 'rgba(248,113,113,0.08)', border: 'rgba(248,113,113,0.2)', color: '#f87171', icon: '⚠', label: '严重' },
-  warning: { bg: 'rgba(251,191,36,0.08)', border: 'rgba(251,191,36,0.2)', color: '#fbbf24', icon: '△', label: '警告' },
+  critical: { bg: 'rgba(196,30,58,0.08)', border: 'rgba(196,30,58,0.2)', color: '#C41E3A', icon: '⚠', label: '严重' },
+  warning: { bg: 'rgba(184,134,11,0.08)', border: 'rgba(184,134,11,0.2)', color: '#B8860B', icon: '△', label: '警告' },
 }
+
+const pendingCount = computed(() => historyAlerts.value.filter(alert => !alert.acknowledged).length)
+const criticalCount = computed(() => historyAlerts.value.filter(alert => alert.severity === 'critical').length)
 
 onMounted(loadAlerts)
 </script>
 
 <template>
-  <div class="alert-page">
-    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px">
-      <div class="section-title" style="font-size: 1rem">告警中心</div>
+  <div class="alert-page ink-page-shell">
+    <section class="ink-page-head tech-card">
+      <div class="ink-page-head__body">
+        <div class="ink-page-head__eyebrow">实时告警 · 历史风险 · 分级确认</div>
+        <h2 class="ink-page-head__title">把纷杂的告警整理成有层次的风险谱系</h2>
+        <p class="ink-page-head__desc">
+          实时告警反映当下波动，历史记录沉淀长期风险。这里强调“先辨轻重，再做处置”，避免让真正重要的告警被噪声淹没。
+        </p>
+      </div>
+      <div class="ink-page-head__side">
+        <div class="ink-page-head__quote">“先辨其重，再处其急。”</div>
+        <div class="ink-inline-meta">
+          <span class="status-badge status-badge--critical">{{ criticalCount }} 条严重</span>
+          <span class="status-badge status-badge--warning">{{ pendingCount }} 条未确认</span>
+          <span class="status-badge status-badge--ok">{{ store.alerts.length }} 条实时</span>
+        </div>
+      </div>
+    </section>
+
+    <div class="alert-toolbar">
+      <div class="section-title" style="font-size: 1rem">告警簿</div>
       <div style="display: flex; gap: 8px; align-items: center">
         <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8125rem; color: var(--text-secondary); cursor: pointer">
           <input type="checkbox" v-model="showUnackOnly" @change="loadAlerts" style="accent-color: var(--accent-primary)" />
@@ -115,7 +136,15 @@ onMounted(loadAlerts)
 </template>
 
 <style scoped>
-.alert-page { max-width: 1400px; margin: 0 auto; }
+.alert-page { max-width: 1460px; margin: 0 auto; }
+
+.alert-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
 
 .alert-stream { display: flex; flex-direction: column; gap: 6px; }
 
@@ -137,7 +166,14 @@ onMounted(loadAlerts)
   padding: 10px 16px; font-size: 0.8125rem;
   border-bottom: 1px solid rgba(255,255,255,0.03);
 }
-.alert-table tr:hover td { background: rgba(56,189,248,0.03); }
+.alert-table tr:hover td { background: rgba(58,95,75,0.03); }
 
-.gpu-tag { font-size: 0.6875rem; font-weight: 600; color: var(--accent-primary); background: rgba(56,189,248,0.1); padding: 2px 8px; border-radius: 4px; }
+.gpu-tag { font-size: 0.6875rem; font-weight: 600; color: var(--accent-primary); background: rgba(58,95,75,0.1); padding: 2px 8px; border-radius: 4px; }
+
+@media (max-width: 820px) {
+  .alert-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
 </style>

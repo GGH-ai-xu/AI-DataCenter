@@ -15,6 +15,9 @@ backend/data/
 
 # Environment
 .env
+**/.env
+*.env.local
+*.env.*.local
 
 # IDE
 .vscode/
@@ -27,6 +30,7 @@ backend/data/
 Thumbs.db
 
 # Claude工作文件
+.claude/
 .claude/context-*.json
 .claude/plan.json
 .claude/review-report.md
@@ -35,3 +39,7 @@ Thumbs.db
 .claude/structured-request.json
 operations-log.md
 verification.md
+
+# Runtime logs
+*.log
+runtime/

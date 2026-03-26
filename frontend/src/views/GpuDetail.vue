@@ -56,24 +56,24 @@ const chartOption = computed(() => {
     backgroundColor: 'transparent',
     tooltip: {
       trigger: 'axis',
-      backgroundColor: 'rgba(17,24,39,0.9)',
-      borderColor: 'rgba(56,189,248,0.2)',
-      textStyle: { color: '#f1f5f9', fontSize: 12 },
+      backgroundColor: 'rgba(248,245,240,0.97)',
+      borderColor: 'rgba(58,95,75,0.2)',
+      textStyle: { color: '#2C2C2C', fontSize: 12 },
     },
     legend: {
       data: ['温度', '功耗', 'GPU利用率', '显存利用率'],
-      textStyle: { color: '#94a3b8', fontSize: 11 },
+      textStyle: { color: '#666666', fontSize: 11 },
       top: 0,
     },
     grid: { left: 50, right: 20, top: 36, bottom: 60 },
-    dataZoom: [{ type: 'inside' }, { type: 'slider', height: 20, bottom: 8, borderColor: 'transparent', backgroundColor: 'rgba(255,255,255,0.04)', fillerColor: 'rgba(56,189,248,0.1)', handleStyle: { color: '#38bdf8' }, textStyle: { color: '#64748b' } }],
-    xAxis: { type: 'category', data: times, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } }, axisTick: { show: false }, axisLabel: { color: '#64748b', fontSize: 10, formatter: (v) => new Date(v).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) } },
-    yAxis: { type: 'value', axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: '#64748b', fontSize: 10 }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } } },
+    dataZoom: [{ type: 'inside' }, { type: 'slider', height: 20, bottom: 8, borderColor: 'transparent', backgroundColor: 'rgba(255,255,255,0.04)', fillerColor: 'rgba(58,95,75,0.1)', handleStyle: { color: '#3A5F4B' }, textStyle: { color: '#999999' } }],
+    xAxis: { type: 'category', data: times, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } }, axisTick: { show: false }, axisLabel: { color: '#999999', fontSize: 10, formatter: (v) => new Date(v).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) } },
+    yAxis: { type: 'value', axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: '#999999', fontSize: 10 }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } } },
     series: [
-      { name: '温度', data: history.value.map(d => d.temperature), ...makeStyle('#fbbf24') },
-      { name: '功耗', data: history.value.map(d => d.power_usage), ...makeStyle('#38bdf8') },
-      { name: 'GPU利用率', data: history.value.map(d => d.gpu_utilization), ...makeStyle('#818cf8') },
-      { name: '显存利用率', data: history.value.map(d => d.memory_utilization), ...makeStyle('#34d399') },
+      { name: '温度', data: history.value.map(d => d.temperature), ...makeStyle('#B8860B') },
+      { name: '功耗', data: history.value.map(d => d.power_usage), ...makeStyle('#3A5F4B') },
+      { name: 'GPU利用率', data: history.value.map(d => d.gpu_utilization), ...makeStyle('#5B4B8C') },
+      { name: '显存利用率', data: history.value.map(d => d.memory_utilization), ...makeStyle('#2E8B57') },
     ],
     animation: false,
   }
@@ -85,16 +85,25 @@ onMounted(() => loadHistory(1))
 </script>
 
 <template>
-  <div class="gpu-detail">
-    <div class="detail-header">
-      <button class="btn-tech" @click="router.push('/')">← 返回大屏</button>
-      <h2 style="font-size: 1.125rem; font-weight: 600">
-        <span style="color: var(--accent-primary)">GPU {{ gpuIndex }}</span>
-        <span style="color: var(--text-muted); margin-left: 8px; font-size: 0.875rem">{{ gpu.name }}</span>
-      </h2>
-    </div>
+  <div class="gpu-detail ink-page-shell">
+    <section class="ink-page-head tech-card">
+      <div class="ink-page-head__body">
+        <div class="ink-page-head__eyebrow">单卡画像 · 历史趋势 · 实时指标</div>
+        <h2 class="ink-page-head__title">GPU {{ gpuIndex }} 的呼吸、脉络与负载起伏</h2>
+        <p class="ink-page-head__desc">
+          {{ gpu.name || '当前单卡信息正在加载中。' }}
+          这里以单卡为单位观察温度、功耗、利用率和显存变化，帮助你定位热点、异常和限功后的响应。
+        </p>
+      </div>
+      <div class="ink-page-head__side">
+        <button class="btn-tech" @click="router.push('/')">返回总览</button>
+        <div class="ink-inline-meta">
+          <span class="status-badge status-badge--warning">温度 {{ gpu.temperature || '--' }}°C</span>
+          <span class="status-badge status-badge--ok">功耗 {{ (gpu.power_usage || 0).toFixed(0) }}W</span>
+        </div>
+      </div>
+    </section>
 
-    <!-- 实时指标 -->
     <div class="detail-stats">
       <div class="dstat tech-card">
         <div class="dstat__label">温度</div>
@@ -122,7 +131,6 @@ onMounted(() => loadHistory(1))
       </div>
     </div>
 
-    <!-- 历史趋势 -->
     <div class="history-panel tech-card" style="padding: 20px; margin-top: 16px">
       <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px">
         <div class="section-title">历史趋势</div>
@@ -144,9 +152,20 @@ onMounted(() => loadHistory(1))
 </template>
 
 <style scoped>
-.gpu-detail { max-width: 1400px; margin: 0 auto; }
-.detail-header { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
+.gpu-detail { max-width: 1460px; margin: 0 auto; }
 .detail-stats { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
 .dstat { padding: 18px; text-align: center; }
 .dstat__label { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 6px; }
+
+@media (max-width: 1180px) {
+  .detail-stats {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .detail-stats {
+    grid-template-columns: 1fr;
+  }
+}
 </style>

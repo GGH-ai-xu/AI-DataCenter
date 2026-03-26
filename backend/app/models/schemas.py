@@ -53,6 +53,10 @@ class PowerLimitRequest(BaseModel):
 
 # ========== 调度相关 ==========
 
+class PowerBudgetConfigRequest(BaseModel):
+    enabled: bool
+    total_power_budget: int = Field(ge=400, le=5000)
+
 class ScheduleAction(BaseModel):
     """单条调度动作"""
     action: str  # set_power_limit / pause_task / resume_task
@@ -97,3 +101,15 @@ class ChatResponse(BaseModel):
 class TaskPriorityUpdate(BaseModel):
     pid: int
     priority: str = Field(pattern=r"^(urgent|normal|deferrable)$")
+
+
+# ========== 用户治理规则 ==========
+
+class UserGovernanceRuleUpdate(BaseModel):
+    username: str = Field(min_length=1, max_length=120)
+    role: str = Field(default="member", pattern=r"^(protected|member|restricted)$")
+    max_tasks: int = Field(default=4, ge=1, le=64)
+    max_gpu_count: int = Field(default=1, ge=1, le=16)
+    max_memory_gb: float = Field(default=8.0, ge=1, le=1024)
+    allow_preempt: bool = True
+    note: str = Field(default="", max_length=200)

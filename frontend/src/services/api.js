@@ -23,6 +23,7 @@ export const setTaskPriority = (pid, priority) => api.post('/tasks/priority', { 
 // 调度相关
 export const getSchedulerStatus = () => api.get('/scheduler/status')
 export const toggleAutoSchedule = (enabled) => api.post('/scheduler/auto', null, { params: { enabled } })
+export const setPowerBudget = (enabled, total_power_budget) => api.post('/scheduler/budget', { enabled, total_power_budget })
 export const setManualPowerLimit = (gpu_index, power_limit) => api.post('/scheduler/power-limit', { gpu_index, power_limit })
 export const runScheduleOnce = () => api.post('/scheduler/run-once')
 export const getScheduleReport = () => api.get('/scheduler/report')
@@ -42,5 +43,25 @@ export const getSystemDetail = () => api.get('/monitor/system-detail')
 export const getTrainingProgress = () => api.get('/monitor/training')
 export const getUserStats = () => api.get('/monitor/users')
 export const getTaskHistory = (hours = 24) => api.get('/monitor/task-history', { params: { hours } })
+export const getFairnessGovernance = () => api.get('/governance/fairness')
+export const getGovernanceRules = () => api.get('/governance/rules')
+export const saveGovernanceRule = (payload) => api.post('/governance/rules', payload)
+export const deleteGovernanceRule = (username) => api.delete(`/governance/rules/${encodeURIComponent(username)}`)
+export const exportGovernanceReport = (format = 'markdown') => api.get('/governance/export-report', { params: { format }, responseType: 'blob' })
+
+// 能耗优化分析
+export const getEnergyMetrics = (hours = 24) => api.get('/energy/metrics', { params: { hours } })
+export const getAiInsight = () => api.get('/energy/ai-insight')
+export const getAiAnomalies = () => api.get('/energy/ai-anomalies')
+export const getTimeBreakdown = (hours = 24) => api.get('/energy/time-breakdown', { params: { hours } })
+export const getGpuEfficiency = () => api.get('/energy/efficiency')
+export const getPowerPrediction = (hours = 24) => api.get('/energy/prediction', { params: { hours } })
+export const getCarbonData = (hours = 24) => api.get('/energy/carbon', { params: { hours } })
+export const runOptimize = () => api.post('/energy/optimize')
+export const getEnergyReport = (hours = 24) => api.get('/energy/report', { params: { hours } })
+export const getOptimizationHistory = (hours = 72) => api.get('/energy/optimization-history', { params: { hours } })
+export const getScheduleHistory = (hours = 72) => api.get('/energy/schedule-history', { params: { hours } })
+export const getHistoryComparison = (hours = 72) => api.get('/energy/history-comparison', { params: { hours } })
+export const exportEnergyReport = (hours = 24, format = 'markdown') => api.get('/energy/export-report', { params: { hours, format }, responseType: 'blob' })
 
 export default api

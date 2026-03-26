@@ -31,7 +31,10 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     gpu_monitor.init()
-    logger.info(f"Agent启动，检测到 {gpu_monitor.device_count} 张GPU")
+    if gpu_monitor.device_count > 0:
+        logger.info(f"Agent启动，检测到 {gpu_monitor.device_count} 张真实GPU")
+    else:
+        logger.warning("Agent启动，但当前未检测到真实 NVIDIA GPU；不会返回任何模拟数据")
     yield
     gpu_monitor.shutdown()
     logger.info("Agent已关闭")
@@ -69,6 +72,9 @@ def health_check():
     return {
         "status": "ok",
         "gpu_count": gpu_monitor.device_count,
+        "simulated": gpu_monitor.is_simulated,
+        "real_gpu_available": gpu_monitor.device_count > 0,
+        "note": gpu_monitor.last_error if gpu_monitor.device_count == 0 else "",
     }
 
 

@@ -71,6 +71,29 @@ CREATE TABLE IF NOT EXISTS process_history (
 
 CREATE INDEX IF NOT EXISTS idx_process_history_active ON process_history(is_active);
 CREATE INDEX IF NOT EXISTS idx_process_history_ts ON process_history(last_seen);
+
+CREATE TABLE IF NOT EXISTS optimization_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    baseline_power REAL,
+    optimized_power REAL,
+    saving_pct REAL,
+    co2_saved_kg REAL,
+    actions_json TEXT,
+    timestamp REAL NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_opt_snap_ts ON optimization_snapshots(timestamp);
+
+CREATE TABLE IF NOT EXISTS user_governance_rules (
+    username TEXT PRIMARY KEY,
+    role TEXT NOT NULL DEFAULT 'member',
+    max_tasks INTEGER NOT NULL DEFAULT 4,
+    max_gpu_count INTEGER NOT NULL DEFAULT 1,
+    max_memory_gb REAL NOT NULL DEFAULT 8,
+    allow_preempt INTEGER NOT NULL DEFAULT 1,
+    note TEXT DEFAULT '',
+    updated_at REAL NOT NULL
+);
 """
 
 
@@ -229,6 +252,57 @@ class DataStore:
         rows = await cursor.fetchall()
         return {row["pid"]: row["priority"] for row in rows}
 
+    async def upsert_user_governance_rule(
+        self,
+        username: str,
+        role: str,
+        max_tasks: int,
+        max_gpu_count: int,
+        max_memory_gb: float,
+        allow_preempt: bool,
+        note: str = "",
+    ):
+        """新增或更新用户治理规则"""
+        await self._db.execute(
+            """INSERT OR REPLACE INTO user_governance_rules
+               (username, role, max_tasks, max_gpu_count, max_memory_gb, allow_preempt, note, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                username,
+                role,
+                max_tasks,
+                max_gpu_count,
+                max_memory_gb,
+                1 if allow_preempt else 0,
+                note,
+                time.time(),
+            ),
+        )
+        await self._db.commit()
+
+    async def get_user_governance_rules(self) -> dict[str, dict]:
+        """获取全部用户治理规则"""
+        cursor = await self._db.execute(
+            """SELECT username, role, max_tasks, max_gpu_count, max_memory_gb, allow_preempt, note, updated_at
+               FROM user_governance_rules
+               ORDER BY updated_at DESC"""
+        )
+        rows = await cursor.fetchall()
+        data = {}
+        for row in rows:
+            item = dict(row)
+            item["allow_preempt"] = bool(item.get("allow_preempt", 1))
+            data[item["username"]] = item
+        return data
+
+    async def delete_user_governance_rule(self, username: str):
+        """删除单个用户治理规则，恢复为平台默认阈值"""
+        await self._db.execute(
+            "DELETE FROM user_governance_rules WHERE username = ?",
+            (username,),
+        )
+        await self._db.commit()
+
     # ========== 调度日志 ==========
 
     async def save_schedule_log(self, action: str, target: str, reason: str, result: str = ""):
@@ -300,6 +374,116 @@ class DataStore:
             """SELECT * FROM process_history
                WHERE last_seen >= ?
                ORDER BY first_seen DESC""",
+            (since,),
+        )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    # ========== 能耗分析 ==========
+
+    async def get_hourly_power_aggregation(self, hours: float = 24.0) -> list[dict]:
+        """按小时聚合功耗数据，用于时段分析和预测基础"""
+        since = time.time() - hours * 3600
+        cursor = await self._db.execute(
+            """SELECT
+                   CAST(strftime('%H', datetime(timestamp, 'unixepoch', 'localtime')) AS INTEGER) as hour,
+                   AVG(power_usage) as avg_power,
+                   MAX(power_usage) as max_power,
+                   MIN(power_usage) as min_power,
+                   SUM(power_usage) as total_power,
+                   COUNT(*) as samples,
+                   AVG(gpu_utilization) as avg_util,
+                   AVG(temperature) as avg_temp
+               FROM gpu_history
+               WHERE timestamp >= ?
+               GROUP BY hour
+               ORDER BY hour""",
+            (since,),
+        )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    async def save_optimization_snapshot(self, data: dict):
+        """保存优化操作快照"""
+        await self._db.execute(
+            """INSERT INTO optimization_snapshots
+               (baseline_power, optimized_power, saving_pct, co2_saved_kg, actions_json, timestamp)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (
+                data.get("baseline_power", 0),
+                data.get("optimized_power", 0),
+                data.get("saving_pct", 0),
+                data.get("co2_saved_kg", 0),
+                data.get("actions_json", "[]"),
+                time.time(),
+            ),
+        )
+        await self._db.commit()
+
+    async def cleanup_untrusted_optimization_history(self) -> int:
+        """清理明显不可信的优化快照，避免旧错误分析污染历史视图"""
+        cursor = await self._db.execute(
+            """DELETE FROM optimization_snapshots
+               WHERE COALESCE(baseline_power, 0) < 0
+                  OR COALESCE(optimized_power, 0) < 0
+                  OR COALESCE(optimized_power, 0) > COALESCE(baseline_power, 0)
+                  OR COALESCE(saving_pct, 0) < 0
+                  OR COALESCE(saving_pct, 0) > 100
+                  OR (
+                        COALESCE(baseline_power, 0) < 30
+                    AND COALESCE(saving_pct, 0) > 0
+                  )"""
+        )
+        await self._db.commit()
+        return cursor.rowcount or 0
+
+    async def get_optimization_history(self, hours: float = 72.0) -> list[dict]:
+        """查询优化历史快照"""
+        since = time.time() - hours * 3600
+        cursor = await self._db.execute(
+            """SELECT * FROM optimization_snapshots
+               WHERE timestamp >= ?
+                 AND COALESCE(baseline_power, 0) >= 0
+                 AND COALESCE(optimized_power, 0) >= 0
+                 AND COALESCE(optimized_power, 0) <= COALESCE(baseline_power, 0)
+                 AND COALESCE(saving_pct, 0) >= 0
+                 AND COALESCE(saving_pct, 0) <= 100
+                 AND NOT (
+                        COALESCE(baseline_power, 0) < 30
+                    AND COALESCE(saving_pct, 0) > 0
+                 )
+               ORDER BY timestamp DESC LIMIT 50""",
+            (since,),
+        )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    async def get_schedule_history(self, hours: float = 72.0, limit: int = 50) -> list[dict]:
+        """获取调度历史日志"""
+        since = time.time() - hours * 3600
+        cursor = await self._db.execute(
+            """SELECT * FROM schedule_log
+               WHERE timestamp >= ?
+               ORDER BY timestamp DESC LIMIT ?""",
+            (since, limit),
+        )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    async def get_hourly_power_series(self, hours: float = 72.0) -> list[dict]:
+        """按小时聚合功耗时间序列（含时间戳），用于历史对比"""
+        since = time.time() - hours * 3600
+        cursor = await self._db.execute(
+            """SELECT
+                   CAST((timestamp / 3600) AS INTEGER) * 3600 as hour_ts,
+                   AVG(power_usage) as avg_power,
+                   MAX(power_usage) as max_power,
+                   MIN(power_usage) as min_power,
+                   COUNT(*) as samples
+               FROM gpu_history
+               WHERE timestamp >= ?
+               GROUP BY hour_ts
+               ORDER BY hour_ts""",
             (since,),
         )
         rows = await cursor.fetchall()

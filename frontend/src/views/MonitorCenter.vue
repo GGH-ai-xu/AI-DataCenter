@@ -110,14 +110,14 @@ async function loadTimeline() {
 const cpuCoreOption = computed(() => {
   const cores = systemDetail.value?.cpu_per_core || []
   return {
-    tooltip: { trigger: 'axis', backgroundColor: '#1a2035', borderColor: '#38bdf8', textStyle: { color: '#f1f5f9' } },
+    tooltip: { trigger: 'axis', backgroundColor: 'rgba(248, 245, 240, 0.97)', borderColor: '#3A5F4B', textStyle: { color: '#2C2C2C' } },
     grid: { top: 30, right: 16, bottom: 24, left: 40 },
-    xAxis: { type: 'category', data: cores.map((_, i) => 'C' + i), axisLabel: { color: '#64748b', fontSize: 10 }, axisLine: { lineStyle: { color: '#1e293b' } } },
-    yAxis: { type: 'value', max: 100, axisLabel: { color: '#64748b', formatter: '{value}%' }, splitLine: { lineStyle: { color: '#1e293b' } } },
+    xAxis: { type: 'category', data: cores.map((_, i) => 'C' + i), axisLabel: { color: '#999999', fontSize: 10 }, axisLine: { lineStyle: { color: '#1e293b' } } },
+    yAxis: { type: 'value', max: 100, axisLabel: { color: '#999999', formatter: '{value}%' }, splitLine: { lineStyle: { color: '#1e293b' } } },
     series: [{
       type: 'bar', data: cores.map(v => ({
         value: v,
-        itemStyle: { color: v > 80 ? '#f87171' : v > 50 ? '#fbbf24' : '#38bdf8' }
+        itemStyle: { color: v > 80 ? '#C41E3A' : v > 50 ? '#B8860B' : '#3A5F4B' }
       })),
       barMaxWidth: 12, borderRadius: [3, 3, 0, 0],
     }],
@@ -136,33 +136,33 @@ const trainingChartOption = computed(() => {
 
   const series = [{
     name: 'Loss', type: 'line', data: losses, smooth: true,
-    lineStyle: { color: '#f87171', width: 2 }, itemStyle: { color: '#f87171' },
+    lineStyle: { color: '#C41E3A', width: 2 }, itemStyle: { color: '#C41E3A' },
     symbol: 'none', yAxisIndex: 0,
   }]
   const yAxes = [{
-    type: 'value', name: 'Loss', nameTextStyle: { color: '#f87171' },
-    axisLabel: { color: '#64748b' }, splitLine: { lineStyle: { color: '#1e293b' } },
+    type: 'value', name: 'Loss', nameTextStyle: { color: '#C41E3A' },
+    axisLabel: { color: '#999999' }, splitLine: { lineStyle: { color: '#1e293b' } },
   }]
 
   if (accs.length > 0) {
     series.push({
       name: 'Accuracy', type: 'line', data: task.metrics.map(m => m.accuracy),
-      smooth: true, lineStyle: { color: '#34d399', width: 2 }, itemStyle: { color: '#34d399' },
+      smooth: true, lineStyle: { color: '#2E8B57', width: 2 }, itemStyle: { color: '#2E8B57' },
       symbol: 'none', yAxisIndex: 1,
     })
     yAxes.push({
-      type: 'value', name: 'Acc', nameTextStyle: { color: '#34d399' },
-      axisLabel: { color: '#64748b' }, splitLine: { show: false },
+      type: 'value', name: 'Acc', nameTextStyle: { color: '#2E8B57' },
+      axisLabel: { color: '#999999' }, splitLine: { show: false },
       max: 1, min: 0,
     })
   }
 
   return {
-    tooltip: { trigger: 'axis', backgroundColor: '#1a2035', borderColor: '#38bdf8', textStyle: { color: '#f1f5f9' } },
-    legend: { textStyle: { color: '#94a3b8' }, top: 4 },
+    tooltip: { trigger: 'axis', backgroundColor: 'rgba(248, 245, 240, 0.97)', borderColor: '#3A5F4B', textStyle: { color: '#2C2C2C' } },
+    legend: { textStyle: { color: '#666666' }, top: 4 },
     grid: { top: 40, right: accs.length ? 60 : 16, bottom: 40, left: 60 },
     dataZoom: [{ type: 'inside' }],
-    xAxis: { type: 'category', data: epochs, name: 'Epoch', nameTextStyle: { color: '#64748b' }, axisLabel: { color: '#64748b' }, axisLine: { lineStyle: { color: '#1e293b' } } },
+    xAxis: { type: 'category', data: epochs, name: 'Epoch', nameTextStyle: { color: '#999999' }, axisLabel: { color: '#999999' }, axisLine: { lineStyle: { color: '#1e293b' } } },
     yAxis: yAxes,
     series,
   }
@@ -179,7 +179,7 @@ const timelineOption = computed(() => {
 
   return {
     tooltip: {
-      backgroundColor: '#1a2035', borderColor: '#38bdf8', textStyle: { color: '#f1f5f9' },
+      backgroundColor: 'rgba(248, 245, 240, 0.97)', borderColor: '#3A5F4B', textStyle: { color: '#2C2C2C' },
       formatter: (p) => {
         const t = items[p.dataIndex]
         const dur = (t.last_seen - t.first_seen)
@@ -189,10 +189,10 @@ const timelineOption = computed(() => {
     grid: { top: 16, right: 80, bottom: 24, left: 160 },
     xAxis: {
       type: 'time',
-      axisLabel: { color: '#64748b', formatter: (v) => new Date(v).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) },
+      axisLabel: { color: '#999999', formatter: (v) => new Date(v).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) },
       axisLine: { lineStyle: { color: '#1e293b' } }, splitLine: { lineStyle: { color: '#1e293b' } },
     },
-    yAxis: { type: 'category', data: categories, axisLabel: { color: '#94a3b8', fontSize: 11, width: 150, overflow: 'truncate' }, axisLine: { lineStyle: { color: '#1e293b' } } },
+    yAxis: { type: 'category', data: categories, axisLabel: { color: '#666666', fontSize: 11, width: 150, overflow: 'truncate' }, axisLine: { lineStyle: { color: '#1e293b' } } },
     series: [{
       type: 'custom',
       renderItem: (params, api) => {
@@ -202,7 +202,7 @@ const timelineOption = computed(() => {
         const height = 16
         return {
           type: 'rect', shape: { x: start[0], y: start[1] - height / 2, width: Math.max(end[0] - start[0], 4), height },
-          style: { fill: api.value(3) ? '#38bdf8' : '#64748b', opacity: 0.8 },
+          style: { fill: api.value(3) ? '#3A5F4B' : '#999999', opacity: 0.8 },
         }
       },
       encode: { x: [1, 2], y: 0 },
@@ -228,9 +228,29 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="monitor-page">
+  <div class="monitor-page ink-page-shell">
+    <section class="ink-page-head tech-card">
+      <div class="ink-page-head__body">
+        <div class="ink-page-head__eyebrow">系统全貌 · 训练进度 · 用户画像 · 任务时间线</div>
+        <h2 class="ink-page-head__title">先静观其势，再判断系统应如何治理</h2>
+        <p class="ink-page-head__desc">
+          这里把训练过程、用户占用、时间线和系统资源放到同一张观察图里，帮助你从“单点告警”升级到“整体态势判断”。
+        </p>
+      </div>
+      <div class="ink-page-head__side">
+        <div class="ink-page-head__quote">“见微知著，察势而动。”</div>
+        <div class="ink-inline-meta">
+          <span class="status-badge status-badge--ok">{{ trainingData.length }} 个训练任务</span>
+          <span class="status-badge status-badge--warning">{{ userStats.length }} 个活跃用户</span>
+          <span class="status-badge" :class="loading ? 'status-badge--warning' : 'status-badge--ok'">
+            {{ loading ? '数据刷新中' : '观察就绪' }}
+          </span>
+        </div>
+      </div>
+    </section>
+
     <div class="page-header">
-      <h2 class="section-title">观察中心</h2>
+      <div class="page-header__meta">当前聚焦：{{ activeTab === 'system' ? '系统全貌' : activeTab === 'training' ? '训练进度' : activeTab === 'users' ? '用户统计' : '任务时间线' }}</div>
       <div class="tab-bar">
         <button v-for="tab in [
           { key: 'system', label: '系统全貌', icon: '▣' },
@@ -253,14 +273,14 @@ onUnmounted(() => {
             <div class="sys-info-row"><span class="sys-label">运行时长</span><span class="stat-value">{{ uptime }}</span></div>
             <div class="sys-info-row"><span class="sys-label">CPU核心</span><span class="stat-value">{{ systemDetail.cpu_count_physical || '-' }}核 {{ systemDetail.cpu_count }}线程</span></div>
             <div class="sys-info-row"><span class="sys-label">系统负载</span><span class="stat-value">{{ (systemDetail.load_avg || []).map(v => v.toFixed(2)).join(' / ') }}</span></div>
-            <div class="sys-info-row"><span class="sys-label">网络上传</span><span class="stat-value" style="color: #34d399">{{ fmtSpeed(networkSpeed.sent) }}</span></div>
-            <div class="sys-info-row"><span class="sys-label">网络下载</span><span class="stat-value" style="color: #38bdf8">{{ fmtSpeed(networkSpeed.recv) }}</span></div>
+            <div class="sys-info-row"><span class="sys-label">网络上传</span><span class="stat-value" style="color: #2E8B57">{{ fmtSpeed(networkSpeed.sent) }}</span></div>
+            <div class="sys-info-row"><span class="sys-label">网络下载</span><span class="stat-value" style="color: #3A5F4B">{{ fmtSpeed(networkSpeed.recv) }}</span></div>
           </div>
         </div>
 
         <!-- CPU 使用率 -->
         <div class="tech-card">
-          <div class="card-title">CPU 使用率 <span class="stat-value" :style="{ color: systemDetail.cpu_percent > 80 ? '#f87171' : '#38bdf8' }">{{ systemDetail.cpu_percent?.toFixed(1) }}%</span></div>
+          <div class="card-title">CPU 使用率 <span class="stat-value" :style="{ color: systemDetail.cpu_percent > 80 ? '#C41E3A' : '#3A5F4B' }">{{ systemDetail.cpu_percent?.toFixed(1) }}%</span></div>
           <v-chart :option="cpuCoreOption" style="height: 200px" autoresize />
         </div>
 
@@ -272,7 +292,7 @@ onUnmounted(() => {
               <div class="gauge-ring">
                 <svg viewBox="0 0 100 100">
                   <circle cx="50" cy="50" r="40" fill="none" stroke="#1e293b" stroke-width="8"/>
-                  <circle cx="50" cy="50" r="40" fill="none" :stroke="systemDetail.memory_percent > 80 ? '#f87171' : '#38bdf8'" stroke-width="8" stroke-linecap="round"
+                  <circle cx="50" cy="50" r="40" fill="none" :stroke="systemDetail.memory_percent > 80 ? '#C41E3A' : '#3A5F4B'" stroke-width="8" stroke-linecap="round"
                     :stroke-dasharray="(systemDetail.memory_percent / 100 * 251.2) + ' 251.2'" stroke-dashoffset="0" transform="rotate(-90 50 50)"/>
                 </svg>
                 <span class="gauge-text stat-value">{{ systemDetail.memory_percent?.toFixed(0) }}%</span>
@@ -284,7 +304,7 @@ onUnmounted(() => {
               <div class="gauge-ring">
                 <svg viewBox="0 0 100 100">
                   <circle cx="50" cy="50" r="40" fill="none" stroke="#1e293b" stroke-width="8"/>
-                  <circle cx="50" cy="50" r="40" fill="none" stroke="#818cf8" stroke-width="8" stroke-linecap="round"
+                  <circle cx="50" cy="50" r="40" fill="none" stroke="#5B4B8C" stroke-width="8" stroke-linecap="round"
                     :stroke-dasharray="((systemDetail.swap_percent || 0) / 100 * 251.2) + ' 251.2'" stroke-dashoffset="0" transform="rotate(-90 50 50)"/>
                 </svg>
                 <span class="gauge-text stat-value">{{ (systemDetail.swap_percent || 0).toFixed(0) }}%</span>
@@ -305,7 +325,7 @@ onUnmounted(() => {
                 <span class="disk-usage stat-value">{{ d.percent }}%</span>
               </div>
               <div class="progress-bar" style="height: 6px; margin-top: 4px">
-                <div class="progress-bar__fill" :style="{ width: d.percent + '%', background: d.percent > 90 ? '#f87171' : d.percent > 70 ? '#fbbf24' : '#38bdf8' }"></div>
+                <div class="progress-bar__fill" :style="{ width: d.percent + '%', background: d.percent > 90 ? '#C41E3A' : d.percent > 70 ? '#B8860B' : '#3A5F4B' }"></div>
               </div>
               <div class="disk-detail">{{ fmtBytes(d.used) }} / {{ fmtBytes(d.total) }} ({{ d.fstype }})</div>
             </div>
@@ -343,11 +363,11 @@ onUnmounted(() => {
             </div>
             <div class="training-stat">
               <span class="training-stat-label">最新Loss</span>
-              <span class="stat-value text-2xl" style="color: #f87171">{{ task.latest.loss?.toFixed(4) }}</span>
+              <span class="stat-value text-2xl" style="color: #C41E3A">{{ task.latest.loss?.toFixed(4) }}</span>
             </div>
             <div class="training-stat" v-if="task.latest.accuracy != null">
               <span class="training-stat-label">最新Accuracy</span>
-              <span class="stat-value text-2xl" style="color: #34d399">{{ (task.latest.accuracy * 100).toFixed(2) }}%</span>
+              <span class="stat-value text-2xl" style="color: #2E8B57">{{ (task.latest.accuracy * 100).toFixed(2) }}%</span>
             </div>
           </div>
           <v-chart v-if="trainingChartOption && task.has_metrics" :option="trainingChartOption" style="height: 300px" autoresize />
@@ -449,6 +469,12 @@ onUnmounted(() => {
   margin-bottom: 20px;
 }
 
+.page-header__meta {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  letter-spacing: 0.14em;
+}
+
 .tab-bar {
   display: flex;
   gap: 6px;
@@ -467,8 +493,8 @@ onUnmounted(() => {
   cursor: pointer;
   transition: all 0.2s;
 }
-.tab-btn:hover { background: rgba(56, 189, 248, 0.06); color: var(--text-primary); }
-.tab-btn--active { background: rgba(56, 189, 248, 0.12); color: var(--accent-primary); border-color: var(--accent-primary); }
+.tab-btn:hover { background: rgba(58, 95, 75, 0.06); color: var(--text-primary); }
+.tab-btn--active { background: rgba(58, 95, 75, 0.12); color: var(--accent-primary); border-color: var(--accent-primary); }
 
 .tab-content { animation: fadeIn 0.2s ease; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
@@ -492,7 +518,7 @@ onUnmounted(() => {
 
 .disk-card { grid-column: 1 / -1; }
 .disk-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
-.disk-item { padding: 10px; border-radius: 8px; background: rgba(17, 24, 39, 0.5); }
+.disk-item { padding: 10px; border-radius: 8px; background: rgba(255, 255, 255, 0.6); }
 .disk-header { display: flex; justify-content: space-between; }
 .disk-mount { color: var(--text-primary); font-size: 0.8125rem; font-weight: 500; }
 .disk-usage { font-size: 0.875rem; }
@@ -521,8 +547,8 @@ onUnmounted(() => {
 .user-stat { }
 .user-stat-label { font-size: 0.6875rem; color: var(--text-muted); margin-bottom: 2px; }
 .user-procs { display: flex; flex-direction: column; gap: 6px; }
-.user-proc-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; background: rgba(17, 24, 39, 0.5); font-size: 0.75rem; }
-.proc-gpu { background: rgba(56, 189, 248, 0.15); color: var(--accent-primary); padding: 2px 6px; border-radius: 4px; font-size: 0.6875rem; font-weight: 600; white-space: nowrap; }
+.user-proc-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; background: rgba(255, 255, 255, 0.6); font-size: 0.75rem; }
+.proc-gpu { background: rgba(58, 95, 75, 0.15); color: var(--accent-primary); padding: 2px 6px; border-radius: 4px; font-size: 0.6875rem; font-weight: 600; white-space: nowrap; }
 .proc-cmd { color: var(--text-secondary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'JetBrains Mono', monospace; }
 .proc-mem { color: var(--accent-primary); font-weight: 500; white-space: nowrap; }
 .proc-time { color: var(--text-muted); white-space: nowrap; }
@@ -530,16 +556,33 @@ onUnmounted(() => {
 /* ===== 时间线 ===== */
 .timeline-controls { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
 .btn-sm { padding: 4px 12px; font-size: 0.75rem; }
-.btn-tech--active { background: rgba(56, 189, 248, 0.15); color: var(--accent-primary); border-color: var(--accent-primary); }
+.btn-tech--active { background: rgba(58, 95, 75, 0.15); color: var(--accent-primary); border-color: var(--accent-primary); }
 
 .table-wrap { overflow-x: auto; }
 .data-table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
 .data-table th { text-align: left; padding: 8px 12px; color: var(--text-muted); font-weight: 500; border-bottom: 1px solid var(--border-color); }
 .data-table td { padding: 8px 12px; border-bottom: 1px solid rgba(30, 41, 59, 0.5); }
-.data-table tr:hover td { background: rgba(56, 189, 248, 0.03); }
+.data-table tr:hover td { background: rgba(58, 95, 75, 0.03); }
 .proc-cmd-cell { max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'JetBrains Mono', monospace; color: var(--text-secondary); font-size: 0.75rem; }
 
 /* ===== 空状态 ===== */
 .empty-state { text-align: center; padding: 60px 20px; color: var(--text-secondary); }
 .empty-icon { font-size: 2.5rem; margin-bottom: 12px; opacity: 0.5; }
+
+@media (max-width: 980px) {
+  .page-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .tab-bar {
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .tab-btn {
+    flex: 0 0 auto;
+  }
+}
 </style>

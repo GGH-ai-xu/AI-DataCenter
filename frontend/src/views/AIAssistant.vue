@@ -62,18 +62,34 @@ function handleKeydown(e) {
 </script>
 
 <template>
-  <div class="ai-page">
-    <div class="ai-container tech-card">
-      <!-- 头部 -->
-      <div class="ai-header">
-        <div class="ai-header__icon">✦</div>
-        <div>
-          <div style="font-weight: 600; font-size: 0.9375rem">AI 能耗优化助手</div>
-          <div style="font-size: 0.75rem; color: var(--text-muted)">基于实时GPU数据的智能分析</div>
+  <div class="ai-page ink-page-shell">
+    <section class="ink-page-head tech-card">
+      <div class="ink-page-head__body">
+        <div class="ink-page-head__eyebrow">自然语言问答 · 实时状态理解 · 治理建议生成</div>
+        <h2 class="ink-page-head__title">让运维判断，从冰冷面板变成可对话的墨卷</h2>
+        <p class="ink-page-head__desc">
+          你可以直接用自然语言询问当前功率、热点 GPU、调度建议或削峰思路。助手会结合平台当前采集到的真实状态给出解释性回答。
+        </p>
+      </div>
+      <div class="ink-page-head__side">
+        <div class="ink-page-head__quote">“言中有势，问中有策。”</div>
+        <div class="ink-inline-meta">
+          <span class="status-badge status-badge--ok">实时问答</span>
+          <span class="status-badge status-badge--warning">面向治理场景</span>
         </div>
       </div>
+    </section>
 
-      <!-- 消息列表 -->
+    <div class="ai-container tech-card">
+      <div class="ai-header">
+        <div class="ai-header__icon">智</div>
+        <div>
+          <div class="ai-header__title">AI 治理助手</div>
+          <div class="ai-header__subtitle">基于实时 GPU 数据的智能分析与建议</div>
+        </div>
+        <div class="ai-header__seal ink-stamp">问</div>
+      </div>
+
       <div class="ai-messages" ref="chatContainer">
         <div
           v-for="(msg, i) in messages"
@@ -106,7 +122,6 @@ function handleKeydown(e) {
         </div>
       </div>
 
-      <!-- 输入框 -->
       <div class="ai-input">
         <textarea
           v-model="input"
@@ -124,50 +139,70 @@ function handleKeydown(e) {
 
 <style scoped>
 .ai-page {
-  max-width: 900px;
+  max-width: 1200px;
   margin: 0 auto;
-  height: calc(100vh - 96px);
+  min-height: calc(100vh - 220px);
 }
 
 .ai-container {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  min-height: calc(100vh - 330px);
   padding: 0;
 }
 
 .ai-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
-  padding: 16px 20px;
+  padding: 18px 22px;
   border-bottom: 1px solid var(--border-color);
 }
 
 .ai-header__icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  background: var(--gradient-blue);
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(46, 139, 87, 0.14), rgba(91, 140, 126, 0.22));
+  border: 1px solid rgba(46, 139, 87, 0.14);
   display: flex;
   align-items: center;
   justify-content: center;
+  font-family: var(--font-seal);
   font-size: 1rem;
-  box-shadow: 0 0 12px rgba(56, 189, 248, 0.2);
+  color: var(--accent-primary);
+}
+
+.ai-header__title {
+  font-family: var(--font-xingshu);
+  font-size: 1.18rem;
+  color: var(--text-primary);
+}
+
+.ai-header__subtitle {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.ai-header__seal {
+  min-width: 38px;
+  min-height: 38px;
 }
 
 .ai-messages {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
+  padding: 24px 22px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
 }
 
 .msg {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   max-width: 85%;
 }
 
@@ -177,39 +212,42 @@ function handleKeydown(e) {
 }
 
 .msg__avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.875rem;
+  font-family: var(--font-seal);
+  font-size: 0.8rem;
   flex-shrink: 0;
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(26, 26, 26, 0.06);
 }
 
 .msg--bot .msg__avatar {
-  background: var(--gradient-blue);
+  color: var(--accent-primary);
+  background: rgba(46, 139, 87, 0.08);
 }
 
 .msg__content {
-  padding: 12px 16px;
-  border-radius: 12px;
-  font-size: 0.8125rem;
-  line-height: 1.7;
+  padding: 14px 18px;
+  border-radius: 22px;
+  font-size: 0.84rem;
+  line-height: 1.85;
   color: var(--text-primary);
 }
 
 .msg--bot .msg__content {
-  background: rgba(56, 189, 248, 0.06);
-  border: 1px solid rgba(56, 189, 248, 0.1);
-  border-radius: 4px 12px 12px 12px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(248, 245, 240, 0.7));
+  border: 1px solid rgba(58, 95, 75, 0.08);
+  border-radius: 8px 22px 22px 22px;
 }
 
 .msg--user .msg__content {
-  background: var(--gradient-blue);
-  color: white;
-  border-radius: 12px 4px 12px 12px;
+  background: linear-gradient(135deg, #3A5F4B, #2E8B57);
+  color: #fffdf9;
+  border-radius: 22px 8px 22px 22px;
 }
 
 .msg__suggestions {
@@ -239,25 +277,29 @@ function handleKeydown(e) {
 .ai-input {
   display: flex;
   gap: 10px;
-  padding: 16px 20px;
+  padding: 18px 22px 22px;
   border-top: 1px solid var(--border-color);
 }
 
 .ai-input textarea {
   flex: 1;
-  padding: 10px 14px;
-  border-radius: 10px;
-  border: 1px solid var(--border-color);
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--text-primary);
-  font-size: 0.875rem;
+  min-height: 50px;
   resize: none;
-  outline: none;
-  font-family: inherit;
-  transition: border-color 0.2s;
 }
 
-.ai-input textarea:focus {
-  border-color: var(--accent-primary);
+@media (max-width: 860px) {
+  .ai-container {
+    min-height: auto;
+  }
+
+  .ai-header,
+  .ai-input {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .msg {
+    max-width: 100%;
+  }
 }
 </style>
