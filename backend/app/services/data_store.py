@@ -295,6 +295,22 @@ class DataStore:
             data[item["username"]] = item
         return data
 
+    async def get_known_usernames(self) -> list[str]:
+        """收集已出现过的用户名，用于脱敏别名反解。"""
+        cursor = await self._db.execute(
+            """SELECT DISTINCT username
+               FROM (
+                   SELECT username FROM user_governance_rules
+                   UNION ALL
+                   SELECT username FROM process_history
+               )
+               WHERE username IS NOT NULL
+                 AND TRIM(username) != ''
+               ORDER BY username"""
+        )
+        rows = await cursor.fetchall()
+        return [row["username"] for row in rows]
+
     async def delete_user_governance_rule(self, username: str):
         """删除单个用户治理规则，恢复为平台默认阈值"""
         await self._db.execute(
@@ -505,3 +521,126 @@ class DataStore:
         )
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
+
+    async def get_replay_frames(
+        self,
+        hours: float = 24.0,
+        bucket_minutes: int = 10,
+    ) -> list[dict]:
+        """构建治理回放帧，按时间桶复盘功率、告警与调度动作。"""
+        if not self._db:
+            return []
+
+        bucket_seconds = max(60, int(bucket_minutes) * 60)
+        since = time.time() - hours * 3600
+        start_bucket = int(since // bucket_seconds) * bucket_seconds
+        end_bucket = int(time.time() // bucket_seconds) * bucket_seconds
+
+        def build_frame(bucket_ts: int) -> dict:
+            return {
+                "bucket_ts": bucket_ts,
+                "avg_power": 0.0,
+                "avg_util": 0.0,
+                "avg_memory_util": 0.0,
+                "avg_power_limit": 0.0,
+                "max_temp": 0,
+                "gpu_count": 0,
+                "alert_count": 0,
+                "critical_alert_count": 0,
+                "schedule_action_count": 0,
+                "schedule_actions": [],
+                "active_task_count": 0,
+                "active_user_count": 0,
+            }
+
+        frames = {
+            bucket_ts: build_frame(bucket_ts)
+            for bucket_ts in range(start_bucket, end_bucket + bucket_seconds, bucket_seconds)
+        }
+        frame_users: dict[int, set[str]] = {
+            bucket_ts: set()
+            for bucket_ts in frames
+        }
+
+        cursor = await self._db.execute(
+            """SELECT CAST(timestamp / ? AS INTEGER) * ? AS bucket_ts,
+                      AVG(power_usage) AS avg_power,
+                      AVG(gpu_utilization) AS avg_util,
+                      AVG(memory_utilization) AS avg_memory_util,
+                      AVG(power_limit) AS avg_power_limit,
+                      MAX(temperature) AS max_temp,
+                      COUNT(DISTINCT gpu_index) AS gpu_count
+               FROM gpu_history
+               WHERE timestamp >= ?
+               GROUP BY bucket_ts
+               ORDER BY bucket_ts""",
+            (bucket_seconds, bucket_seconds, since),
+        )
+        for row in await cursor.fetchall():
+            item = dict(row)
+            frame = frames.setdefault(item["bucket_ts"], build_frame(item["bucket_ts"]))
+            frame["avg_power"] = round(item.get("avg_power") or 0, 1)
+            frame["avg_util"] = round(item.get("avg_util") or 0, 1)
+            frame["avg_memory_util"] = round(item.get("avg_memory_util") or 0, 1)
+            frame["avg_power_limit"] = round(item.get("avg_power_limit") or 0, 1)
+            frame["max_temp"] = int(item.get("max_temp") or 0)
+            frame["gpu_count"] = int(item.get("gpu_count") or 0)
+
+        cursor = await self._db.execute(
+            """SELECT CAST(timestamp / ? AS INTEGER) * ? AS bucket_ts,
+                      COUNT(*) AS alert_count,
+                      SUM(CASE WHEN severity = 'critical' THEN 1 ELSE 0 END) AS critical_alert_count
+               FROM alerts
+               WHERE timestamp >= ?
+               GROUP BY bucket_ts
+               ORDER BY bucket_ts""",
+            (bucket_seconds, bucket_seconds, since),
+        )
+        for row in await cursor.fetchall():
+            item = dict(row)
+            frame = frames.setdefault(item["bucket_ts"], build_frame(item["bucket_ts"]))
+            frame["alert_count"] = int(item.get("alert_count") or 0)
+            frame["critical_alert_count"] = int(item.get("critical_alert_count") or 0)
+
+        cursor = await self._db.execute(
+            """SELECT action, reason, result, timestamp
+               FROM schedule_log
+               WHERE timestamp >= ?
+               ORDER BY timestamp ASC""",
+            (since,),
+        )
+        for row in await cursor.fetchall():
+            item = dict(row)
+            bucket_ts = int((item.get("timestamp") or since) // bucket_seconds) * bucket_seconds
+            frame = frames.setdefault(bucket_ts, build_frame(bucket_ts))
+            frame["schedule_action_count"] += 1
+            if len(frame["schedule_actions"]) < 4:
+                frame["schedule_actions"].append({
+                    "action": item.get("action"),
+                    "reason": item.get("reason"),
+                    "result": item.get("result"),
+                })
+
+        cursor = await self._db.execute(
+            """SELECT username, first_seen, last_seen
+               FROM process_history
+               WHERE last_seen >= ?
+               ORDER BY first_seen ASC""",
+            (since,),
+        )
+        for row in await cursor.fetchall():
+            item = dict(row)
+            start_ts = max(since, float(item.get("first_seen") or since))
+            end_ts = max(start_ts, float(item.get("last_seen") or start_ts))
+            bucket_ts = int(start_ts // bucket_seconds) * bucket_seconds
+            final_bucket = int(end_ts // bucket_seconds) * bucket_seconds
+            while bucket_ts <= final_bucket:
+                frame = frames.setdefault(bucket_ts, build_frame(bucket_ts))
+                frame["active_task_count"] += 1
+                frame_users.setdefault(bucket_ts, set()).add(item.get("username") or "unknown")
+                bucket_ts += bucket_seconds
+
+        for bucket_ts, users in frame_users.items():
+            frames[bucket_ts]["active_user_count"] = len(users)
+
+        return [frames[bucket_ts] for bucket_ts in sorted(frames)]

@@ -22,6 +22,9 @@ const scheduleResult = ref(null)
 const report = ref('')
 const reportLoading = ref(false)
 const scheduleLoading = ref(false)
+const executionMode = ref('dry_run')
+const riskAcknowledged = ref(false)
+const actionNotice = ref(null)
 const budget = ref({
   enabled: false,
   total_power_budget: 1200,
@@ -50,6 +53,12 @@ const combinedResults = computed(() =>
     .concat(scheduleResult.value?.ai_results || [])
 )
 
+const executionSummary = computed(() =>
+  executionMode.value === 'real'
+    ? '当前为真实执行模式，调度与单卡限功率会立即作用于真实设备。'
+    : '当前为演练模式，只输出动作预演，不会执行真实控制。'
+)
+
 const budgetFillStyle = computed(() => {
   const width = Math.min(100, Math.max(0, budget.value.usage_pct || 0))
   const background = budget.value.is_exceeded
@@ -75,6 +84,25 @@ function applyBudgetState(nextBudget) {
     enabled: merged.enabled,
     total_power_budget: merged.total_power_budget,
   }
+}
+
+function setActionNotice(tone, title, detail) {
+  actionNotice.value = { tone, title, detail, ts: Date.now() }
+}
+
+function buildExecutionOptions() {
+  const isReal = executionMode.value === 'real'
+  return {
+    dry_run: !isReal,
+    acknowledge_risk: isReal && riskAcknowledged.value,
+  }
+}
+
+function ensureRiskAcknowledged(label) {
+  if (executionMode.value !== 'real') return true
+  if (riskAcknowledged.value) return true
+  setActionNotice('warning', '尚未确认风险', `${label}前请先勾选风险确认。`)
+  return false
 }
 
 async function loadStatus() {
@@ -107,21 +135,52 @@ async function saveBudget() {
 async function setPower(gpuIndex) {
   const val = parseInt(powerInputs.value[gpuIndex])
   if (!val || val < 100 || val > 350) return
+  if (!ensureRiskAcknowledged('单卡限功率')) return
+  if (executionMode.value === 'real' && !window.confirm(`将把 GPU ${gpuIndex} 的功耗上限设为 ${val}W，是否继续？`)) {
+    return
+  }
   try {
-    await setManualPowerLimit(gpuIndex, val)
+    const { data } = await setManualPowerLimit(gpuIndex, val, buildExecutionOptions())
+    setActionNotice(
+      data?.dry_run ? 'warning' : 'ok',
+      data?.dry_run ? '已生成限功率预演' : '限功率已写入',
+      data?.message || `GPU ${gpuIndex} 目标功耗上限 ${val}W。`,
+    )
     await loadStatus()
-  } catch (e) {}
+  } catch (e) {
+    setActionNotice(
+      'critical',
+      '限功率失败',
+      e?.response?.data?.detail || e?.message || '单卡功耗控制失败',
+    )
+  }
 }
 
 async function runOnce() {
+  if (!ensureRiskAcknowledged('调度执行')) return
+  if (executionMode.value === 'real' && !window.confirm('将执行真实调度动作，是否继续？')) {
+    return
+  }
   scheduleLoading.value = true
   try {
-    const { data } = await runScheduleOnce()
+    const { data } = await runScheduleOnce(buildExecutionOptions())
     scheduleResult.value = data
     applyBudgetState(data.budget)
+    setActionNotice(
+      data?.dry_run ? 'warning' : 'ok',
+      data?.dry_run ? '已生成调度预演' : '调度已执行',
+      data?.dry_run
+        ? '本次返回的是预演动作，不会改动真实任务与功耗上限。'
+        : '本次调度已对真实任务与功耗限制生效。',
+    )
     await loadStatus()
   } catch (e) {
     scheduleResult.value = { error: '调度执行失败' }
+    setActionNotice(
+      'critical',
+      '调度执行失败',
+      e?.response?.data?.detail || e?.message || '调度执行失败',
+    )
   }
   scheduleLoading.value = false
 }
@@ -187,6 +246,15 @@ onUnmounted(() => {
         </div>
       </div>
     </section>
+
+    <div
+      v-if="actionNotice"
+      class="sched-notice tech-card"
+      :class="`sched-notice--${actionNotice.tone}`"
+    >
+      <div class="sched-notice__title">{{ actionNotice.title }}</div>
+      <div class="sched-notice__desc">{{ actionNotice.detail }}</div>
+    </div>
 
     <div class="sched-grid">
       <!-- 总功率预算 -->
@@ -279,11 +347,33 @@ onUnmounted(() => {
         <div style="color: var(--text-muted); font-size: 0.8125rem; margin-bottom: 12px">
           当前集群功率: <span style="color: var(--text-primary)">{{ currentClusterPower.toFixed(1) }}W</span>
         </div>
-        <div style="color: #B8860B; font-size: 0.75rem; margin-bottom: 12px">
-          注意：手动执行会对真实任务和功耗限制立即生效
+        <div class="execution-panel">
+          <div class="execution-panel__switch">
+            <button
+              class="btn-tech"
+              :class="{ 'btn-tech--primary': executionMode === 'dry_run' }"
+              @click="executionMode = 'dry_run'"
+            >
+              演练模式
+            </button>
+            <button
+              class="btn-tech"
+              :class="{ 'btn-tech--primary': executionMode === 'real' }"
+              @click="executionMode = 'real'"
+            >
+              真实执行
+            </button>
+          </div>
+          <label v-if="executionMode === 'real'" class="execution-panel__ack">
+            <input v-model="riskAcknowledged" type="checkbox" />
+            我已确认会直接改动真实任务与功耗限制
+          </label>
+        </div>
+        <div style="color: #B8860B; font-size: 0.75rem; margin-bottom: 12px; line-height: 1.7">
+          {{ executionSummary }}
         </div>
         <button class="btn-tech btn-tech--primary" @click="runOnce" :disabled="scheduleLoading">
-          {{ scheduleLoading ? '执行中...' : '手动执行一次调度' }}
+          {{ scheduleLoading ? '执行中...' : executionMode === 'real' ? '执行一次真实调度' : '演练一次调度' }}
         </button>
       </div>
 
@@ -316,7 +406,9 @@ onUnmounted(() => {
 
       <!-- 调度结果 -->
       <div class="tech-card" style="padding: 20px" v-if="scheduleResult">
-        <div class="section-title" style="margin-bottom: 14px">调度执行结果</div>
+        <div class="section-title" style="margin-bottom: 14px">
+          {{ scheduleResult.dry_run ? '调度预演结果' : '调度执行结果' }}
+        </div>
         <div v-if="scheduleResult.ai_strategy" style="margin-bottom: 12px">
           <div style="color: var(--accent-primary); font-size: 0.8125rem; margin-bottom: 6px">AI策略摘要</div>
           <div style="color: var(--text-secondary); font-size: 0.8125rem">{{ scheduleResult.ai_strategy.summary }}</div>
@@ -330,10 +422,19 @@ onUnmounted(() => {
         >
           预算治理动作 {{ scheduleResult.budget_actions.length }} 条
         </div>
-        <div v-for="(r, i) in combinedResults" :key="i"
-             class="result-item" :class="r.success ? 'result-item--ok' : 'result-item--fail'">
-          <span>{{ r.action }}</span>
-          <span style="flex: 1; text-align: right">{{ r.success ? '成功' : '失败' }}</span>
+        <div
+          v-for="(r, i) in combinedResults"
+          :key="i"
+          class="result-item"
+          :class="r.success ? 'result-item--ok' : 'result-item--fail'"
+        >
+          <div>
+            <div>{{ formatActionLabel(r) }}</div>
+            <div class="result-item__reason">{{ r.reason }}</div>
+          </div>
+          <span style="flex: 1; text-align: right">
+            {{ r.dry_run ? '预演' : r.success ? '成功' : '失败' }}
+          </span>
         </div>
       </div>
 
@@ -358,6 +459,39 @@ onUnmounted(() => {
 .scheduler-page { max-width: 1400px; margin: 0 auto; }
 .sched-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .sched-grid__wide { grid-column: 1 / -1; }
+
+.sched-notice {
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+
+.sched-notice--ok {
+  border-color: rgba(46,139,87,0.14);
+  background: rgba(46,139,87,0.05);
+}
+
+.sched-notice--warning {
+  border-color: rgba(184,134,11,0.16);
+  background: rgba(212,175,55,0.08);
+}
+
+.sched-notice--critical {
+  border-color: rgba(196,30,58,0.14);
+  background: rgba(196,30,58,0.06);
+}
+
+.sched-notice__title {
+  font-size: 0.8rem;
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.sched-notice__desc {
+  margin-top: 6px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
 
 .toggle-btn {
   width: 44px; height: 24px; border-radius: 12px; border: none;
@@ -461,6 +595,27 @@ onUnmounted(() => {
   gap: 8px;
 }
 
+.execution-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.execution-panel__switch {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.execution-panel__ack {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
 .budget-action {
   padding: 10px 12px;
   border-radius: 8px;
@@ -508,6 +663,14 @@ onUnmounted(() => {
 .result-item--ok { background: rgba(46,139,87,0.08); color: #2E8B57; }
 .result-item--fail { background: rgba(196,30,58,0.08); color: #C41E3A; }
 
+.result-item__reason {
+  margin-top: 4px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+  max-width: 420px;
+}
+
 .report-content {
   font-size: 0.8125rem; color: var(--text-secondary); line-height: 1.7;
   max-height: 400px; overflow-y: auto;
@@ -517,7 +680,8 @@ onUnmounted(() => {
   .sched-grid { grid-template-columns: 1fr; }
   .sched-grid__wide { grid-column: auto; }
   .budget-form,
-  .power-row {
+  .power-row,
+  .execution-panel__switch {
     flex-wrap: wrap;
   }
 }

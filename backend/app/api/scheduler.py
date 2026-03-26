@@ -1,8 +1,8 @@
 """调度策略API - 手动/自动调度控制"""
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Body, HTTPException
 
-from app.models.schemas import PowerBudgetConfigRequest, PowerLimitRequest
+from app.models.schemas import PowerBudgetConfigRequest, PowerLimitRequest, ScheduleRunRequest
 
 router = APIRouter(prefix="/api/scheduler", tags=["Scheduler"])
 
@@ -45,15 +45,32 @@ async def configure_power_budget(req: PowerBudgetConfigRequest):
 async def manual_power_limit(req: PowerLimitRequest):
     """手动设置GPU功耗上限"""
     from app.main import app_state
+    if req.dry_run:
+        return {
+            "success": True,
+            "dry_run": True,
+            "applied": False,
+            "gpu_index": req.gpu_index,
+            "power_limit": req.power_limit,
+            "message": "已生成单卡限功率演练结果，未写入真实设备",
+        }
+    if not req.acknowledge_risk:
+        raise HTTPException(status_code=400, detail="真实限功率操作需要先确认风险")
     app_state.scheduler.clear_managed_gpu(req.gpu_index)
     result = await app_state.agent.set_power_limit(req.gpu_index, req.power_limit)
+    result["dry_run"] = False
+    result["applied"] = bool(result.get("success"))
     return result
 
 
 @router.post("/run-once")
-async def run_schedule_once():
+async def run_schedule_once(req: ScheduleRunRequest | None = Body(default=None)):
     """手动触发一次AI调度"""
     from app.main import app_state
+    req = req or ScheduleRunRequest()
+    if not req.dry_run and not req.acknowledge_risk:
+        raise HTTPException(status_code=400, detail="真实调度执行需要先确认风险")
+
     gpus = await app_state.agent.get_all_gpus()
     processes = await app_state.agent.get_processes()
 
@@ -64,23 +81,31 @@ async def run_schedule_once():
     rule_actions = await app_state.scheduler.run_rules(gpus, processes)
     rule_results = []
     if rule_actions:
-        rule_results = await app_state.scheduler.execute_actions(rule_actions)
+        rule_results = await app_state.scheduler.execute_actions(rule_actions, dry_run=req.dry_run)
 
     # 再执行总功率预算调度
     budget_actions = await app_state.scheduler.run_budget_schedule(gpus, processes)
     budget_results = []
     if budget_actions:
-        budget_results = await app_state.scheduler.execute_actions(budget_actions)
+        budget_results = await app_state.scheduler.execute_actions(
+            budget_actions,
+            dry_run=req.dry_run,
+        )
 
     # 再执行AI调度
     ai_strategy = await app_state.scheduler.run_ai_schedule(gpus, processes)
     ai_results = []
     if ai_strategy and "actions" in ai_strategy:
-        ai_results = await app_state.scheduler.execute_actions(ai_strategy["actions"])
+        ai_results = await app_state.scheduler.execute_actions(
+            ai_strategy["actions"],
+            dry_run=req.dry_run,
+        )
 
     latest_gpus = await app_state.agent.get_all_gpus()
 
     return {
+        "dry_run": req.dry_run,
+        "execution_mode": "dry_run" if req.dry_run else "real",
         "rule_actions": rule_actions,
         "rule_results": rule_results,
         "budget_actions": budget_actions,

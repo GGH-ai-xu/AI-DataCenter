@@ -43,10 +43,17 @@ def _classify_hour(h: int) -> str:
 class EnergyAnalytics:
     """能耗分析计算引擎"""
 
-    def __init__(self, data_store, llm_service=None, agent_client=None):
+    def __init__(
+        self,
+        data_store,
+        llm_service=None,
+        agent_client=None,
+        privacy_service=None,
+    ):
         self.store = data_store
         self.llm = llm_service
         self.agent = agent_client
+        self.privacy = privacy_service
 
     async def get_energy_metrics(self, hours: float = 24.0) -> dict:
         """核心KPI指标"""
@@ -411,6 +418,8 @@ class EnergyAnalytics:
             try:
                 gpus = await self.agent.get_all_gpus() or latest
                 processes = await self.agent.get_processes() or []
+                if self.privacy:
+                    processes = self.privacy.sanitize_processes(processes)
                 from app.services.scheduler import get_time_period_label
                 time_period = get_time_period_label()
                 strategy = await self.llm.generate_schedule(gpus, processes, time_period)

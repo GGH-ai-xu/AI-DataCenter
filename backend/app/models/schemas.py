@@ -44,11 +44,15 @@ class ProcessInfo(BaseModel):
 
 class TaskActionRequest(BaseModel):
     pid: int = Field(gt=0)
+    dry_run: bool = False
+    acknowledge_risk: bool = False
 
 
 class PowerLimitRequest(BaseModel):
     gpu_index: int = Field(ge=0)
     power_limit: int = Field(ge=100, le=350)
+    dry_run: bool = False
+    acknowledge_risk: bool = False
 
 
 # ========== 调度相关 ==========
@@ -56,6 +60,11 @@ class PowerLimitRequest(BaseModel):
 class PowerBudgetConfigRequest(BaseModel):
     enabled: bool
     total_power_budget: int = Field(ge=400, le=5000)
+
+
+class ScheduleRunRequest(BaseModel):
+    dry_run: bool = False
+    acknowledge_risk: bool = False
 
 class ScheduleAction(BaseModel):
     """单条调度动作"""

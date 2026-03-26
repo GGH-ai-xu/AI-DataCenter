@@ -2,7 +2,7 @@
 
 import time
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 router = APIRouter(prefix="/api/monitor", tags=["Monitor"])
 
@@ -24,7 +24,7 @@ async def get_training_progress():
     """获取训练进度数据（epoch/loss/accuracy曲线）"""
     from app.main import app_state
     logs = await app_state.agent.get_training_logs()
-    return {"training": logs}
+    return {"training": app_state.privacy.sanitize_training_logs(logs)}
 
 
 @router.get("/users")
@@ -78,7 +78,7 @@ async def get_user_stats():
                 break
         result.append(entry)
 
-    return {"users": result}
+    return {"users": app_state.privacy.sanitize_user_stats(result)}
 
 
 @router.get("/task-history")
@@ -86,4 +86,23 @@ async def get_task_history(hours: float = 24):
     """获取任务历史时间线"""
     from app.main import app_state
     timeline = await app_state.store.get_process_timeline(hours)
-    return {"timeline": timeline, "hours": hours}
+    return {
+        "timeline": app_state.privacy.sanitize_timeline(timeline),
+        "hours": hours,
+    }
+
+
+@router.get("/replay")
+async def get_monitor_replay(
+    hours: float = Query(default=24.0, ge=1, le=168),
+    bucket_minutes: int = Query(default=10, ge=1, le=60),
+):
+    """获取治理回放帧，用于时序复盘。"""
+    from app.main import app_state
+
+    frames = await app_state.store.get_replay_frames(hours, bucket_minutes)
+    return {
+        "hours": hours,
+        "bucket_minutes": bucket_minutes,
+        "frames": frames,
+    }

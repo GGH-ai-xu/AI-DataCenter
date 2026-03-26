@@ -25,6 +25,7 @@ from app.services.alert_engine import AlertEngine
 from app.services.scheduler import SchedulerEngine
 from app.services.energy_analytics import EnergyAnalytics
 from app.services.governance import GovernanceService
+from app.services.privacy import PrivacyService
 from app.ws.realtime import ws_manager
 
 load_dotenv()
@@ -41,6 +42,7 @@ class AppState:
     scheduler: SchedulerEngine
     energy: EnergyAnalytics
     governance: GovernanceService
+    privacy: PrivacyService
     _collect_task: asyncio.Task | None = None
     _cleanup_task: asyncio.Task | None = None
     _agent_fail_count: int = 0
@@ -99,11 +101,12 @@ async def collect_loop():
                 await app_state.scheduler.tick(gpus, enriched_processes)
 
                 # WebSocket推送
+                public_processes = app_state.privacy.sanitize_processes(enriched_processes)
                 await ws_manager.broadcast({
                     "type": "realtime",
                     "gpus": gpus,
                     "system": system,
-                    "processes": enriched_processes,
+                    "processes": public_processes,
                     "alerts": alerts,
                 })
             else:
@@ -129,6 +132,7 @@ async def lifespan(app: FastAPI):
     app_state.agent = AgentClient(agent_url)
     app_state.store = DataStore(db_path)
     await app_state.store.init()
+    app_state.privacy = PrivacyService()
     removed_snapshots = await app_state.store.cleanup_untrusted_optimization_history()
     if removed_snapshots:
         logger.warning(f"已清理 {removed_snapshots} 条不可信的优化历史快照")
@@ -158,13 +162,14 @@ async def lifespan(app: FastAPI):
         app_state.agent,
         app_state.store,
         app_state.llm,
+        app_state.privacy,
         budget_limit_watts=int(os.getenv("POWER_BUDGET_WATTS", "1200")),
         budget_enabled=os.getenv("POWER_BUDGET_ENABLED", "false").lower() in {"1", "true", "yes", "on"},
     )
 
     # 能耗分析引擎
     app_state.energy = EnergyAnalytics(
-        app_state.store, app_state.llm, app_state.agent
+        app_state.store, app_state.llm, app_state.agent, app_state.privacy
     )
     app_state.governance = GovernanceService(
         app_state.store, app_state.agent

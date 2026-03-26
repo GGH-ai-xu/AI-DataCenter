@@ -14,6 +14,9 @@ const ruleSaving = ref({})
 const keyword = ref('')
 const selectedPriority = ref('all')
 const ruleDrafts = ref({})
+const executionMode = ref('dry_run')
+const riskAcknowledged = ref(false)
+const actionNotice = ref(null)
 const fairnessState = ref({
   overview: {
     fairness_index: 100,
@@ -102,6 +105,24 @@ const governanceNarrative = computed(() => {
   return '当前任务共享较均衡，平台可继续以监测、分级和轻量治理为主。'
 })
 
+const executionSummary = computed(() =>
+  executionMode.value === 'real'
+    ? '当前为真实执行模式，暂停、恢复、终止会直接作用于真实进程。'
+    : '当前为演练模式，只返回预演结果，不会改动真实进程。'
+)
+
+function setActionNotice(tone, title, detail) {
+  actionNotice.value = { tone, title, detail, ts: Date.now() }
+}
+
+function buildActionOptions() {
+  const isReal = executionMode.value === 'real'
+  return {
+    dry_run: !isReal,
+    acknowledge_risk: isReal && riskAcknowledged.value,
+  }
+}
+
 function buildRuleDraft(user) {
   const rule = user.governance_rule || {}
   return {
@@ -138,13 +159,36 @@ async function loadTaskGovernance() {
 }
 
 async function doAction(procId, action) {
+  const isReal = executionMode.value === 'real'
+  if (isReal && !riskAcknowledged.value) {
+    setActionNotice('warning', '尚未确认风险', '真实执行前请先勾选风险确认。')
+    return
+  }
+  if (isReal && action === 'terminate' && !window.confirm(`将终止真实进程 PID ${procId}，是否继续？`)) {
+    return
+  }
+
   actionLoading.value[`${procId}-${action}`] = true
   try {
-    if (action === 'pause') await pauseTask(procId)
-    else if (action === 'resume') await resumeTask(procId)
-    else if (action === 'terminate') await terminateTask(procId)
+    let res = null
+    const options = buildActionOptions()
+    if (action === 'pause') res = await pauseTask(procId, options)
+    else if (action === 'resume') res = await resumeTask(procId, options)
+    else if (action === 'terminate') res = await terminateTask(procId, options)
+
+    const data = res?.data || {}
+    if (data.dry_run) {
+      setActionNotice('warning', '已生成演练结果', data.message || `已完成 PID ${procId} 的动作预演。`)
+    } else {
+      setActionNotice('ok', '真实动作已执行', `${action === 'pause' ? '暂停' : action === 'resume' ? '恢复' : '终止'}指令已发送到 PID ${procId}。`)
+    }
   } catch (e) {
     console.error(e)
+    setActionNotice(
+      'critical',
+      '动作执行失败',
+      e?.response?.data?.detail || e?.message || '任务动作执行失败',
+    )
   }
   actionLoading.value[`${procId}-${action}`] = false
   await loadTaskGovernance()
@@ -235,9 +279,40 @@ onUnmounted(() => {
         <button class="btn-tech" :disabled="exporting" @click="doExportGovernance('markdown')">
           {{ exporting ? '导出中...' : '导出治理报告' }}
         </button>
-        <div class="task-hero__warn">注意：本页操作会对真实进程立即生效</div>
+        <div class="task-mode-panel">
+          <div class="task-mode-switch">
+            <button
+              class="btn-tech"
+              :class="{ 'btn-tech--primary': executionMode === 'dry_run' }"
+              @click="executionMode = 'dry_run'"
+            >
+              演练模式
+            </button>
+            <button
+              class="btn-tech"
+              :class="{ 'btn-tech--primary': executionMode === 'real' }"
+              @click="executionMode = 'real'"
+            >
+              真实执行
+            </button>
+          </div>
+          <label v-if="executionMode === 'real'" class="task-mode-ack">
+            <input v-model="riskAcknowledged" type="checkbox" />
+            我已确认会直接作用于真实进程
+          </label>
+          <div class="task-hero__warn">{{ executionSummary }}</div>
+        </div>
       </div>
     </section>
+
+    <div
+      v-if="actionNotice"
+      class="task-action-notice tech-card"
+      :class="`task-action-notice--${actionNotice.tone}`"
+    >
+      <div class="task-action-notice__title">{{ actionNotice.title }}</div>
+      <div class="task-action-notice__desc">{{ actionNotice.detail }}</div>
+    </div>
 
     <div class="task-stats">
       <div class="task-stat tech-card">
@@ -509,6 +584,27 @@ onUnmounted(() => {
   flex-wrap: wrap;
 }
 
+.task-mode-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.task-mode-switch {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.task-mode-ack {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
 .task-hero__eyebrow {
   font-size: 0.75rem;
   color: var(--text-muted);
@@ -537,7 +633,42 @@ onUnmounted(() => {
   border: 1px solid rgba(184,134,11,0.16);
   padding: 8px 12px;
   border-radius: 999px;
-  white-space: nowrap;
+  white-space: normal;
+  max-width: 360px;
+  line-height: 1.6;
+}
+
+.task-action-notice {
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+
+.task-action-notice--ok {
+  border-color: rgba(46,139,87,0.14);
+  background: rgba(46,139,87,0.05);
+}
+
+.task-action-notice--warning {
+  border-color: rgba(184,134,11,0.16);
+  background: rgba(212,175,55,0.08);
+}
+
+.task-action-notice--critical {
+  border-color: rgba(196,30,58,0.14);
+  background: rgba(196,30,58,0.06);
+}
+
+.task-action-notice__title {
+  font-size: 0.8rem;
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.task-action-notice__desc {
+  margin-top: 6px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  line-height: 1.7;
 }
 
 .task-stats {
@@ -927,6 +1058,7 @@ tr:hover td { background: rgba(58, 95, 75, 0.03); }
 @media (max-width: 860px) {
   .task-hero,
   .task-hero__actions,
+  .task-mode-panel,
   .task-toolbar,
   .task-toolbar__left,
   .task-actions,
@@ -935,6 +1067,10 @@ tr:hover td { background: rgba(58, 95, 75, 0.03); }
   .rule-card__actions,
   .rule-card__action-buttons {
     flex-direction: column;
+    align-items: stretch;
+  }
+
+  .task-mode-panel {
     align-items: stretch;
   }
 

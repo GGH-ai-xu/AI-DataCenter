@@ -86,7 +86,8 @@ async def get_optimization_history(hours: float = Query(default=72.0, ge=1, le=7
 async def get_schedule_history(hours: float = Query(default=72.0, ge=1, le=720)):
     """调度历史回放"""
     from app.main import app_state
-    return await app_state.energy.get_schedule_history(hours)
+    history = await app_state.energy.get_schedule_history(hours)
+    return app_state.privacy.sanitize_schedule_history(history)
 
 
 @router.get("/history-comparison")

@@ -310,7 +310,7 @@ async function executeDispatch() {
 
   actionBusy.value = true
   try {
-    const { data } = await runScheduleOnce()
+    const { data } = await runScheduleOnce({ dry_run: false, acknowledge_risk: true })
     lastDispatch.value = data
     setFeedback('ok', '治理动作已执行', formatFeedbackDetail(data))
     await loadGovernance()
@@ -847,6 +847,8 @@ onUnmounted(() => {
 }
 
 .governance-hero__title {
+  font-family: var(--font-song);
+  font-weight: 700;
   font-size: 1.6rem;
   line-height: 1.4;
   color: var(--text-primary);
@@ -902,7 +904,8 @@ onUnmounted(() => {
 
 .workbench-card__headline {
   margin-top: 18px;
-  font-family: var(--font-xingshu);
+  font-family: var(--font-song);
+  font-weight: 700;
   font-size: 1.58rem;
   line-height: 1.38;
   color: var(--text-primary);

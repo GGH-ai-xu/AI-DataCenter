@@ -20,6 +20,7 @@ async def chat(req: ChatRequest):
     gpus = await app_state.agent.get_all_gpus()
     system = await app_state.agent.get_system_info()
     processes = await app_state.agent.get_processes()
+    processes = app_state.privacy.sanitize_processes(processes)
 
     # 精简GPU数据：只保留关键字段
     gpu_summary = [

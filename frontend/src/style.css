@@ -46,12 +46,12 @@
   --shadow-hover: 0 24px 50px rgba(79, 59, 22, 0.1);
   --shadow-ink: 0 8px 22px rgba(46, 139, 87, 0.08);
 
-  --font-caoshu: 'Liu Jian Mao Cao', cursive;
-  --font-xingshu: 'Ma Shan Zheng', cursive;
-  --font-xingcao: 'Zhi Mang Xing', cursive;
-  --font-kaishu: 'ZCOOL XiaoWei', serif;
-  --font-seal: 'ZCOOL KuaiLe', cursive;
-  --font-song: 'Noto Serif SC', serif;
+  --font-caoshu: 'Liu Jian Mao Cao', 'Ma Shan Zheng', 'ZCOOL XiaoWei', 'Noto Serif SC', 'PingFang SC', 'Microsoft YaHei', cursive;
+  --font-xingshu: 'Ma Shan Zheng', 'ZCOOL XiaoWei', 'Noto Serif SC', 'PingFang SC', 'Microsoft YaHei', cursive;
+  --font-xingcao: 'Zhi Mang Xing', 'Ma Shan Zheng', 'ZCOOL XiaoWei', 'Noto Serif SC', 'PingFang SC', 'Microsoft YaHei', cursive;
+  --font-kaishu: 'ZCOOL XiaoWei', 'Noto Serif SC', 'PingFang SC', 'Microsoft YaHei', serif;
+  --font-seal: 'ZCOOL KuaiLe', 'ZCOOL XiaoWei', 'Noto Serif SC', 'PingFang SC', 'Microsoft YaHei', cursive;
+  --font-song: 'Noto Serif SC', 'Songti SC', 'STSong', 'PingFang SC', 'Microsoft YaHei', serif;
 
   --radius-lg: 26px;
   --radius-md: 18px;
@@ -407,7 +407,8 @@ textarea {
 
 .ink-page-head__title {
   margin-top: 10px;
-  font-family: var(--font-xingshu);
+  font-family: var(--font-song);
+  font-weight: 700;
   font-size: clamp(1.72rem, 3vw, 2.4rem);
   line-height: 1.16;
   color: var(--text-primary);

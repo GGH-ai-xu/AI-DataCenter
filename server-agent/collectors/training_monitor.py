@@ -26,6 +26,18 @@ LOG_FILE_PATTERNS = [
     "training.log", "train.log", "log.txt", "*.out",
 ]
 
+TRAINING_KEYWORDS = (
+    "python",
+    "train",
+    "training",
+    "torchrun",
+    "deepspeed",
+    "accelerate",
+    "notebook",
+    "jupyter",
+    "tensorboard",
+)
+
 # 训练指标提取正则（覆盖常见框架输出格式）
 METRIC_PATTERNS = [
     # Epoch 1/100, loss: 0.5234, acc: 0.8912
@@ -127,6 +139,18 @@ def _parse_log_file(filepath: str, max_lines: int = 500) -> List[Dict]:
     return metrics
 
 
+def _looks_like_training_process(proc: dict, cwd: str, log_files: List[str]) -> bool:
+    """尽量过滤桌面/系统进程，减少训练观察页噪声。"""
+    text_parts = [
+        str(proc.get("name", "")).lower(),
+        str(proc.get("command", "")).lower(),
+        str(cwd or "").lower(),
+        " ".join(os.path.basename(path).lower() for path in log_files),
+    ]
+    joined = " ".join(part for part in text_parts if part)
+    return any(keyword in joined for keyword in TRAINING_KEYWORDS)
+
+
 def get_training_logs(processes: List[dict]) -> List[dict]:
     """检测所有GPU进程的训练日志
 
@@ -161,6 +185,9 @@ def get_training_logs(processes: List[dict]) -> List[dict]:
             if len(metrics) > len(best_metrics):
                 best_metrics = metrics
                 best_file = lf
+
+        if not best_metrics and not _looks_like_training_process(proc, cwd, log_files):
+            continue
 
         results.append({
             "pid": pid,

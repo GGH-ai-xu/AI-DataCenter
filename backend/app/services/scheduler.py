@@ -39,12 +39,14 @@ class SchedulerEngine:
         agent_client,
         data_store,
         llm_service=None,
+        privacy_service=None,
         budget_limit_watts: int = 1200,
         budget_enabled: bool = False,
     ):
         self.agent = agent_client
         self.store = data_store
         self.llm = llm_service
+        self.privacy = privacy_service
         self._last_schedule_time = 0
         self._schedule_interval = 300  # 5分钟调度一次
         self._auto_enabled = False
@@ -342,19 +344,27 @@ class SchedulerEngine:
 
         # 补充任务优先级信息
         processes = await self._attach_priorities(processes)
+        if self.privacy:
+            processes = self.privacy.sanitize_processes(processes)
 
         time_period = get_time_period_label()
         strategy = await self.llm.generate_schedule(gpus, processes, time_period)
         return strategy
 
-    async def execute_actions(self, actions: list[dict]) -> list[dict]:
+    async def execute_actions(self, actions: list[dict], dry_run: bool = False) -> list[dict]:
         """执行调度动作列表"""
         results = []
         for action in actions:
             act = action.get("action")
             target = action.get("target", {})
             reason = action.get("reason", "")
-            result = {"action": act, "reason": reason, "success": False}
+            result = {
+                "action": act,
+                "reason": reason,
+                "success": False,
+                "dry_run": dry_run,
+                "applied": False,
+            }
 
             # 校验动作参数合法性
             if act == "set_power_limit":
@@ -376,6 +386,12 @@ class SchedulerEngine:
                     continue
             else:
                 result["error"] = f"未知动作类型: {act}"
+                results.append(result)
+                continue
+
+            if dry_run:
+                result["success"] = True
+                result["message"] = "演练模式，未实际执行"
                 results.append(result)
                 continue
 
@@ -407,6 +423,7 @@ class SchedulerEngine:
                             self._budget_managed_limits[gpu_index] = int(round(original))
                     elif rule == "restore_budget_cap":
                         self._budget_managed_limits.pop(gpu_index, None)
+                result["applied"] = result["success"]
             except Exception as e:
                 result["error"] = str(e)
                 logger.error(f"执行调度动作失败: {act} - {e}")

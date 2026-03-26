@@ -15,17 +15,17 @@ export const getPowerSummary = (hours = 24) => api.get('/gpu/summary', { params:
 
 // 任务相关
 export const getTasks = () => api.get('/tasks/')
-export const pauseTask = (pid) => api.post('/tasks/pause', { pid })
-export const resumeTask = (pid) => api.post('/tasks/resume', { pid })
-export const terminateTask = (pid) => api.post('/tasks/terminate', { pid })
+export const pauseTask = (pid, options = {}) => api.post('/tasks/pause', { pid, ...options })
+export const resumeTask = (pid, options = {}) => api.post('/tasks/resume', { pid, ...options })
+export const terminateTask = (pid, options = {}) => api.post('/tasks/terminate', { pid, ...options })
 export const setTaskPriority = (pid, priority) => api.post('/tasks/priority', { pid, priority })
 
 // 调度相关
 export const getSchedulerStatus = () => api.get('/scheduler/status')
 export const toggleAutoSchedule = (enabled) => api.post('/scheduler/auto', null, { params: { enabled } })
 export const setPowerBudget = (enabled, total_power_budget) => api.post('/scheduler/budget', { enabled, total_power_budget })
-export const setManualPowerLimit = (gpu_index, power_limit) => api.post('/scheduler/power-limit', { gpu_index, power_limit })
-export const runScheduleOnce = () => api.post('/scheduler/run-once')
+export const setManualPowerLimit = (gpu_index, power_limit, options = {}) => api.post('/scheduler/power-limit', { gpu_index, power_limit, ...options })
+export const runScheduleOnce = (options = {}) => api.post('/scheduler/run-once', options)
 export const getScheduleReport = () => api.get('/scheduler/report')
 
 // AI对话
@@ -43,6 +43,7 @@ export const getSystemDetail = () => api.get('/monitor/system-detail')
 export const getTrainingProgress = () => api.get('/monitor/training')
 export const getUserStats = () => api.get('/monitor/users')
 export const getTaskHistory = (hours = 24) => api.get('/monitor/task-history', { params: { hours } })
+export const getMonitorReplay = (hours = 24, bucket_minutes = 10) => api.get('/monitor/replay', { params: { hours, bucket_minutes } })
 export const getFairnessGovernance = () => api.get('/governance/fairness')
 export const getGovernanceRules = () => api.get('/governance/rules')
 export const saveGovernanceRule = (payload) => api.post('/governance/rules', payload)
