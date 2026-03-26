@@ -159,7 +159,7 @@ onUnmounted(() => {
           <span>度</span>
         </div>
         <div class="ink-brand">
-          <div class="ink-brand__kicker">软件应用赛道 · 治理工作台</div>
+          <div class="ink-brand__kicker">Open Source · GPU Governance Workbench</div>
           <h1 class="ink-brand__title">GPU 共享治理</h1>
           <p class="ink-brand__sub">DESK · CONTROL · REPLAY</p>
         </div>
@@ -558,7 +558,8 @@ onUnmounted(() => {
 
 .stage-banner__title {
   margin-top: 10px;
-  font-family: var(--font-xingshu);
+  font-family: var(--font-song);
+  font-weight: 700;
   font-size: clamp(1.8rem, 3.5vw, 2.7rem);
   line-height: 1.1;
   color: var(--text-primary);

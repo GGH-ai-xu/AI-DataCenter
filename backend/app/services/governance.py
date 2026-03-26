@@ -219,7 +219,7 @@ class GovernanceService:
             md += "- 当前没有需要优先让路的任务。\n"
 
         md += "\n---\n\n"
-        md += "*报告由 GPU 共享治理平台自动生成，可用于汇报、答辩与治理复盘。*\n"
+        md += "*报告由 GPU 共享治理平台自动生成，可用于日常运维记录与治理复盘。*\n"
 
         if fmt == "html":
             return self._markdown_to_simple_html(md, title="GPU 共享治理报告")

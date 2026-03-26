@@ -397,7 +397,7 @@ onUnmounted(() => {
             </label>
             <label class="rule-field rule-field--full">
               <span>备注</span>
-              <input v-model="ruleDrafts[user.username].note" class="task-input" type="text" placeholder="如：教师任务 / 答辩周重点保障" />
+              <input v-model="ruleDrafts[user.username].note" class="task-input" type="text" placeholder="如：核心训练任务 / 长任务保护" />
             </label>
           </div>
 
