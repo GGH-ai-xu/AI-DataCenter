@@ -208,8 +208,8 @@ async def lifespan(app: FastAPI):
 
 # 创建FastAPI应用
 app = FastAPI(
-    title="GPU集群治理平台",
-    description="高校实验室GPU服务器智能运维与功率预算治理平台",
+    title="GPU 共享治理平台",
+    description="高校实验室 GPU 服务器智能运维与功率预算治理平台",
     version="1.1.0",
     lifespan=lifespan,
 )
@@ -276,6 +276,8 @@ _frontend_dist = os.getenv("FRONTEND_DIST_DIR", "")
 if not _frontend_dist:
     if getattr(sys, "frozen", False):
         _frontend_dist = os.path.join(os.path.dirname(sys.executable), "frontend", "dist")
+        if not os.path.isdir(_frontend_dist):
+            _frontend_dist = os.path.join(os.path.dirname(sys.executable), "_internal", "frontend", "dist")
     else:
         _frontend_dist = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist")
 if os.path.isdir(_frontend_dist):

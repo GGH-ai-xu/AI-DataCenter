@@ -1,8 +1,10 @@
 """Agent配置 - 部署在GPU服务器上的采集服务配置"""
 
+import os
+
 # 服务监听配置
-HOST = "0.0.0.0"
-PORT = 8001
+HOST = os.getenv("GPU_AGENT_HOST", os.getenv("HOST", "0.0.0.0"))
+PORT = int(os.getenv("GPU_AGENT_PORT", os.getenv("PORT", "8001")))
 
 # 采集间隔（秒）
 COLLECT_INTERVAL = 1.0

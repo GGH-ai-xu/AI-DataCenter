@@ -3,15 +3,17 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 const http = require('node:http')
+const net = require('node:net')
 const { spawn } = require('node:child_process')
 const DESKTOP_PACKAGE = require('./package.json')
 
 const APP_ID = 'com.gpu.governance.workbench'
 const APP_TITLE = 'GPU 共享治理平台'
 const APP_SLUG = 'GPU-Governance-Workbench'
-const UI_URL = 'http://127.0.0.1:8000/'
-const BACKEND_HEALTH_URL = 'http://127.0.0.1:8000/api/health'
-const AGENT_HEALTH_URL = 'http://127.0.0.1:8001/api/health'
+const LOCAL_HOST = '127.0.0.1'
+const DEFAULT_BACKEND_PORT = 8000
+const DEFAULT_AGENT_PORT = 8001
+const PORT_SCAN_LIMIT = 40
 const RELEASE_EXE_PATTERN = /^GPUGovernanceWorkbench-Setup-.*\.exe$/i
 
 let mainWindow = null
@@ -24,6 +26,8 @@ let isQuitting = false
 let allowWindowClose = false
 let tray = null
 let closeDialogOpen = false
+let backendPort = DEFAULT_BACKEND_PORT
+let agentPort = DEFAULT_AGENT_PORT
 
 function parseGitHubRepository(rawUrl) {
   const normalized = String(rawUrl || '')
@@ -175,6 +179,59 @@ function readConnectionMode() {
 
 function resourcesPath(name, executable) {
   return path.join(installRoot(), name, executable)
+}
+
+function backendBaseUrl(port = backendPort) {
+  return `http://${LOCAL_HOST}:${port}`
+}
+
+function backendHealthUrl(port = backendPort) {
+  return `${backendBaseUrl(port)}/api/health`
+}
+
+function agentHealthUrl() {
+  return `http://${LOCAL_HOST}:${agentPort}/api/health`
+}
+
+function agentBaseUrl(port = agentPort) {
+  return `http://${LOCAL_HOST}:${port}`
+}
+
+function buildWorkbenchUrl() {
+  const url = new URL('/', backendBaseUrl())
+  url.searchParams.set('desktopVersion', currentAppVersion())
+  url.searchParams.set('boot', String(Date.now()))
+  return url.toString()
+}
+
+function isPortFree(port, host = LOCAL_HOST) {
+  return new Promise((resolve) => {
+    const server = net.createServer()
+    server.unref()
+    server.once('error', () => resolve(false))
+    server.listen(port, host, () => {
+      server.close(() => resolve(true))
+    })
+  })
+}
+
+async function findAvailablePort(startPort, {
+  host = LOCAL_HOST,
+  attempts = PORT_SCAN_LIMIT,
+  excluded = new Set(),
+} = {}) {
+  for (let offset = 0; offset < attempts; offset += 1) {
+    const candidate = startPort + offset
+    if (excluded.has(candidate)) {
+      continue
+    }
+
+    if (await isPortFree(candidate, host)) {
+      return candidate
+    }
+  }
+
+  throw new Error(`未找到可用端口，起始端口 ${startPort}`)
 }
 
 function resolveWindowIcon() {
@@ -394,12 +451,13 @@ async function waitForHealth(url, timeoutMs) {
   return false
 }
 
-function spawnManagedProcess(executable, logName, label) {
+function spawnManagedProcess(executable, logName, label, extraEnv = {}) {
   const logPath = path.join(logsRoot(), logName)
   const logStream = fs.createWriteStream(logPath, { flags: 'a' })
   const env = {
     ...process.env,
     GPU_GOV_HOME: runtimeRoot(),
+    ...extraEnv,
   }
 
   const writeLog = (prefix, content) => {
@@ -414,7 +472,7 @@ function spawnManagedProcess(executable, logName, label) {
     stdio: ['ignore', 'pipe', 'pipe'],
   })
 
-  writeLog('spawn ', executable)
+  writeLog('spawn ', `${executable} env=${JSON.stringify(extraEnv)}`)
   child.stdout?.pipe(logStream, { end: false })
   child.stderr?.pipe(logStream, { end: false })
 
@@ -463,14 +521,36 @@ function spawnManagedProcess(executable, logName, label) {
 
 async function ensureServices(onStatus = () => {}) {
   onStatus('正在检查治理后端状态', 12)
-  const backendReady = await healthCheck(BACKEND_HEALTH_URL)
+  const backendReady = await healthCheck(backendHealthUrl(DEFAULT_BACKEND_PORT))
 
   if (!backendReady) {
+    backendPort = await findAvailablePort(DEFAULT_BACKEND_PORT, {
+      excluded: new Set([DEFAULT_AGENT_PORT]),
+    })
+
+    if (backendPort !== DEFAULT_BACKEND_PORT) {
+      onStatus(`默认端口 ${DEFAULT_BACKEND_PORT} 已占用，改用 ${backendPort}`, 20)
+    }
+
     const mode = readConnectionMode()
 
     if (mode === 'local') {
       onStatus('正在检查本机采集代理', 28)
-      const agentReady = await healthCheck(AGENT_HEALTH_URL)
+      const defaultAgentReady = await healthCheck(`http://${LOCAL_HOST}:${DEFAULT_AGENT_PORT}/api/health`)
+
+      if (defaultAgentReady) {
+        agentPort = DEFAULT_AGENT_PORT
+      } else {
+        agentPort = await findAvailablePort(DEFAULT_AGENT_PORT, {
+          excluded: new Set([backendPort]),
+        })
+
+        if (agentPort !== DEFAULT_AGENT_PORT) {
+          onStatus(`默认 Agent 端口 ${DEFAULT_AGENT_PORT} 已占用，改用 ${agentPort}`, 34)
+        }
+      }
+
+      const agentReady = await healthCheck(agentHealthUrl())
 
       if (!agentReady) {
         const agentExe = resourcesPath('agent', 'GPUServerAgent.exe')
@@ -479,10 +559,15 @@ async function ensureServices(onStatus = () => {}) {
         }
 
         onStatus('正在启动本机采集代理', 42)
-        agentProcess = spawnManagedProcess(agentExe, 'agent-shell.log', '本机采集代理')
+        agentProcess = spawnManagedProcess(agentExe, 'agent-shell.log', '本机采集代理', {
+          HOST: LOCAL_HOST,
+          PORT: String(agentPort),
+          GPU_AGENT_HOST: LOCAL_HOST,
+          GPU_AGENT_PORT: String(agentPort),
+        })
         ownsAgent = true
 
-        const agentStarted = await waitForHealth(AGENT_HEALTH_URL, 12000)
+        const agentStarted = await waitForHealth(agentHealthUrl(), 12000)
         if (!agentStarted) {
           throw new Error(`Agent start timeout. Check logs under ${logsRoot()}`)
         }
@@ -499,16 +584,22 @@ async function ensureServices(onStatus = () => {}) {
     }
 
     onStatus('正在启动治理后端', 64)
-    backendProcess = spawnManagedProcess(backendExe, 'backend-shell.log', '治理后端')
+    backendProcess = spawnManagedProcess(backendExe, 'backend-shell.log', '治理后端', {
+      HOST: LOCAL_HOST,
+      PORT: String(backendPort),
+      AGENT_URL: agentBaseUrl(),
+    })
     ownsBackend = true
   } else {
+    backendPort = DEFAULT_BACKEND_PORT
+    agentPort = DEFAULT_AGENT_PORT
     onStatus('治理后端已在线，正在同步工作台', 64)
   }
 
   onStatus('正在等待工作台服务就绪', 82)
-  const ok = await waitForHealth(BACKEND_HEALTH_URL, 18000)
+  const ok = await waitForHealth(backendHealthUrl(), 18000)
   if (!ok) {
-    throw new Error(`Backend start timeout. Check logs under ${logsRoot()}`)
+    throw new Error(`Backend start timeout on port ${backendPort}. Check logs under ${logsRoot()}`)
   }
 
   onStatus('正在载入桌面工作台', 94)
@@ -656,7 +747,9 @@ async function createMainWindow() {
   })
 
   emitBootStatus('正在渲染桌面界面', 97)
-  await mainWindow.loadURL(UI_URL)
+  await mainWindow.webContents.session.clearCache().catch(() => {})
+  await mainWindow.webContents.session.clearStorageData({ storages: ['serviceworkers'] }).catch(() => {})
+  await mainWindow.loadURL(buildWorkbenchUrl())
 }
 
 async function launchWorkbench() {
