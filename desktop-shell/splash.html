@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GPU 共享治理平台</title>
+  <style>
+    :root {
+      --ink-900: #1a1a1a;
+      --ink-700: #333333;
+      --ink-500: #666666;
+      --ink-300: #999999;
+      --paper: #f8f5f0;
+      --paper-soft: #faf0e6;
+      --seal: #c41e3a;
+      --jade: #2e8b57;
+      --gold: #d4af37;
+      --line: rgba(51, 51, 51, 0.14);
+      --shadow: 0 24px 60px rgba(26, 26, 26, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Microsoft YaHei UI", "Noto Serif SC", serif;
+      color: var(--ink-900);
+      background:
+        radial-gradient(circle at 18% 20%, rgba(46, 139, 87, 0.10), transparent 26%),
+        radial-gradient(circle at 82% 24%, rgba(196, 30, 58, 0.08), transparent 20%),
+        linear-gradient(180deg, rgba(255, 255, 240, 0.96), rgba(248, 245, 240, 0.98));
+      overflow: hidden;
+    }
+
+    body::before,
+    body::after {
+      content: "";
+      position: absolute;
+      inset: auto;
+      border-radius: 50%;
+      filter: blur(28px);
+      opacity: 0.45;
+      pointer-events: none;
+    }
+
+    body::before {
+      width: 280px;
+      height: 180px;
+      left: -40px;
+      top: 36px;
+      background: rgba(26, 26, 26, 0.10);
+    }
+
+    body::after {
+      width: 220px;
+      height: 160px;
+      right: 20px;
+      bottom: 18px;
+      background: rgba(46, 139, 87, 0.09);
+    }
+
+    .paper {
+      position: relative;
+      width: 100%;
+      height: 100vh;
+      padding: 34px;
+    }
+
+    .panel {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      padding: 34px 38px;
+      border: 1px solid rgba(51, 51, 51, 0.10);
+      border-radius: 28px;
+      background:
+        linear-gradient(135deg, rgba(255, 255, 240, 0.84), rgba(248, 245, 240, 0.94)),
+        repeating-linear-gradient(
+          0deg,
+          rgba(153, 153, 153, 0.025),
+          rgba(153, 153, 153, 0.025) 1px,
+          transparent 1px,
+          transparent 7px
+        );
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .wash {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(24px);
+      opacity: 0.34;
+      pointer-events: none;
+    }
+
+    .wash-one {
+      width: 240px;
+      height: 120px;
+      left: 18px;
+      top: 48px;
+      background: rgba(26, 26, 26, 0.12);
+    }
+
+    .wash-two {
+      width: 220px;
+      height: 220px;
+      right: -18px;
+      top: 80px;
+      background: rgba(46, 139, 87, 0.09);
+    }
+
+    .wash-three {
+      width: 280px;
+      height: 140px;
+      right: 92px;
+      bottom: 24px;
+      background: rgba(196, 30, 58, 0.08);
+    }
+
+    .layout {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 28px;
+      height: 100%;
+    }
+
+    .hero {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-width: 0;
+    }
+
+    .brand {
+      display: flex;
+      align-items: flex-start;
+      gap: 18px;
+    }
+
+    .seal {
+      width: 76px;
+      height: 76px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 20px;
+      background:
+        linear-gradient(145deg, rgba(196, 30, 58, 0.94), rgba(160, 20, 44, 0.98));
+      color: #fff8f3;
+      font-size: 34px;
+      letter-spacing: 4px;
+      box-shadow:
+        inset 0 0 0 2px rgba(255, 248, 243, 0.14),
+        0 12px 26px rgba(196, 30, 58, 0.24);
+    }
+
+    .brand-meta {
+      padding-top: 2px;
+    }
+
+    .kicker {
+      margin: 0 0 8px;
+      font-size: 12px;
+      letter-spacing: 0.34em;
+      text-transform: uppercase;
+      color: var(--ink-500);
+    }
+
+    .title {
+      margin: 0;
+      font-size: 38px;
+      letter-spacing: 0.08em;
+      font-weight: 700;
+    }
+
+    .subtitle {
+      margin: 12px 0 0;
+      max-width: 440px;
+      line-height: 1.9;
+      font-size: 15px;
+      color: var(--ink-700);
+    }
+
+    .quote {
+      position: relative;
+      margin-top: 28px;
+      padding-left: 22px;
+      font-size: 16px;
+      line-height: 1.9;
+      color: var(--ink-700);
+    }
+
+    .quote::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 6px;
+      width: 4px;
+      height: calc(100% - 12px);
+      border-radius: 999px;
+      background: linear-gradient(180deg, rgba(46, 139, 87, 0.75), rgba(212, 175, 55, 0.55));
+    }
+
+    .footnotes {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      color: var(--ink-500);
+      font-size: 12px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+
+    .status-card {
+      align-self: end;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 26px 24px;
+      border-radius: 26px;
+      border: 1px solid rgba(51, 51, 51, 0.10);
+      background: rgba(255, 255, 255, 0.48);
+      backdrop-filter: blur(10px);
+    }
+
+    .status-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 22px;
+    }
+
+    .status-title {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+    }
+
+    .status-badge {
+      padding: 7px 12px;
+      border-radius: 999px;
+      background: rgba(46, 139, 87, 0.10);
+      color: var(--jade);
+      font-size: 12px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    .status-copy {
+      margin: 0 0 16px;
+      min-height: 54px;
+      color: var(--ink-700);
+      line-height: 1.8;
+      font-size: 15px;
+    }
+
+    .progress-track {
+      width: 100%;
+      height: 10px;
+      border-radius: 999px;
+      background: rgba(51, 51, 51, 0.08);
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      width: 8%;
+      height: 100%;
+      border-radius: inherit;
+      background:
+        linear-gradient(90deg, rgba(46, 139, 87, 0.92), rgba(212, 175, 55, 0.82), rgba(196, 30, 58, 0.86));
+      transition: width 320ms ease;
+    }
+
+    .status-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-top: 14px;
+      color: var(--ink-500);
+      font-size: 13px;
+    }
+
+    .status-value {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--ink-900);
+      letter-spacing: 0.08em;
+    }
+
+    .status-steps {
+      margin: 22px 0 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 12px;
+      color: var(--ink-700);
+      font-size: 14px;
+    }
+
+    .status-steps li {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .status-steps li::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, rgba(46, 139, 87, 0.88), rgba(212, 175, 55, 0.78));
+      box-shadow: 0 0 0 6px rgba(46, 139, 87, 0.08);
+    }
+
+    .vertical {
+      position: absolute;
+      right: 26px;
+      top: 30px;
+      writing-mode: vertical-rl;
+      text-orientation: mixed;
+      letter-spacing: 0.28em;
+      color: rgba(51, 51, 51, 0.30);
+      font-size: 12px;
+    }
+
+    .pulse {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      margin-right: 8px;
+      border-radius: 50%;
+      background: var(--jade);
+      box-shadow: 0 0 0 0 rgba(46, 139, 87, 0.38);
+      animation: pulse 1.8s ease-out infinite;
+    }
+
+    @keyframes pulse {
+      0% {
+        box-shadow: 0 0 0 0 rgba(46, 139, 87, 0.36);
+      }
+      70% {
+        box-shadow: 0 0 0 16px rgba(46, 139, 87, 0);
+      }
+      100% {
+        box-shadow: 0 0 0 0 rgba(46, 139, 87, 0);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="paper">
+    <div class="panel">
+      <div class="wash wash-one"></div>
+      <div class="wash wash-two"></div>
+      <div class="wash wash-three"></div>
+
+      <div class="vertical">功率预算 公平治理 风险处置 治理回放</div>
+
+      <div class="layout">
+        <section class="hero">
+          <div>
+            <div class="brand">
+              <div class="seal">治</div>
+              <div class="brand-meta">
+                <p class="kicker">GPU Governance Workbench</p>
+                <h1 class="title">GPU 共享治理平台</h1>
+                <p class="subtitle">把真实采集、规则治理、动作执行与复盘证据统一收口到同一个 Windows 桌面工作台。</p>
+              </div>
+            </div>
+
+            <p class="quote">先判断，再执行，再回放。让共享 GPU 管理从单纯观看，升级为可落地的治理系统。</p>
+          </div>
+
+          <div class="footnotes">
+            <span>LOCAL / REMOTE READY</span>
+            <span>DESKTOP SHELL</span>
+            <span>REAL ACTIONS</span>
+          </div>
+        </section>
+
+        <aside class="status-card">
+          <div>
+            <div class="status-head">
+              <h2 class="status-title">启动中</h2>
+              <div class="status-badge"><span class="pulse"></span>Workbench</div>
+            </div>
+
+            <p class="status-copy" id="statusText">正在准备桌面环境</p>
+
+            <div class="progress-track">
+              <div class="progress-bar" id="progressBar"></div>
+            </div>
+
+            <div class="status-meta">
+              <span>当前阶段</span>
+              <strong class="status-value" id="progressValue">08%</strong>
+            </div>
+
+            <ul class="status-steps">
+              <li>检查桌面运行环境与接入配置</li>
+              <li>按模式启动本机 Agent 或连接远程主机</li>
+              <li>拉起治理后端并载入工作台界面</li>
+            </ul>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const statusText = document.getElementById('statusText')
+    const progressBar = document.getElementById('progressBar')
+    const progressValue = document.getElementById('progressValue')
+
+    function setStatus(payload) {
+      const message = payload && payload.message ? payload.message : '正在准备桌面环境'
+      const progress = Number.isFinite(payload && payload.progress) ? payload.progress : 8
+      const clamped = Math.max(6, Math.min(100, Math.round(progress)))
+
+      statusText.textContent = message
+      progressBar.style.width = `${clamped}%`
+      progressValue.textContent = `${String(clamped).padStart(2, '0')}%`
+    }
+
+    setStatus({ message: '正在准备桌面环境', progress: 8 })
+
+    if (window.desktopShell && typeof window.desktopShell.onBootStatus === 'function') {
+      window.desktopShell.onBootStatus((payload) => setStatus(payload || {}))
+    }
+  </script>
+</body>
+</html>

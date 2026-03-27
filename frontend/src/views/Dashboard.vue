@@ -3,9 +3,9 @@
  * Dashboard.vue - 治理型总览页
  * 突出实验室GPU运维、总功率预算、任务优先级与实时状态
  */
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { getFairnessGovernance, healthCheck, getSchedulerStatus, runOptimize, runScheduleOnce, setPowerBudget } from '../services/api'
+import { getConnectionConfig, getFairnessGovernance, healthCheck, getSchedulerStatus, runOptimize, runScheduleOnce, setPowerBudget, testConnectionConfig, updateConnectionConfig } from '../services/api'
 import { useAppStore } from '../stores/app'
 import PowerTrendChart from '../components/charts/PowerTrendChart.vue'
 import UtilizationChart from '../components/charts/UtilizationChart.vue'
@@ -31,6 +31,22 @@ const sourceState = ref({
   label: '未连接',
   detail: '等待 Agent 数据',
 })
+const connectionState = ref({
+  mode: 'local',
+  mode_label: '本机模式',
+  agent_url: 'http://127.0.0.1:8001',
+  agent_label: '本机 Agent',
+  connected: false,
+  updated_at: null,
+  default_local_url: 'http://127.0.0.1:8001',
+  target_hint: '使用当前电脑上的 Agent 采集与执行',
+  agent_health: null,
+})
+const connectionForm = ref({
+  mode: 'local',
+  agent_url: '',
+  agent_label: '本机 Agent',
+})
 const fairnessState = ref({
   overview: {
     fairness_index: 100,
@@ -49,7 +65,11 @@ const actionBusy = ref(false)
 const actionFeedback = ref(null)
 const optimizePreview = ref(null)
 const lastDispatch = ref(null)
+const connectionBusy = ref(false)
+const connectionDirty = ref(false)
+const connectionFeedback = ref(null)
 let refreshTimer = null
+const REMOTE_AGENT_PORT = 8001
 
 const fmtMem = (bytes) => (bytes / 1073741824).toFixed(1)
 const shortUser = (username = 'unknown') => username.split('\\').pop() || username
@@ -57,6 +77,15 @@ const tempColor = (t) => t >= 90 ? '#C41E3A' : t >= 80 ? '#B8860B' : t >= 60 ? '
 const utilColor = (u) => u >= 90 ? '#C41E3A' : u >= 70 ? '#B8860B' : u >= 40 ? '#3A5F4B' : '#2E8B57'
 const powerPct = (usage, limit) => limit > 0 ? Math.round(usage / limit * 100) : 0
 const memPct = (used, total) => total > 0 ? Math.round(used / total * 100) : 0
+const formatConnectionTime = (timestamp) => {
+  if (!timestamp) return '未保存'
+  return new Date(timestamp * 1000).toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
 
 const quickRoutes = [
   { label: '进入治理台', desc: '调预算、跑调度、限功率', path: '/scheduler', stamp: '治' },
@@ -127,7 +156,122 @@ const sourceBadge = computed(() => {
   if ((sourceState.value.gpu_count || 0) <= 0) {
     return { label: '无真实GPU', detail: 'Agent 在线，但当前未检测到真实 GPU', cls: 'status-badge--warning' }
   }
-  return { label: '真实采集', detail: `${sourceState.value.gpu_count} 卡本机GPU`, cls: 'status-badge--ok' }
+  const modeLabel = connectionState.value.mode === 'remote' ? '远程服务器' : '本机'
+  return { label: '真实采集', detail: `${sourceState.value.gpu_count} 卡${modeLabel}GPU`, cls: 'status-badge--ok' }
+})
+const workspaceReady = computed(() => sourceState.value.connected)
+
+const connectionSummary = computed(() => {
+  if (connectionState.value.mode === 'remote') {
+    return connectionState.value.agent_label || '远程 Agent'
+  }
+  return '当前电脑'
+})
+
+function normalizeRemoteAgentUrl(value) {
+  const raw = (value || '').trim()
+  if (!raw) return ''
+
+  let candidate = raw
+  if (!candidate.includes('://')) {
+    candidate = `http://${candidate}`
+  }
+
+  try {
+    const parsed = new URL(candidate)
+    if (!parsed.hostname) {
+      return candidate.replace(/\/+$/, '')
+    }
+    const port = parsed.port || String(REMOTE_AGENT_PORT)
+    return `${parsed.protocol}//${parsed.hostname}${port ? `:${port}` : ''}`
+  } catch {
+    return candidate.replace(/\/+$/, '')
+  }
+}
+
+function extractRemoteHost(value) {
+  const normalized = normalizeRemoteAgentUrl(value)
+  if (!normalized) return ''
+  try {
+    return new URL(normalized).hostname || ''
+  } catch {
+    return ''
+  }
+}
+
+const remoteAddressState = computed(() => {
+  const raw = (connectionForm.value.agent_url || '').trim()
+  const normalized = normalizeRemoteAgentUrl(raw)
+  const host = extractRemoteHost(raw) || '10.151.225.108'
+  const missingPort = !!raw && !raw.includes(`:${REMOTE_AGENT_PORT}`) && !/:\d+$/.test(raw)
+
+  return {
+    raw,
+    normalized,
+    host,
+    missingPort,
+    healthUrl: normalized ? `${normalized}/api/health` : `http://${host}:${REMOTE_AGENT_PORT}/api/health`,
+  }
+})
+
+const connectionGuide = computed(() => {
+  if (connectionForm.value.mode === 'local') {
+    return {
+      title: '本机使用方式',
+      desc: '适合演示或直接管理当前电脑。平台会固定连接本机 Agent，不需要手填地址。',
+      steps: [
+        '先在当前电脑启动 server-agent。',
+        '确认本机健康检查可以打开。',
+        '回到平台点击“测试连接”或“保存并切换”。',
+      ],
+      commands: [
+        'cd server-agent',
+        'python .\\main.py',
+        `Invoke-RestMethod ${connectionState.value.default_local_url}/api/health`,
+      ],
+      extra: '如果你使用的是桌面安装版，本机模式下通常会由桌面壳自动拉起本机服务。',
+    }
+  }
+
+  return {
+    title: '远端主机最短启动步骤',
+    desc: '适合连接实验室服务器。平台接的是远端 Agent 接口，不是远程桌面账号本身。',
+    steps: [
+      '把打包好的 agent 整个文件夹复制到远端主机，例如 C:\\gpu-agent。',
+      '在远端主机上运行 GPUServerAgent.exe。',
+      `先在远端主机本机确认 ${remoteAddressState.value.healthUrl.replace(remoteAddressState.value.normalized || `http://${remoteAddressState.value.host}:${REMOTE_AGENT_PORT}`, `http://127.0.0.1:${REMOTE_AGENT_PORT}`)} 可返回 JSON，再回平台连接。`,
+    ],
+    commands: [
+      'cd C:\\gpu-agent',
+      'Start-Process -FilePath .\\GPUServerAgent.exe -WorkingDirectory $PWD',
+      `Invoke-RestMethod http://127.0.0.1:${REMOTE_AGENT_PORT}/api/health`,
+      `netsh advfirewall firewall add rule name="GPU Server Agent ${REMOTE_AGENT_PORT}" dir=in action=allow protocol=TCP localport=${REMOTE_AGENT_PORT}`,
+    ],
+    extra: `平台会连接 ${remoteAddressState.value.normalized || `http://${remoteAddressState.value.host}:${REMOTE_AGENT_PORT}`}。如果你只填 IP，系统会自动补全默认端口 ${REMOTE_AGENT_PORT}。`,
+  }
+})
+
+const connectionDiagnostics = computed(() => {
+  if (connectionForm.value.mode === 'local') {
+    return [
+      `本机模式固定接入 ${connectionState.value.default_local_url}。`,
+      '如果没有数据，优先检查当前电脑上的 Agent 是否已启动。',
+    ]
+  }
+
+  const hints = []
+  if (!remoteAddressState.value.raw) {
+    hints.push(`请输入远端 Agent 地址，格式如 http://10.151.225.108:${REMOTE_AGENT_PORT}。`)
+  } else {
+    if (remoteAddressState.value.missingPort) {
+      hints.push(`你当前更像只填了 IP，平台会自动按默认端口补成 ${remoteAddressState.value.normalized}。`)
+    } else {
+      hints.push(`当前将按 ${remoteAddressState.value.normalized} 测试远端 Agent。`)
+    }
+    hints.push(`先在远端主机本机打开 ${remoteAddressState.value.healthUrl}，确认能返回健康状态。`)
+  }
+  hints.push('如果端口能通但平台仍提示不可达，通常是 8001 上不是我们的 Agent，或 Agent 已卡住。')
+  return hints
 })
 
 const fairnessTone = computed(() => {
@@ -240,6 +384,87 @@ const todoItems = computed(() => {
   return items.slice(0, 4)
 })
 
+function syncConnectionState(connection, force = false) {
+  if (!connection) return
+  connectionState.value = {
+    mode: connection.mode || 'local',
+    mode_label: connection.mode_label || '本机模式',
+    agent_url: connection.agent_url || connectionState.value.agent_url,
+    agent_label: connection.agent_label || (connection.mode === 'remote' ? '远程 Agent' : '本机 Agent'),
+    connected: !!connection.connected,
+    updated_at: connection.updated_at || null,
+    default_local_url: connection.default_local_url || connectionState.value.default_local_url,
+    target_hint: connection.target_hint || '',
+    agent_health: connection.agent_health || null,
+  }
+  if (force || !connectionDirty.value) {
+    connectionForm.value = {
+      mode: connectionState.value.mode,
+      agent_url: connectionState.value.mode === 'remote' ? (connectionState.value.agent_url || '') : '',
+      agent_label: connectionState.value.agent_label || '',
+    }
+    connectionDirty.value = false
+  }
+}
+
+function buildConnectionPayload() {
+  return {
+    mode: connectionForm.value.mode,
+    agent_url: connectionForm.value.mode === 'remote' ? normalizeRemoteAgentUrl(connectionForm.value.agent_url) : null,
+    agent_label: connectionForm.value.agent_label.trim(),
+  }
+}
+
+async function loadConnectionConfig(force = false) {
+  try {
+    const { data } = await getConnectionConfig()
+    syncConnectionState(data, force)
+  } catch {}
+}
+
+async function testConnection() {
+  connectionBusy.value = true
+  try {
+    const { data } = await testConnectionConfig(buildConnectionPayload())
+    connectionFeedback.value = {
+      tone: data.success ? 'ok' : 'warning',
+      title: data.success ? '目标 Agent 可达' : '目标 Agent 不可达',
+      detail: data.success
+        ? `已连接到 ${data.agent_url}，检测到 ${Number(data.agent_health?.gpu_count || 0)} 张 GPU。`
+        : `已尝试连接 ${data.agent_url}。请先确认目标主机上的 GPUServerAgent.exe 已启动，并检查 ${data.agent_url}/api/health 是否能打开。`,
+    }
+  } catch (error) {
+    const detail = error?.response?.data?.detail || error?.message || '连接测试失败'
+    const hint = connectionForm.value.mode === 'remote'
+      ? ` 建议先在远端主机本机执行 Invoke-RestMethod http://127.0.0.1:${REMOTE_AGENT_PORT}/api/health。`
+      : ''
+    connectionFeedback.value = { tone: 'critical', title: '连接测试失败', detail: `${detail}${hint}` }
+  } finally {
+    connectionBusy.value = false
+  }
+}
+
+async function saveConnection() {
+  connectionBusy.value = true
+  try {
+    const { data } = await updateConnectionConfig(buildConnectionPayload())
+    syncConnectionState(data.connection, true)
+    connectionFeedback.value = {
+      tone: data.connection?.connected ? 'ok' : 'warning',
+      title: data.connection?.connected ? '接入配置已切换' : '接入配置已保存',
+      detail: data.connection?.connected
+        ? `当前已切换到 ${data.connection.mode_label}，目标 ${data.connection.agent_url}。`
+        : `配置已保存到 ${data.connection.mode_label}，当前尝试目标为 ${data.connection.agent_url}，但目标 Agent 目前不可达。`,
+    }
+    await loadGovernance()
+  } catch (error) {
+    const detail = error?.response?.data?.detail || error?.message || '接入配置保存失败'
+    connectionFeedback.value = { tone: 'critical', title: '接入配置保存失败', detail }
+  } finally {
+    connectionBusy.value = false
+  }
+}
+
 async function loadGovernance() {
   try {
     const [{ data: schedulerData }, { data: healthData }, { data: fairnessData }] = await Promise.all([
@@ -250,11 +475,14 @@ async function loadGovernance() {
     schedulerState.value = schedulerData
     fairnessState.value = fairnessData
     const gpuCount = Number(healthData?.agent_info?.gpu_count || 0)
+    syncConnectionState(healthData?.connection)
     sourceState.value = {
       connected: !!healthData?.agent_connected,
       gpu_count: gpuCount,
       label: gpuCount > 0 ? '真实采集' : '无真实GPU',
-      detail: gpuCount > 0 ? '当前为本机GPU实时采集' : 'Agent 在线，但当前未检测到真实 GPU',
+      detail: gpuCount > 0
+        ? `当前接入 ${connectionState.value.mode === 'remote' ? '远程服务器' : '本机'} Agent，已检测到真实 GPU`
+        : 'Agent 在线，但当前未检测到真实 GPU',
     }
   } catch (e) {
     sourceState.value = {
@@ -263,6 +491,7 @@ async function loadGovernance() {
       label: '未连接',
       detail: '无法获取调度与数据源状态',
     }
+    await loadConnectionConfig()
     fairnessState.value = {
       overview: {
         fairness_index: 0,
@@ -376,9 +605,32 @@ async function quickBudgetAction() {
 }
 
 onMounted(() => {
+  loadConnectionConfig(true)
   loadGovernance()
   refreshTimer = setInterval(loadGovernance, 8000)
 })
+
+watch(
+  () => connectionForm.value.mode,
+  (mode, previousMode) => {
+    if (!mode || mode === previousMode) return
+
+    if (mode === 'local') {
+      connectionForm.value.agent_url = ''
+      if (!connectionForm.value.agent_label || connectionForm.value.agent_label === '远程 Agent') {
+        connectionForm.value.agent_label = '本机 Agent'
+      }
+      return
+    }
+
+    if (!connectionForm.value.agent_label || connectionForm.value.agent_label === '本机 Agent') {
+      connectionForm.value.agent_label = '远程 Agent'
+    }
+    if (!connectionForm.value.agent_url && connectionState.value.mode === 'remote') {
+      connectionForm.value.agent_url = connectionState.value.agent_url || ''
+    }
+  },
+)
 
 onUnmounted(() => {
   clearInterval(refreshTimer)
@@ -387,7 +639,23 @@ onUnmounted(() => {
 
 <template>
   <div class="dashboard ink-page-shell">
-    <section class="governance-hero tech-card">
+    <section v-if="!workspaceReady" class="governance-hero tech-card">
+      <div class="governance-hero__main">
+        <div class="governance-hero__eyebrow">接入中心 · 先接通，再解锁治理页面</div>
+        <h2 class="governance-hero__title">当前先完成 Agent 接入，接通后再开放治理、处置、风险与复盘功能</h2>
+        <p class="governance-hero__desc">
+          现在首页先不展示后续治理模块，避免未接入时出现空数据和错误动作。你先完成本机或远程 Agent 接入，再进入完整工作台。
+        </p>
+      </div>
+      <div class="governance-hero__side">
+        <span class="status-badge" :class="sourceBadge.cls">{{ sourceBadge.label }}</span>
+        <span class="status-badge">{{ connectionState.mode_label }}</span>
+        <span class="status-badge status-badge--warning">仅开放接入中心</span>
+        <div class="governance-hero__meta">{{ connectionState.target_hint || '接通 Agent 后，其余页面会自动解锁。' }}</div>
+      </div>
+    </section>
+
+    <section v-else class="governance-hero tech-card">
       <div class="governance-hero__main">
         <div class="governance-hero__eyebrow">治理工作台 · 第一屏先给判断与动作</div>
         <h2 class="governance-hero__title">不是只看 GPU，而是先知道现在该不该动、该动谁、动完如何回放</h2>
@@ -405,6 +673,173 @@ onUnmounted(() => {
       </div>
     </section>
 
+    <section class="connection-panel tech-card">
+      <div class="connection-panel__head">
+        <div>
+          <div class="section-title">接入中心</div>
+          <div class="workbench-card__sub">安装后可直接选择使用当前电脑的 Agent，或连接指定服务器上的 Agent。</div>
+        </div>
+        <div class="connection-panel__badges">
+          <span class="status-badge" :class="connectionState.connected ? 'status-badge--ok' : 'status-badge--warning'">
+            {{ connectionState.connected ? '接入正常' : '等待连接' }}
+          </span>
+          <span class="status-badge">{{ connectionState.mode_label }}</span>
+        </div>
+      </div>
+
+      <div class="connection-layout">
+        <div class="connection-card">
+          <div class="connection-toggle">
+            <button
+              class="connection-toggle__item"
+              :class="{ 'connection-toggle__item--active': connectionForm.mode === 'local' }"
+              @click="connectionForm.mode = 'local'; connectionForm.agent_label = '本机 Agent'; connectionDirty = true"
+            >
+              本机模式
+            </button>
+            <button
+              class="connection-toggle__item"
+              :class="{ 'connection-toggle__item--active': connectionForm.mode === 'remote' }"
+              @click="connectionForm.mode = 'remote'; connectionForm.agent_label = connectionForm.agent_label || '远程 Agent'; connectionDirty = true"
+            >
+              远程服务器模式
+            </button>
+          </div>
+
+          <div class="connection-form">
+            <label class="connection-field">
+              <span class="connection-field__label">接入名称</span>
+              <input
+                v-model="connectionForm.agent_label"
+                class="connection-input"
+                type="text"
+                maxlength="120"
+                placeholder="例如：本机 Agent / 实验室 4090 服务器"
+                @input="connectionDirty = true"
+              />
+            </label>
+
+            <label class="connection-field">
+              <span class="connection-field__label">Agent 地址</span>
+              <input
+                v-model="connectionForm.agent_url"
+                class="connection-input"
+                type="text"
+                :disabled="connectionForm.mode === 'local'"
+                :placeholder="connectionForm.mode === 'local' ? connectionState.default_local_url : 'http://192.168.1.20:8001'"
+                @input="connectionDirty = true"
+              />
+            </label>
+
+            <div class="connection-field__hint">
+              {{ connectionForm.mode === 'local'
+                ? `本机模式固定接入 ${connectionState.default_local_url}，需要当前电脑已启动 server-agent。`
+                : '远程模式请输入目标服务器上 Agent 的地址与端口，例如 http://192.168.1.20:8001。' }}
+            </div>
+
+            <div v-if="connectionForm.mode === 'remote' && remoteAddressState.raw" class="connection-smart-tip">
+              <div class="connection-smart-tip__title">平台将按这个地址连接</div>
+              <div class="connection-smart-tip__value">{{ remoteAddressState.normalized }}</div>
+              <div class="connection-smart-tip__desc">
+                {{ remoteAddressState.missingPort
+                  ? `你刚才更像只填了主机 IP，平台已自动补全默认端口 ${REMOTE_AGENT_PORT}。`
+                  : '这是当前会用于测试和保存的目标 Agent 地址。' }}
+              </div>
+            </div>
+          </div>
+
+          <div class="action-grid" style="margin-top: 14px">
+            <button class="btn-tech" :disabled="connectionBusy" @click="testConnection">
+              {{ connectionBusy ? '测试中...' : '测试连接' }}
+            </button>
+            <button class="btn-tech btn-tech--primary" :disabled="connectionBusy" @click="saveConnection">
+              {{ connectionBusy ? '保存中...' : '保存并切换' }}
+            </button>
+          </div>
+
+          <div v-if="connectionFeedback" class="action-feedback" :class="`action-feedback--${connectionFeedback.tone}`">
+            <div class="action-feedback__title">{{ connectionFeedback.title }}</div>
+            <div class="action-feedback__desc">{{ connectionFeedback.detail }}</div>
+          </div>
+        </div>
+
+        <div class="connection-card connection-card--info">
+          <div class="connection-meta">
+            <div class="connection-meta__label">当前接入</div>
+            <div class="connection-meta__value">{{ connectionSummary }}</div>
+            <div class="connection-meta__desc">{{ connectionState.target_hint }}</div>
+          </div>
+
+          <div class="connection-facts">
+            <div class="connection-facts__item">
+              <span class="connection-facts__label">当前地址</span>
+              <span class="connection-facts__value">{{ connectionState.agent_url }}</span>
+            </div>
+            <div class="connection-facts__item">
+              <span class="connection-facts__label">GPU 数量</span>
+              <span class="connection-facts__value">{{ Number(connectionState.agent_health?.gpu_count || sourceState.gpu_count || 0) }}</span>
+            </div>
+            <div class="connection-facts__item">
+              <span class="connection-facts__label">接入状态</span>
+              <span class="connection-facts__value">{{ connectionState.connected ? '在线' : '离线' }}</span>
+            </div>
+            <div class="connection-facts__item">
+              <span class="connection-facts__label">最后保存</span>
+              <span class="connection-facts__value">{{ formatConnectionTime(connectionState.updated_at) }}</span>
+            </div>
+          </div>
+
+          <div class="connection-notes">
+            <div v-for="(item, index) in connectionDiagnostics" :key="index" class="connection-notes__item">{{ item }}</div>
+          </div>
+
+          <div class="connection-guide">
+            <div class="connection-guide__head">
+              <div class="connection-guide__title">{{ connectionGuide.title }}</div>
+              <div class="connection-guide__desc">{{ connectionGuide.desc }}</div>
+            </div>
+
+            <div class="connection-guide__steps">
+              <div v-for="(step, index) in connectionGuide.steps" :key="index" class="connection-guide__step">
+                <span class="connection-guide__idx">{{ index + 1 }}</span>
+                <span class="connection-guide__text">{{ step }}</span>
+              </div>
+            </div>
+
+            <pre class="connection-guide__code">{{ connectionGuide.commands.join('\n') }}</pre>
+            <div class="connection-guide__extra">{{ connectionGuide.extra }}</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section v-if="!workspaceReady" class="unlock-stage tech-card">
+      <div class="unlock-stage__head">
+        <div>
+          <div class="section-title">待解锁页面</div>
+          <div class="unlock-stage__desc">接通 Agent 之前，平台先只开放接入中心；接通之后，下面这些治理页面会自动显示。</div>
+        </div>
+        <span class="status-badge status-badge--warning">接入后自动解锁</span>
+      </div>
+
+      <div class="route-grid" style="margin-top: 14px">
+        <div v-for="entry in quickRoutes" :key="entry.path" class="route-entry route-entry--locked">
+          <span class="route-entry__stamp">{{ entry.stamp }}</span>
+          <span class="route-entry__body">
+            <strong>{{ entry.label }}</strong>
+            <small>{{ entry.desc }}</small>
+          </span>
+        </div>
+      </div>
+
+      <div class="unlock-stage__note">
+        {{ connectionForm.mode === 'local'
+          ? `本机模式固定接入 ${connectionState.default_local_url}。`
+          : `远程模式将连接 ${remoteAddressState.normalized || '请先填写远端 Agent 地址'}。` }}
+      </div>
+    </section>
+
+    <template v-if="workspaceReady">
     <section class="workbench-grid">
       <div class="workbench-card workbench-card--main tech-card">
         <div class="workbench-card__head">
@@ -817,6 +1252,7 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
+    </template>
   </div>
 </template>
 
@@ -868,6 +1304,314 @@ onUnmounted(() => {
   align-items: flex-end;
   gap: 8px;
   min-width: 220px;
+}
+
+.connection-panel {
+  margin-bottom: 14px;
+  padding: 20px;
+  background:
+    radial-gradient(circle at top left, rgba(46,139,87,0.07), transparent 32%),
+    radial-gradient(circle at bottom right, rgba(91,75,140,0.08), transparent 36%),
+    linear-gradient(180deg, rgba(255,255,255,0.82), rgba(255,252,247,0.56));
+}
+
+.connection-panel__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.connection-panel__badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.connection-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.connection-card {
+  padding: 18px;
+  border-radius: 18px;
+  background: rgba(255,255,255,0.52);
+  border: 1px solid rgba(58,95,75,0.08);
+}
+
+.connection-card--info {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.7), rgba(255,252,247,0.48));
+}
+
+.connection-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.connection-toggle__item {
+  border: 1px solid rgba(58,95,75,0.08);
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: rgba(255,255,255,0.68);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: transform 0.24s ease, border-color 0.24s ease, background 0.24s ease;
+}
+
+.connection-toggle__item:hover {
+  transform: translateY(-1px);
+}
+
+.connection-toggle__item--active {
+  border-color: rgba(46,139,87,0.2);
+  background: rgba(46,139,87,0.08);
+  color: var(--accent-secondary);
+}
+
+.connection-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.connection-field {
+  display: grid;
+  gap: 8px;
+}
+
+.connection-field__label {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+}
+
+.connection-input {
+  width: 100%;
+  border: 1px solid rgba(58,95,75,0.12);
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: rgba(255,255,255,0.82);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.24s ease, box-shadow 0.24s ease;
+}
+
+.connection-input:focus {
+  border-color: rgba(46,139,87,0.26);
+  box-shadow: 0 0 0 4px rgba(46,139,87,0.08);
+}
+
+.connection-input:disabled {
+  opacity: 0.72;
+  cursor: not-allowed;
+}
+
+.connection-field__hint {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.7;
+}
+
+.connection-smart-tip {
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(46,139,87,0.12);
+  background: rgba(46,139,87,0.06);
+}
+
+.connection-smart-tip__title {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+}
+
+.connection-smart-tip__value {
+  margin-top: 6px;
+  font-size: 0.92rem;
+  color: var(--text-primary);
+  word-break: break-all;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.connection-smart-tip__desc {
+  margin-top: 8px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+.connection-meta__label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  letter-spacing: 0.14em;
+}
+
+.connection-meta__value {
+  margin-top: 8px;
+  font-family: var(--font-song);
+  font-size: 1.42rem;
+  color: var(--text-primary);
+}
+
+.connection-meta__desc {
+  margin-top: 8px;
+  font-size: 0.84rem;
+  color: var(--text-secondary);
+  line-height: 1.75;
+}
+
+.connection-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.connection-facts__item {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.6);
+  border: 1px solid rgba(58,95,75,0.06);
+}
+
+.connection-facts__label {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+}
+
+.connection-facts__value {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.86rem;
+  color: var(--text-primary);
+  line-height: 1.6;
+  word-break: break-all;
+}
+
+.connection-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.connection-notes__item {
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.52);
+  border: 1px solid rgba(58,95,75,0.06);
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+.connection-guide {
+  margin-top: 16px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(58,95,75,0.08);
+  background: rgba(255,255,255,0.58);
+}
+
+.connection-guide__head {
+  display: grid;
+  gap: 8px;
+}
+
+.connection-guide__title {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+
+.connection-guide__desc,
+.connection-guide__extra {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  line-height: 1.72;
+}
+
+.connection-guide__steps {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.connection-guide__step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.connection-guide__idx {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(196,30,58,0.08);
+  color: var(--ink-vermillion);
+  font-size: 0.72rem;
+  flex-shrink: 0;
+}
+
+.connection-guide__text {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  line-height: 1.72;
+}
+
+.connection-guide__code {
+  margin: 14px 0 0;
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(26,26,26,0.94);
+  color: #f8f5f0;
+  font-size: 0.76rem;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.unlock-stage {
+  margin-bottom: 14px;
+  padding: 20px;
+  background:
+    radial-gradient(circle at top right, rgba(212,175,55,0.08), transparent 34%),
+    radial-gradient(circle at bottom left, rgba(58,95,75,0.08), transparent 36%),
+    linear-gradient(180deg, rgba(255,255,255,0.82), rgba(255,252,247,0.56));
+}
+
+.unlock-stage__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.unlock-stage__desc,
+.unlock-stage__note {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.74;
+}
+
+.unlock-stage__note {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.56);
+  border: 1px solid rgba(58,95,75,0.08);
 }
 
 .workbench-grid {
@@ -1208,6 +1952,16 @@ onUnmounted(() => {
   border-color: rgba(58,95,75,0.16);
 }
 
+.route-entry--locked {
+  cursor: default;
+  opacity: 0.88;
+}
+
+.route-entry--locked:hover {
+  transform: none;
+  border-color: rgba(58,95,75,0.08);
+}
+
 .route-entry__stamp {
   width: 32px;
   height: 32px;
@@ -1512,6 +2266,7 @@ onUnmounted(() => {
 }
 
 @media (max-width: 1400px) {
+  .connection-layout { grid-template-columns: 1fr; }
   .workbench-grid { grid-template-columns: 1fr; }
   .stats-row { grid-template-columns: repeat(3, 1fr); }
   .signal-grid,
@@ -1529,6 +2284,14 @@ onUnmounted(() => {
     min-width: 0;
   }
 
+  .connection-panel__head {
+    flex-direction: column;
+  }
+
+  .connection-panel__badges {
+    justify-content: flex-start;
+  }
+
   .signal-grid,
   .stats-row { grid-template-columns: repeat(2, 1fr); }
   .governance-grid { grid-template-columns: 1fr; }
@@ -1537,6 +2300,8 @@ onUnmounted(() => {
 
 @media (max-width: 720px) {
   .action-grid,
+  .connection-toggle,
+  .connection-facts,
   .signal-grid,
   .stats-row,
   .route-grid,

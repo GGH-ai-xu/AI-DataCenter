@@ -37,6 +37,9 @@ export const acknowledgeAlert = (id) => api.post(`/alerts/acknowledge/${id}`)
 
 // 健康检查
 export const healthCheck = () => api.get('/health')
+export const getConnectionConfig = () => api.get('/system/connection')
+export const testConnectionConfig = (payload) => api.post('/system/connection/test', payload)
+export const updateConnectionConfig = (payload) => api.post('/system/connection', payload)
 
 // 监控观察
 export const getSystemDetail = () => api.get('/monitor/system-detail')
@@ -63,6 +66,7 @@ export const getEnergyReport = (hours = 24) => api.get('/energy/report', { param
 export const getOptimizationHistory = (hours = 72) => api.get('/energy/optimization-history', { params: { hours } })
 export const getScheduleHistory = (hours = 72) => api.get('/energy/schedule-history', { params: { hours } })
 export const getHistoryComparison = (hours = 72) => api.get('/energy/history-comparison', { params: { hours } })
+export const getStrategyBenchmark = () => api.get('/energy/strategy-benchmark')
 export const exportEnergyReport = (hours = 24, format = 'markdown') => api.get('/energy/export-report', { params: { hours, format }, responseType: 'blob' })
 
 export default api

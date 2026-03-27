@@ -1,0 +1,76 @@
+{
+  "name": "gpu-governance-workbench-desktop",
+  "version": "1.0.0",
+  "description": "GPU shared governance desktop shell",
+  "main": "main.js",
+  "author": "Open Source",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GGH-ai-xu/AI-DataCenter.git"
+  },
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "electron": "^38.1.2",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.gpu.governance.workbench",
+    "productName": "GPU 共享治理平台",
+    "executableName": "GPUGovernanceWorkbench",
+    "directories": {
+      "output": "../dist/electron",
+      "buildResources": "build"
+    },
+    "files": [
+      "build/icon.ico",
+      "main.js",
+      "preload.js",
+      "splash.html",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../dist/windows-package/app/backend",
+        "to": "backend",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "../dist/windows-package/app/agent",
+        "to": "agent",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "shortcutName": "GPU 共享治理平台",
+      "artifactName": "GPUGovernanceWorkbench-Setup-${version}.${ext}"
+    }
+  }
+}

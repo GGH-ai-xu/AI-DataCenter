@@ -10,12 +10,13 @@
  */
 import { ref, computed, reactive, onMounted, onUnmounted, nextTick } from 'vue'
 import * as echarts from 'echarts'
-import { getEnergyMetrics, getTimeBreakdown, getGpuEfficiency, getPowerPrediction, getCarbonData, runOptimize, getScheduleHistory, getHistoryComparison, exportEnergyReport, getAiInsight, getAiAnomalies, getSchedulerStatus, healthCheck } from '../services/api'
+import { getEnergyMetrics, getTimeBreakdown, getGpuEfficiency, getPowerPrediction, getCarbonData, runOptimize, getScheduleHistory, getHistoryComparison, exportEnergyReport, getAiInsight, getAiAnomalies, getSchedulerStatus, getStrategyBenchmark, healthCheck } from '../services/api'
 
 // ========== 数据 ==========
 const metrics = ref(null), breakdown = ref(null), efficiency = ref(null)
 const prediction = ref(null), carbon = ref(null)
 const scheduleHistory = ref(null), historyComparison = ref(null)
+const strategyBenchmark = ref(null)
 const optimizeResult = ref(null), optimizing = ref(false), loading = ref(true), exporting = ref(false)
 
 // AI能力数据
@@ -72,6 +73,8 @@ const sourceHint = computed(() => {
 
 const predictionAvailable = computed(() => (prediction.value?.available_prediction_count || 0) > 0)
 const predictionPartial = computed(() => !!prediction.value?.partial_prediction)
+const strategyResults = computed(() => strategyBenchmark.value?.results || [])
+const strategyWinner = computed(() => strategyResults.value.find((item) => item.mode === strategyBenchmark.value?.winner_mode) || null)
 
 const breakdownLegendData = computed(() => {
   const data = breakdown.value?.breakdown
@@ -92,6 +95,7 @@ async function loadData() {
   // 加载调度历史和历史对比（独立try，不阻塞主数据）
   try { scheduleHistory.value = (await getScheduleHistory(72)).data } catch {}
   try { historyComparison.value = (await getHistoryComparison(72)).data } catch {}
+  try { strategyBenchmark.value = (await getStrategyBenchmark()).data } catch { strategyBenchmark.value = null }
   // 检测LLM可用性 + 加载AI数据
   try {
     const h = await healthCheck()
@@ -276,6 +280,23 @@ function parseEvaluation(log) {
   if(log.action!=='ai_evaluate') return null
   try{const t=typeof log.target==='string'?JSON.parse(log.target):log.target;return t?.evaluation||null}catch{return null}
 }
+function benchmarkAccent(mode) {
+  return ({ observe: '#999999', rules_only: '#B8860B', full_governance: '#2E8B57' }[mode] || '#3A5F4B')
+}
+function benchmarkBg(mode) {
+  return ({ observe: 'rgba(153,153,153,0.08)', rules_only: 'rgba(184,134,11,0.08)', full_governance: 'rgba(46,139,87,0.08)' }[mode] || 'rgba(58,95,75,0.08)')
+}
+function benchmarkActionLabel(action) {
+  if (action === 'set_power_limit') return '调频'
+  if (action === 'pause_task') return '暂停'
+  if (action === 'observe') return '观察'
+  return action || '动作'
+}
+function formatGeneratedAt(ts) {
+  if (!ts) return '—'
+  const d = new Date(ts * 1000)
+  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`
+}
 
 function handleResize(){Object.values(charts).forEach(c=>c?.resize())}
 onMounted(()=>{loadData();timer=setInterval(loadData,30000);window.addEventListener('resize',handleResize)})
@@ -343,6 +364,98 @@ onUnmounted(()=>{clearInterval(timer);window.removeEventListener('resize',handle
         <div class="source-card__label">数据说明</div>
         <div class="source-card__value">{{ sourceHint }}</div>
         <div class="source-card__hint">当前页面只使用本地 Agent 的真实采集结果；若历史不足，将明确显示为数据不足，不再使用虚拟样例数据。</div>
+      </div>
+    </section>
+
+    <section v-if="strategyBenchmark && !strategyBenchmark.insufficient_data" class="ink-card ink-card--wide si" style="--d:.08s">
+      <div class="ink-card__hd">
+        <div>
+          <span class="ink-card__title">治理工作台</span>
+          <div class="strategy-benchmark__subtitle">基于当前真实快照的离线策略估算，不直接执行动作</div>
+        </div>
+        <span class="ink-stamp ink-stamp--green">策</span>
+      </div>
+
+      <div class="strategy-summary">
+        <div class="strategy-summary__hero">
+          <div class="strategy-summary__label">当前治理窗口</div>
+          <div class="strategy-summary__value">{{ strategyBenchmark.scenario_label }}</div>
+          <div class="strategy-summary__meta">生成于 {{ formatGeneratedAt(strategyBenchmark.generated_at) }} · 基线功率 {{ strategyBenchmark.baseline_power_w?.toFixed?.(1) || '—' }}W</div>
+        </div>
+        <div class="strategy-summary__side">
+          <div class="strategy-summary__chip" :style="{ color: benchmarkAccent(strategyBenchmark.winner_mode), background: benchmarkBg(strategyBenchmark.winner_mode) }">
+            推荐策略 · {{ strategyBenchmark.winner_label }}
+          </div>
+          <div class="strategy-summary__text">{{ strategyWinner?.summary || strategyBenchmark.winner_summary }}</div>
+        </div>
+      </div>
+
+      <div class="strategy-grid">
+        <article
+          v-for="result in strategyResults"
+          :key="result.mode"
+          class="strategy-card"
+          :class="{ 'strategy-card--winner': result.mode === strategyBenchmark.winner_mode }"
+          :style="{ '--strategy-accent': benchmarkAccent(result.mode), '--strategy-bg': benchmarkBg(result.mode) }"
+        >
+          <div class="strategy-card__top">
+            <div>
+              <div class="strategy-card__label">{{ result.label }}</div>
+              <div class="strategy-card__summary">{{ result.summary }}</div>
+            </div>
+            <span v-if="result.mode === strategyBenchmark.winner_mode" class="strategy-card__badge">最优</span>
+          </div>
+
+          <div class="strategy-card__power">
+            <span class="strategy-card__power-val">{{ result.projected_total_power_w?.toFixed?.(1) || '—' }}</span>
+            <span class="strategy-card__power-unit">W</span>
+          </div>
+
+          <div class="strategy-card__metrics">
+            <div class="strategy-card__metric">
+              <span class="strategy-card__metric-label">预计节省</span>
+              <span class="strategy-card__metric-value">{{ result.estimated_saving_w?.toFixed?.(1) || '0' }}W / {{ result.estimated_saving_pct?.toFixed?.(1) || '0' }}%</span>
+            </div>
+            <div class="strategy-card__metric">
+              <span class="strategy-card__metric-label">公平指数</span>
+              <span class="strategy-card__metric-value">{{ result.fairness_index?.toFixed?.(1) || '0' }}</span>
+            </div>
+            <div class="strategy-card__metric">
+              <span class="strategy-card__metric-label">紧急任务保护</span>
+              <span class="strategy-card__metric-value">{{ result.urgent_protection_score?.toFixed?.(1) || '0' }}</span>
+            </div>
+            <div class="strategy-card__metric">
+              <span class="strategy-card__metric-label">风险 / 动作 / 综合分</span>
+              <span class="strategy-card__metric-value">{{ result.risk_count || 0 }} / {{ result.action_count || 0 }} / {{ result.composite_score?.toFixed?.(1) || '0' }}</span>
+            </div>
+          </div>
+
+          <div class="strategy-card__actions">
+            <div class="strategy-card__actions-title">动作预览</div>
+            <div v-if="result.actions?.length" class="strategy-card__actions-list">
+              <div v-for="(action, index) in result.actions.slice(0, 3)" :key="`${result.mode}-${index}`" class="strategy-card__action">
+                <span class="strategy-card__action-tag">{{ benchmarkActionLabel(action.action) }}</span>
+                <span class="strategy-card__action-text">{{ action.reason }}</span>
+              </div>
+            </div>
+            <div v-else class="strategy-card__empty">当前策略仅观察，不生成治理动作。</div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section v-else-if="strategyBenchmark?.insufficient_data" class="ink-card ink-card--wide si" style="--d:.08s">
+      <div class="ink-card__hd">
+        <div>
+          <span class="ink-card__title">治理工作台</span>
+          <div class="strategy-benchmark__subtitle">基于当前真实快照的离线策略估算，不直接执行动作</div>
+        </div>
+        <span class="ink-stamp ink-stamp--gold">缺</span>
+      </div>
+      <div class="opt-empty-ink" style="padding:32px 20px 20px">
+        <div class="opt-empty-ink__char" style="font-size:3rem">缺</div>
+        <div class="opt-empty-ink__t">策略对比暂不可用</div>
+        <div class="opt-empty-ink__d">{{ strategyBenchmark.message || '当前真实采样不足，暂时无法对比不同治理策略。' }}</div>
       </div>
     </section>
 
@@ -899,6 +1012,227 @@ onUnmounted(()=>{clearInterval(timer);window.removeEventListener('resize',handle
 .tri-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
 .duo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 18px; }
 
+/* ===== 治理工作台 ===== */
+.strategy-benchmark__subtitle {
+  margin-top: 6px;
+  font-size: 0.75rem;
+  color: #999;
+  letter-spacing: 0.12em;
+}
+
+.strategy-summary {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.strategy-summary__hero,
+.strategy-summary__side {
+  padding: 18px;
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,0.04);
+  background: rgba(255,255,255,0.42);
+}
+
+.strategy-summary__label {
+  font-size: 0.6875rem;
+  color: #999;
+  letter-spacing: 0.14em;
+  margin-bottom: 8px;
+}
+
+.strategy-summary__value {
+  font-family: 'Ma Shan Zheng', cursive;
+  font-size: 1.9rem;
+  color: #1f2937;
+  letter-spacing: 0.08em;
+}
+
+.strategy-summary__meta {
+  margin-top: 8px;
+  font-size: 0.75rem;
+  color: #666;
+  line-height: 1.7;
+}
+
+.strategy-summary__chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.strategy-summary__text {
+  margin-top: 14px;
+  font-size: 0.875rem;
+  color: #444;
+  line-height: 1.75;
+}
+
+.strategy-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.strategy-card {
+  position: relative;
+  padding: 18px;
+  border-radius: 14px;
+  border: 1px solid rgba(0,0,0,0.04);
+  background:
+    linear-gradient(180deg, var(--strategy-bg) 0%, rgba(255,255,255,0.72) 45%, rgba(255,255,255,0.52) 100%);
+  overflow: hidden;
+}
+
+.strategy-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(90deg, transparent 0%, var(--strategy-accent) 22%, transparent 100%);
+  opacity: 0.8;
+}
+
+.strategy-card--winner {
+  box-shadow: 0 12px 36px rgba(46,139,87,0.1);
+  border-color: rgba(46,139,87,0.16);
+}
+
+.strategy-card__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.strategy-card__label {
+  font-size: 1.125rem;
+  color: #1f2937;
+  font-weight: 700;
+}
+
+.strategy-card__summary {
+  margin-top: 6px;
+  font-size: 0.75rem;
+  color: #666;
+  line-height: 1.7;
+}
+
+.strategy-card__badge {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(46,139,87,0.12);
+  color: #2E8B57;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.strategy-card__power {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 16px;
+  color: var(--strategy-accent);
+}
+
+.strategy-card__power-val {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.strategy-card__power-unit {
+  font-size: 0.8125rem;
+  color: #666;
+}
+
+.strategy-card__metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.strategy-card__metric {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.58);
+  border: 1px solid rgba(0,0,0,0.03);
+}
+
+.strategy-card__metric-label {
+  display: block;
+  font-size: 0.6875rem;
+  color: #999;
+  letter-spacing: 0.08em;
+}
+
+.strategy-card__metric-value {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.875rem;
+  color: #2C2C2C;
+  line-height: 1.5;
+  font-family: 'Noto Serif SC', serif;
+  font-weight: 700;
+}
+
+.strategy-card__actions {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(0,0,0,0.05);
+}
+
+.strategy-card__actions-title {
+  font-size: 0.6875rem;
+  color: #999;
+  letter-spacing: 0.14em;
+  margin-bottom: 10px;
+}
+
+.strategy-card__actions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.strategy-card__action {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.strategy-card__action-tag {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--strategy-bg);
+  color: var(--strategy-accent);
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+
+.strategy-card__action-text {
+  font-size: 0.75rem;
+  color: #555;
+  line-height: 1.65;
+}
+
+.strategy-card__empty {
+  font-size: 0.75rem;
+  color: #999;
+  line-height: 1.7;
+}
+
 /* ===== 仪表底部 ===== */
 .gauge-bottom {
   display: flex;
@@ -1336,6 +1670,7 @@ onUnmounted(()=>{clearInterval(timer);window.removeEventListener('resize',handle
 /* ===== 响应式 ===== */
 @media(max-width:1400px){
   .source-strip{grid-template-columns:1fr}
+  .strategy-summary,.strategy-grid{grid-template-columns:1fr}
   .kpi-grid{grid-template-columns:repeat(3,1fr)}
   .kpi-ink--hero{grid-column:span 3;flex-direction:row;gap:20px}
   .tri-grid,.duo-grid{grid-template-columns:1fr}
@@ -1345,6 +1680,7 @@ onUnmounted(()=>{clearInterval(timer);window.removeEventListener('resize',handle
   .ink-header__right{justify-content:flex-start}
   .kpi-grid{grid-template-columns:repeat(2,1fr)}
   .kpi-ink--hero{grid-column:span 2}
+  .strategy-card__metrics{grid-template-columns:1fr}
   .sug-grid-ink{grid-template-columns:1fr}
   .opt-compare{flex-wrap:wrap;gap:16px}
   .ink-seal{display:none}

@@ -103,10 +103,73 @@ npm run build
 
 构建完成后，后端会自动托管 `frontend/dist/`。
 
+## 安装后怎么用
+
+### 一键演示启动
+
+本机演示模式：
+
+```powershell
+.\launch-demo.bat
+```
+
+只启动后端，准备接远程服务器：
+
+```powershell
+.\launch-demo.bat -SkipAgent
+```
+
+### 接入方式切换
+
+平台首页提供“接入中心”，支持两种模式：
+
+- 本机模式：连接当前电脑上的 `server-agent`
+- 远程服务器模式：连接你指定服务器上的 `server-agent`
+
+切换方式：
+
+1. 打开首页“接入中心”
+2. 选择“本机模式”或“远程服务器模式”
+3. 远程模式下填写 `http://服务器IP:8001`
+4. 先点“测试连接”，再点“保存并切换”
+
+这样安装好之后，同一套前端和后端可以接当前电脑，也可以接某台服务器，不需要再手改 `.env`。
+
+## Windows 桌面版打包
+
+如果要生成真正的 Windows 桌面安装器：
+
+```powershell
+.\build-windows.bat
+```
+
+打包完成后会生成：
+
+- `dist/electron/GPUGovernanceWorkbench-Setup-1.0.0.exe`
+- `dist/electron/win-unpacked/`
+
+说明：
+
+- `GPUGovernanceWorkbench-Setup-1.0.0.exe` 是正式安装器
+- `win-unpacked/` 是免安装测试目录，可直接运行
+
+桌面版形态：
+
+- 双击后打开独立桌面窗口，不再弹浏览器
+- 桌面壳内部会自动拉起后端和本机 Agent
+- 首页仍可切换“本机模式 / 远程服务器模式”
+
+如果你只想重新生成 Python 运行时目录而不打桌面安装器：
+
+```powershell
+.\build-runtime-windows.bat
+```
+
 ## 访问入口
 
 - 平台首页：`http://localhost:8000/`
 - 健康检查：`http://localhost:8000/api/health`
+- 接入配置：`http://localhost:8000/api/system/connection`
 - 调度状态：`http://localhost:8000/api/scheduler/status`
 - API 文档：`http://localhost:8000/docs`
 

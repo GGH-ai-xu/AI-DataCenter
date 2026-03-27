@@ -8,6 +8,12 @@ venv/
 # Build
 frontend/dist/
 *.egg-info/
+dist/
+build/
+!desktop-shell/build/
+!desktop-shell/build/.gitkeep
+!desktop-shell/build/icon.ico
+!desktop-shell/build/icon.png
 
 # Data
 backend/data/

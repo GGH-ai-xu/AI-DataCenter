@@ -97,6 +97,13 @@ async def get_history_comparison(hours: float = Query(default=72.0, ge=1, le=720
     return await app_state.energy.get_history_comparison(hours)
 
 
+@router.get("/strategy-benchmark")
+async def get_strategy_benchmark():
+    """基于当前真实快照的离线策略对比"""
+    from app.main import app_state
+    return await app_state.energy.get_strategy_benchmark(app_state.scheduler)
+
+
 @router.get("/export-report")
 async def export_report(
     hours: float = Query(default=24.0, ge=1, le=168),

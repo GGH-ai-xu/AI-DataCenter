@@ -122,3 +122,11 @@ class UserGovernanceRuleUpdate(BaseModel):
     max_memory_gb: float = Field(default=8.0, ge=1, le=1024)
     allow_preempt: bool = True
     note: str = Field(default="", max_length=200)
+
+
+# ========== 接入配置 ==========
+
+class ConnectionConfigRequest(BaseModel):
+    mode: str = Field(default="local", pattern=r"^(local|remote)$")
+    agent_url: Optional[str] = Field(default=None, max_length=300)
+    agent_label: str = Field(default="", max_length=120)

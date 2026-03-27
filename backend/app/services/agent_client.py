@@ -1,5 +1,6 @@
 """Agent通信客户端 - 通过HTTP与GPU服务器Agent交互"""
 
+import asyncio
 import logging
 from typing import Optional
 
@@ -15,17 +16,29 @@ class AgentClient:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self._client: Optional[httpx.AsyncClient] = None
+        self._client_lock = asyncio.Lock()
 
     async def _get_client(self) -> httpx.AsyncClient:
-        if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(
-                base_url=self.base_url, timeout=self.timeout
-            )
-        return self._client
+        async with self._client_lock:
+            if self._client is None or self._client.is_closed:
+                self._client = httpx.AsyncClient(
+                    base_url=self.base_url, timeout=self.timeout
+                )
+            return self._client
 
     async def close(self):
-        if self._client and not self._client.is_closed:
-            await self._client.aclose()
+        async with self._client_lock:
+            if self._client and not self._client.is_closed:
+                await self._client.aclose()
+
+    async def reconfigure(self, base_url: str, timeout: float | None = None):
+        async with self._client_lock:
+            if self._client and not self._client.is_closed:
+                await self._client.aclose()
+            self.base_url = base_url.rstrip("/")
+            if timeout is not None:
+                self.timeout = timeout
+            self._client = None
 
     async def health_check(self) -> Optional[dict]:
         try:

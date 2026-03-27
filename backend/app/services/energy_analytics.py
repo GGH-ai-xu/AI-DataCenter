@@ -49,11 +49,418 @@ class EnergyAnalytics:
         llm_service=None,
         agent_client=None,
         privacy_service=None,
+        governance_service=None,
     ):
         self.store = data_store
         self.llm = llm_service
         self.agent = agent_client
         self.privacy = privacy_service
+        self.governance = governance_service
+
+    async def _attach_priorities(self, processes: list[dict]) -> list[dict]:
+        priorities = await self.store.get_all_task_priorities()
+        enriched = []
+        for proc in processes:
+            cloned = dict(proc)
+            cloned["priority"] = priorities.get(
+                cloned.get("pid"),
+                cloned.get("priority", "normal"),
+            )
+            enriched.append(cloned)
+        return enriched
+
+    @staticmethod
+    def _clamp(value: float, lower: float, upper: float) -> float:
+        return max(lower, min(upper, value))
+
+    def _simulate_actions(
+        self,
+        gpus: list[dict],
+        processes: list[dict],
+        actions: list[dict],
+    ) -> tuple[list[dict], list[dict]]:
+        sim_gpus = [dict(gpu) for gpu in gpus]
+        sim_processes = [dict(proc) for proc in processes]
+
+        def find_gpu(gpu_index: int) -> dict | None:
+            return next(
+                (
+                    gpu for gpu in sim_gpus
+                    if int(gpu.get("index", gpu.get("gpu_index", -1))) == gpu_index
+                ),
+                None,
+            )
+
+        def find_process(pid: int) -> dict | None:
+            return next((proc for proc in sim_processes if int(proc.get("pid", -1)) == pid), None)
+
+        for action in actions:
+            act = action.get("action")
+            target = action.get("target", {}) or {}
+
+            if act == "set_power_limit":
+                gpu_index = int(target.get("gpu_index", -1))
+                gpu = find_gpu(gpu_index)
+                if not gpu:
+                    continue
+
+                current_limit = float(gpu.get("power_limit", 0) or 0)
+                current_power = float(gpu.get("power_usage", 0) or 0)
+                target_limit = float(target.get("power_limit", current_limit) or current_limit)
+                if current_limit <= 0:
+                    gpu["power_limit"] = target_limit
+                    continue
+
+                gpu["power_limit"] = round(target_limit, 1)
+                if target_limit >= current_limit:
+                    continue
+
+                ratio = self._clamp(target_limit / current_limit, 0.35, 1.0)
+                new_power = min(current_power, current_power * ratio)
+                delta = max(0.0, current_power - new_power)
+                gpu["power_usage"] = round(new_power, 1)
+                if "temperature" in gpu:
+                    gpu["temperature"] = int(max(30, round(float(gpu.get("temperature", 30) or 30) - min(8.0, delta / 12.0))))
+
+            elif act == "pause_task":
+                pid = int(target.get("pid", -1))
+                proc = find_process(pid)
+                if not proc:
+                    continue
+
+                gpu_index = int(proc.get("gpu_index", -1))
+                gpu = find_gpu(gpu_index)
+                same_gpu = [item for item in sim_processes if int(item.get("gpu_index", -1)) == gpu_index]
+                total_memory = sum(max(1, int(item.get("gpu_memory_used", 0) or 0)) for item in same_gpu) or max(1, len(same_gpu))
+                proc_memory = max(1, int(proc.get("gpu_memory_used", 0) or 0))
+                process_share = proc_memory / total_memory if total_memory > 0 else 1 / max(1, len(same_gpu))
+
+                if gpu:
+                    current_power = float(gpu.get("power_usage", 0) or 0)
+                    estimated = action.get("estimated_saving")
+                    if estimated is None:
+                        estimated = current_power * self._clamp(process_share * 0.85, 0.18, 0.65)
+                    estimated = float(max(0.0, estimated))
+                    gpu["power_usage"] = round(max(0.0, current_power - estimated), 1)
+                    gpu["gpu_utilization"] = int(max(0, round(float(gpu.get("gpu_utilization", 0) or 0) * max(0.25, 1 - process_share))))
+                    memory_used = int(gpu.get("memory_used", 0) or 0)
+                    memory_total = int(gpu.get("memory_total", 0) or 0)
+                    gpu["memory_used"] = max(0, memory_used - proc_memory)
+                    gpu["memory_free"] = max(0, memory_total - gpu["memory_used"])
+                    gpu["memory_utilization"] = int(round(gpu["memory_used"] / memory_total * 100)) if memory_total > 0 else 0
+                    if "temperature" in gpu:
+                        gpu["temperature"] = int(max(30, round(float(gpu.get("temperature", 30) or 30) - min(10.0, estimated / 10.0))))
+
+                sim_processes = [item for item in sim_processes if int(item.get("pid", -1)) != pid]
+
+        return sim_gpus, sim_processes
+
+    def _is_benchmark_action_allowed(
+        self,
+        action: dict,
+        gpus: list[dict],
+        processes: list[dict],
+    ) -> bool:
+        act = action.get("action")
+        target = action.get("target", {}) or {}
+
+        if act == "observe":
+            return True
+
+        if act == "set_power_limit":
+            gpu_index = int(target.get("gpu_index", -1))
+            return any(
+                int(gpu.get("index", gpu.get("gpu_index", -1))) == gpu_index
+                for gpu in gpus
+            )
+
+        if act == "pause_task":
+            pid = int(target.get("pid", -1))
+            process = next(
+                (item for item in processes if int(item.get("pid", -1)) == pid),
+                None,
+            )
+            if not process or process.get("priority") == "urgent":
+                return False
+            if self.governance:
+                return self.governance._is_governable_process(process)
+            return True
+
+        return False
+
+    def _filter_benchmark_actions(
+        self,
+        actions: list[dict],
+        gpus: list[dict],
+        processes: list[dict],
+    ) -> list[dict]:
+        filtered = []
+        seen = set()
+
+        for action in actions or []:
+            if not self._is_benchmark_action_allowed(action, gpus, processes):
+                continue
+
+            act = action.get("action")
+            target = action.get("target", {}) or {}
+            if act == "set_power_limit":
+                key = (act, int(target.get("gpu_index", -1)))
+            elif act == "pause_task":
+                key = (act, int(target.get("pid", -1)))
+            else:
+                key = (act, json.dumps(target, sort_keys=True, ensure_ascii=False))
+
+            if key in seen:
+                continue
+            seen.add(key)
+            filtered.append(action)
+
+        return filtered
+
+    async def _analyze_simulated_fairness(
+        self,
+        gpus: list[dict],
+        processes: list[dict],
+    ) -> dict:
+        if not self.governance:
+            return {
+                "overview": {
+                    "fairness_index": 0.0,
+                    "violation_user_count": 0,
+                    "dominant_user": None,
+                    "summary": "公平性服务不可用。",
+                },
+                "users": [],
+            }
+
+        history_stats = await self.store.get_user_stats()
+        governance_rules = await self.store.get_user_governance_rules()
+        history_by_user = {
+            row.get("username") or "unknown": row
+            for row in history_stats
+        }
+        governable_processes = [
+            proc for proc in processes
+            if self.governance._is_governable_process(proc)
+        ]
+        users = self.governance._build_user_profiles(
+            governable_processes,
+            gpus,
+            history_by_user,
+            governance_rules,
+        )
+        overview = self.governance._build_overview(users, gpus, governable_processes)
+        overview["reclaimable_candidates"] = len(
+            self.governance._build_yield_candidates(governable_processes, users, overview)
+        )
+        return {"overview": overview, "users": users}
+
+    def _count_risks(self, gpus: list[dict], overview: dict, budget_status: dict) -> dict:
+        hot_gpu_count = sum(1 for gpu in gpus if float(gpu.get("temperature", 0) or 0) >= 85)
+        thermal_critical_count = sum(1 for gpu in gpus if float(gpu.get("temperature", 0) or 0) >= 90)
+        budget_pressure = bool(budget_status.get("is_exceeded"))
+        violation_user_count = int(overview.get("violation_user_count", 0) or 0)
+        risk_count = hot_gpu_count + thermal_critical_count + violation_user_count + (1 if budget_pressure else 0)
+        return {
+            "risk_count": risk_count,
+            "hot_gpu_count": hot_gpu_count,
+            "thermal_critical_count": thermal_critical_count,
+            "budget_pressure": budget_pressure,
+            "violation_user_count": violation_user_count,
+        }
+
+    def _estimate_urgent_protection_score(
+        self,
+        processes: list[dict],
+        gpus: list[dict],
+        budget_status: dict,
+    ) -> float:
+        urgent_tasks = [proc for proc in processes if proc.get("priority") == "urgent"]
+        if not urgent_tasks:
+            return 82.0 if not budget_status.get("is_exceeded") else 68.0
+
+        gpu_by_index = {
+            int(gpu.get("index", -1)): gpu
+            for gpu in gpus
+        }
+        score = 92.0
+        if budget_status.get("is_exceeded"):
+            score -= 18.0
+        for proc in urgent_tasks:
+            gpu = gpu_by_index.get(int(proc.get("gpu_index", -1)))
+            if not gpu:
+                continue
+            if float(gpu.get("temperature", 0) or 0) >= 85:
+                score -= 15.0
+            if float(gpu.get("gpu_utilization", 0) or 0) < 35:
+                score -= 4.0
+        return round(self._clamp(score, 0.0, 100.0), 1)
+
+    def _compose_strategy_result(
+        self,
+        mode: str,
+        label: str,
+        actions: list[dict],
+        sim_gpus: list[dict],
+        fairness_report: dict,
+        baseline_total_power: float,
+        scheduler,
+        processes: list[dict],
+    ) -> dict:
+        total_power = sum(float(gpu.get("power_usage", 0) or 0) for gpu in sim_gpus)
+        saving_w = max(0.0, baseline_total_power - total_power)
+        saving_pct = saving_w / baseline_total_power * 100 if baseline_total_power > 0 else 0.0
+        budget_status = scheduler.get_budget_status(sim_gpus)
+        overview = fairness_report.get("overview", {})
+        fairness_index = float(overview.get("fairness_index", 0) or 0)
+        risk = self._count_risks(sim_gpus, overview, budget_status)
+        urgent_protection_score = self._estimate_urgent_protection_score(processes, sim_gpus, budget_status)
+
+        power_component = self._clamp(saving_pct * 4.0, 0.0, 100.0)
+        fairness_component = self._clamp(fairness_index, 0.0, 100.0)
+        risk_component = self._clamp(100.0 - risk["risk_count"] * 18.0, 0.0, 100.0)
+        composite_score = round(
+            power_component * 0.35
+            + fairness_component * 0.35
+            + risk_component * 0.15
+            + urgent_protection_score * 0.15,
+            1,
+        )
+
+        dominant_user = overview.get("dominant_user")
+        summary_parts = [
+            f"预计总功率 {total_power:.1f}W",
+            f"公平指数 {fairness_index:.1f}",
+        ]
+        if risk["budget_pressure"]:
+            summary_parts.append("仍有预算压力")
+        elif scheduler.budget_enabled:
+            summary_parts.append("预算压力已缓解")
+        if dominant_user:
+            summary_parts.append(f"主导用户 {dominant_user}")
+
+        return {
+            "mode": mode,
+            "label": label,
+            "projected_total_power_w": round(total_power, 1),
+            "estimated_saving_w": round(saving_w, 1),
+            "estimated_saving_pct": round(saving_pct, 1),
+            "fairness_index": round(fairness_index, 1),
+            "violation_user_count": risk["violation_user_count"],
+            "risk_count": risk["risk_count"],
+            "hot_gpu_count": risk["hot_gpu_count"],
+            "thermal_critical_count": risk["thermal_critical_count"],
+            "budget_pressure": risk["budget_pressure"],
+            "urgent_protection_score": urgent_protection_score,
+            "action_count": len(actions),
+            "composite_score": composite_score,
+            "summary": "，".join(summary_parts),
+            "actions": actions[:6],
+        }
+
+    async def get_strategy_benchmark(self, scheduler) -> dict:
+        """基于当前真实快照，对比无治理、规则治理、完整治理的离线效果。"""
+        if not self.agent:
+            return {"insufficient_data": True, "message": "Agent 不可用，无法生成策略实验对比。"}
+
+        gpus = await self.agent.get_all_gpus()
+        processes = await self.agent.get_processes()
+        if not gpus:
+            return {"insufficient_data": True, "message": "当前未获取到真实 GPU 数据，无法生成策略实验对比。"}
+
+        processes = await self._attach_priorities(processes)
+        base_fairness = await self._analyze_simulated_fairness(gpus, processes)
+        baseline_total_power = sum(float(gpu.get("power_usage", 0) or 0) for gpu in gpus)
+
+        rule_actions = self._filter_benchmark_actions(
+            await scheduler.run_rules(gpus, processes),
+            gpus,
+            processes,
+        )
+        budget_actions = self._filter_benchmark_actions(
+            await scheduler.run_budget_schedule(gpus, processes),
+            gpus,
+            processes,
+        )
+        ai_strategy = await scheduler.run_ai_schedule(gpus, processes)
+        ai_actions = self._filter_benchmark_actions(
+            (ai_strategy or {}).get("actions", []) if ai_strategy else [],
+            gpus,
+            processes,
+        )
+        if not ai_actions:
+            ai_actions = self._filter_benchmark_actions(
+                self._generate_rule_based_suggestions(gpus),
+                gpus,
+                processes,
+            )
+
+        observe_result = self._compose_strategy_result(
+            "observe",
+            "无治理",
+            [],
+            gpus,
+            base_fairness,
+            baseline_total_power,
+            scheduler,
+            processes,
+        )
+
+        rule_gpus, rule_processes = self._simulate_actions(gpus, processes, rule_actions)
+        rule_fairness = await self._analyze_simulated_fairness(rule_gpus, rule_processes)
+        rule_result = self._compose_strategy_result(
+            "rules_only",
+            "规则治理",
+            rule_actions,
+            rule_gpus,
+            rule_fairness,
+            baseline_total_power,
+            scheduler,
+            rule_processes,
+        )
+
+        full_actions = rule_actions + budget_actions + ai_actions
+        full_gpus, full_processes = self._simulate_actions(gpus, processes, full_actions)
+        full_fairness = await self._analyze_simulated_fairness(full_gpus, full_processes)
+        full_result = self._compose_strategy_result(
+            "full_governance",
+            "完整治理",
+            full_actions,
+            full_gpus,
+            full_fairness,
+            baseline_total_power,
+            scheduler,
+            full_processes,
+        )
+
+        results = [observe_result, rule_result, full_result]
+        winner = max(results, key=lambda item: item["composite_score"])
+        current_fairness = observe_result["fairness_index"]
+        scenario = "steady_window"
+        scenario_label = "平稳观察窗口"
+        if observe_result["budget_pressure"]:
+            scenario = "budget_pressure"
+            scenario_label = "预算压力窗口"
+        elif observe_result["hot_gpu_count"] > 0:
+            scenario = "thermal_pressure"
+            scenario_label = "热风险窗口"
+        elif current_fairness < 65:
+            scenario = "fairness_pressure"
+            scenario_label = "公平性压力窗口"
+
+        return {
+            "generated_at": time.time(),
+            "scenario": scenario,
+            "scenario_label": scenario_label,
+            "baseline_power_w": round(baseline_total_power, 1),
+            "budget_enabled": scheduler.budget_enabled,
+            "budget_limit_w": scheduler.budget_limit_watts,
+            "results": results,
+            "winner_mode": winner["mode"],
+            "winner_label": winner["label"],
+            "winner_summary": winner["summary"],
+            "insufficient_data": False,
+        }
 
     async def get_energy_metrics(self, hours: float = 24.0) -> dict:
         """核心KPI指标"""
@@ -475,7 +882,7 @@ class EnergyAnalytics:
         period_label = "高峰" if period == "peak" else "低谷" if period == "valley" else "平峰"
 
         for g in gpus:
-            idx = g.get("gpu_index", 0)
+            idx = g.get("index", g.get("gpu_index", 0))
             util = g.get("gpu_utilization", 0) or 0
             power = g.get("power_usage", 0)
             limit = g.get("power_limit", 350) or 350

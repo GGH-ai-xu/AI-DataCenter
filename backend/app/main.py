@@ -11,6 +11,7 @@
 import os
 import asyncio
 import logging
+import sys
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -26,6 +27,7 @@ from app.services.scheduler import SchedulerEngine
 from app.services.energy_analytics import EnergyAnalytics
 from app.services.governance import GovernanceService
 from app.services.privacy import PrivacyService
+from app.services.connection_settings import ConnectionSettingsService
 from app.ws.realtime import ws_manager
 
 load_dotenv()
@@ -43,6 +45,7 @@ class AppState:
     energy: EnergyAnalytics
     governance: GovernanceService
     privacy: PrivacyService
+    connection: ConnectionSettingsService
     _collect_task: asyncio.Task | None = None
     _cleanup_task: asyncio.Task | None = None
     _agent_fail_count: int = 0
@@ -126,10 +129,17 @@ async def collect_loop():
 async def lifespan(app: FastAPI):
     """应用生命周期"""
     # 初始化服务
-    agent_url = os.getenv("AGENT_URL", "http://localhost:8001")
+    default_agent_url = os.getenv("AGENT_URL", "http://127.0.0.1:8001")
     db_path = os.getenv("DB_PATH", "./data/history.db")
+    runtime_dir = os.path.join(os.path.dirname(__file__), "..", "..", "runtime")
+    connection_config_path = os.getenv(
+        "CONNECTION_CONFIG_PATH",
+        os.path.join(runtime_dir, "connection.json"),
+    )
 
-    app_state.agent = AgentClient(agent_url)
+    app_state.connection = ConnectionSettingsService(connection_config_path, default_agent_url)
+    connection_settings = app_state.connection.load()
+    app_state.agent = AgentClient(connection_settings["agent_url"])
     app_state.store = DataStore(db_path)
     await app_state.store.init()
     app_state.privacy = PrivacyService()
@@ -167,12 +177,16 @@ async def lifespan(app: FastAPI):
         budget_enabled=os.getenv("POWER_BUDGET_ENABLED", "false").lower() in {"1", "true", "yes", "on"},
     )
 
-    # 能耗分析引擎
-    app_state.energy = EnergyAnalytics(
-        app_state.store, app_state.llm, app_state.agent, app_state.privacy
-    )
     app_state.governance = GovernanceService(
         app_state.store, app_state.agent
+    )
+    # 能耗分析引擎
+    app_state.energy = EnergyAnalytics(
+        app_state.store,
+        app_state.llm,
+        app_state.agent,
+        app_state.privacy,
+        app_state.governance,
     )
 
     # 启动采集循环
@@ -216,6 +230,7 @@ from app.api.alerts import router as alerts_router
 from app.api.monitor import router as monitor_router
 from app.api.energy import router as energy_router
 from app.api.governance import router as governance_router
+from app.api.system import router as system_router
 
 app.include_router(gpu_router)
 app.include_router(tasks_router)
@@ -225,6 +240,7 @@ app.include_router(alerts_router)
 app.include_router(monitor_router)
 app.include_router(energy_router)
 app.include_router(governance_router)
+app.include_router(system_router)
 
 
 @app.get("/api/health")
@@ -237,6 +253,7 @@ async def health():
         "agent_info": agent_health,
         "ws_connections": ws_manager.connection_count,
         "llm_available": app_state.llm is not None,
+        "connection": app_state.connection.snapshot(agent_health),
     }
 
 
@@ -255,7 +272,12 @@ async def websocket_endpoint(ws: WebSocket):
 
 
 # 尝试挂载前端静态文件
-_frontend_dist = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist")
+_frontend_dist = os.getenv("FRONTEND_DIST_DIR", "")
+if not _frontend_dist:
+    if getattr(sys, "frozen", False):
+        _frontend_dist = os.path.join(os.path.dirname(sys.executable), "frontend", "dist")
+    else:
+        _frontend_dist = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist")
 if os.path.isdir(_frontend_dist):
     app.mount("/", StaticFiles(directory=_frontend_dist, html=True), name="frontend")
 
