@@ -77,7 +77,8 @@ html {
 
 body {
   position: relative;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   background: linear-gradient(180deg, #fbf7f2 0%, #f6f1ea 100%);
   color: var(--text-primary);
   font-family: var(--font-kaishu), 'Microsoft YaHei', serif;

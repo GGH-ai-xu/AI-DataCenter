@@ -12,6 +12,9 @@ contextBridge.exposeInMainWorld('desktopShell', {
   openExternal(url) {
     return ipcRenderer.invoke('desktop-shell:open-external', url)
   },
+  resolveCloseRequest(action) {
+    return ipcRenderer.invoke('desktop-shell:resolve-close-request', action)
+  },
   onBootStatus(callback) {
     if (typeof callback !== 'function') {
       return () => {}
@@ -20,5 +23,14 @@ contextBridge.exposeInMainWorld('desktopShell', {
     const listener = (_event, payload) => callback(payload)
     ipcRenderer.on('boot-status', listener)
     return () => ipcRenderer.removeListener('boot-status', listener)
+  },
+  onCloseRequest(callback) {
+    if (typeof callback !== 'function') {
+      return () => {}
+    }
+
+    const listener = (_event, payload) => callback(payload)
+    ipcRenderer.on('desktop-shell:close-requested', listener)
+    return () => ipcRenderer.removeListener('desktop-shell:close-requested', listener)
   },
 })

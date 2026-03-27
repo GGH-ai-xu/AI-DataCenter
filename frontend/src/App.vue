@@ -22,6 +22,13 @@ const desktopInfo = ref({
   updateSupported: false,
   releasesUrl: '',
 })
+const closePrompt = ref({
+  visible: false,
+  busy: false,
+  title: '关闭桌面平台',
+  message: '你想退出并关闭服务，还是最小化到后台继续运行？',
+  detail: '最小化到后台会保留桌面程序与已托管的本机服务。退出并关闭服务会结束桌面程序以及它拉起的本机后端和 Agent。',
+})
 const updateState = ref({
   loading: false,
   tone: 'idle',
@@ -35,6 +42,7 @@ let ws = null
 let reconnectTimer = null
 let clockTimer = null
 let shellStatusTimer = null
+let removeCloseRequestListener = null
 
 const navItems = [
   { path: '/', label: '工作台', icon: '台', en: 'Desk' },
@@ -304,6 +312,74 @@ async function openUpdateLink() {
   }
 }
 
+function openClosePrompt(payload = {}) {
+  closePrompt.value = {
+    visible: true,
+    busy: false,
+    title: payload?.title || '关闭桌面平台',
+    message: payload?.message || '你想退出并关闭服务，还是最小化到后台继续运行？',
+    detail: payload?.detail || '最小化到后台会保留桌面程序与已托管的本机服务。退出并关闭服务会结束桌面程序以及它拉起的本机后端和 Agent。',
+  }
+}
+
+async function resolveClosePrompt(action) {
+  if (closePrompt.value.busy) {
+    return
+  }
+
+  if (!window.desktopShell?.resolveCloseRequest) {
+    closePrompt.value = {
+      ...closePrompt.value,
+      visible: false,
+      busy: false,
+    }
+    return
+  }
+
+  if (action === 'quit') {
+    closePrompt.value = {
+      ...closePrompt.value,
+      busy: true,
+      title: '正在关闭桌面平台',
+      message: '正在停止本机服务并安全退出，请稍候。',
+      detail: '这一步会先结束桌面程序拉起的本机后端与 Agent，再真正退出应用。',
+    }
+  } else {
+    closePrompt.value = {
+      ...closePrompt.value,
+      busy: true,
+    }
+  }
+
+  try {
+    await window.desktopShell.resolveCloseRequest(action)
+    if (action !== 'quit') {
+      closePrompt.value = {
+        ...closePrompt.value,
+        visible: false,
+        busy: false,
+      }
+    }
+  } catch {
+    closePrompt.value = {
+      ...closePrompt.value,
+      visible: false,
+      busy: false,
+    }
+  }
+}
+
+function handleWindowKeydown(event) {
+  if (!closePrompt.value.visible || closePrompt.value.busy) {
+    return
+  }
+
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    void resolveClosePrompt('cancel')
+  }
+}
+
 onMounted(() => {
   updateClock()
   clockTimer = setInterval(updateClock, 1000)
@@ -311,6 +387,10 @@ onMounted(() => {
   refreshShellStatus()
   shellStatusTimer = setInterval(refreshShellStatus, 15000)
   connectWs()
+  if (window.desktopShell?.onCloseRequest) {
+    removeCloseRequestListener = window.desktopShell.onCloseRequest(openClosePrompt)
+  }
+  window.addEventListener('keydown', handleWindowKeydown)
 })
 
 onUnmounted(() => {
@@ -318,6 +398,8 @@ onUnmounted(() => {
   clearInterval(shellStatusTimer)
   clearTimeout(reconnectTimer)
   ws?.close()
+  removeCloseRequestListener?.()
+  window.removeEventListener('keydown', handleWindowKeydown)
 })
 
 watch(
@@ -497,6 +579,33 @@ watch(
         </router-view>
       </main>
     </section>
+
+    <transition name="ink-overlay">
+      <div
+        v-if="closePrompt.visible"
+        class="ink-dialog-backdrop"
+        @click.self="!closePrompt.busy && resolveClosePrompt('cancel')"
+      >
+        <div class="ink-dialog tech-card" role="dialog" aria-modal="true" aria-labelledby="app-close-dialog-title">
+          <div class="ink-dialog__seal">印</div>
+          <div class="ink-dialog__eyebrow">桌面平台 · 退出确认</div>
+          <h3 id="app-close-dialog-title" class="ink-dialog__title">{{ closePrompt.title }}</h3>
+          <p class="ink-dialog__desc">{{ closePrompt.message }}</p>
+          <div class="ink-dialog__detail">{{ closePrompt.detail }}</div>
+          <div class="ink-dialog__actions">
+            <button class="btn-tech" :disabled="closePrompt.busy" @click="resolveClosePrompt('cancel')">
+              继续停留
+            </button>
+            <button class="btn-tech btn-tech--primary" :disabled="closePrompt.busy" @click="resolveClosePrompt('minimize')">
+              最小化到后台
+            </button>
+            <button class="btn-tech btn-tech--danger" :disabled="closePrompt.busy" @click="resolveClosePrompt('quit')">
+              退出并关闭服务
+            </button>
+          </div>
+        </div>
+      </div>
+    </transition>
   </div>
 </template>
 
@@ -505,6 +614,7 @@ watch(
   position: relative;
   display: grid;
   grid-template-columns: 286px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 22px;
   width: 100%;
   height: 100vh;
@@ -557,12 +667,19 @@ watch(
   display: flex;
   flex-direction: column;
   min-height: 0;
+  height: 100%;
+  max-height: 100%;
   padding: 22px 18px 18px;
   gap: 20px;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-gutter: stable;
   overscroll-behavior: contain;
+}
+
+.ink-rail.tech-card {
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .ink-rail::-webkit-scrollbar {
@@ -961,6 +1078,8 @@ watch(
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  height: 100%;
+  max-height: 100%;
   gap: 18px;
 }
 
@@ -1071,6 +1190,123 @@ watch(
   padding-right: 6px;
 }
 
+.ink-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 18% 20%, rgba(46, 139, 87, 0.1) 0%, transparent 28%),
+    radial-gradient(circle at 82% 16%, rgba(212, 175, 55, 0.08) 0%, transparent 24%),
+    radial-gradient(circle at 70% 82%, rgba(196, 30, 58, 0.07) 0%, transparent 22%),
+    rgba(248, 245, 240, 0.72);
+  backdrop-filter: blur(12px);
+}
+
+.ink-dialog {
+  width: min(560px, calc(100vw - 40px));
+  padding: 28px 28px 24px;
+  border-radius: 30px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(255, 252, 247, 0.72)),
+    radial-gradient(circle at top right, rgba(46, 139, 87, 0.08), transparent 32%);
+}
+
+.ink-dialog:hover {
+  transform: none;
+  border-color: var(--border-color);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(255, 252, 247, 0.72)),
+    radial-gradient(circle at top right, rgba(46, 139, 87, 0.08), transparent 32%);
+  box-shadow: var(--shadow-card);
+}
+
+.ink-dialog__seal {
+  position: absolute;
+  top: 24px;
+  right: 26px;
+  width: 42px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid rgba(196, 30, 58, 0.78);
+  border-radius: 10px;
+  color: var(--ink-vermillion);
+  font-family: var(--font-seal);
+  font-size: 1rem;
+  transform: rotate(-8deg);
+  background: rgba(255, 250, 244, 0.86);
+}
+
+.ink-dialog__eyebrow {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.ink-dialog__title {
+  margin-top: 12px;
+  padding-right: 56px;
+  font-family: var(--font-xingshu);
+  font-size: clamp(1.55rem, 2.8vw, 2rem);
+  font-weight: 400;
+  line-height: 1.24;
+  color: var(--text-primary);
+}
+
+.ink-dialog__desc {
+  margin-top: 12px;
+  font-size: 0.94rem;
+  line-height: 1.85;
+  color: var(--text-secondary);
+}
+
+.ink-dialog__detail {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(58, 95, 75, 0.08);
+  font-size: 0.82rem;
+  line-height: 1.8;
+  color: var(--text-secondary);
+}
+
+.ink-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.ink-overlay-enter-active,
+.ink-overlay-leave-active {
+  transition: opacity 0.24s ease;
+}
+
+.ink-overlay-enter-active .ink-dialog,
+.ink-overlay-leave-active .ink-dialog {
+  transition: transform 0.28s ease, opacity 0.28s ease, filter 0.28s ease;
+}
+
+.ink-overlay-enter-from,
+.ink-overlay-leave-to {
+  opacity: 0;
+}
+
+.ink-overlay-enter-from .ink-dialog,
+.ink-overlay-leave-to .ink-dialog {
+  opacity: 0;
+  transform: translateY(12px) scale(0.98);
+  filter: blur(5px);
+}
+
 .ink-page-enter-active {
   animation: cloud-appear 0.42s ease-out;
 }
@@ -1100,13 +1336,20 @@ watch(
 @media (max-width: 1180px) {
   .app-shell {
     grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
     gap: 16px;
     padding: 14px;
+    height: auto;
+    min-height: 100vh;
+    overflow-y: auto;
+    overflow-x: hidden;
   }
 
   .ink-rail {
     gap: 16px;
     padding: 18px 16px;
+    max-height: none;
+    overflow: visible;
   }
 
   .ink-nav {
@@ -1188,6 +1431,30 @@ watch(
 
   .stage-banner__desc {
     font-size: 0.88rem;
+  }
+
+  .ink-dialog {
+    padding: 22px 20px 20px;
+  }
+
+  .ink-dialog__seal {
+    top: 18px;
+    right: 18px;
+    width: 38px;
+    height: 38px;
+  }
+
+  .ink-dialog__title {
+    padding-right: 48px;
+    font-size: 1.42rem;
+  }
+
+  .ink-dialog__actions {
+    flex-direction: column-reverse;
+  }
+
+  .ink-dialog__actions .btn-tech {
+    width: 100%;
   }
 }
 </style>

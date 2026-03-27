@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, nativeImage, shell } = require('electron')
+const { app, BrowserWindow, dialog, ipcMain, Menu, Tray, nativeImage, shell } = require('electron')
 const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
@@ -21,6 +21,9 @@ let agentProcess = null
 let ownsBackend = false
 let ownsAgent = false
 let isQuitting = false
+let allowWindowClose = false
+let tray = null
+let closeDialogOpen = false
 
 function parseGitHubRepository(rawUrl) {
   const normalized = String(rawUrl || '')
@@ -184,6 +187,127 @@ function resolveWindowIcon() {
   return image.isEmpty() ? undefined : image
 }
 
+function showMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return
+  }
+
+  mainWindow.show()
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore()
+  }
+  mainWindow.focus()
+}
+
+function ensureTray() {
+  if (tray && !tray.isDestroyed()) {
+    return tray
+  }
+
+  const icon = resolveWindowIcon()
+  if (!icon) {
+    return null
+  }
+
+  tray = new Tray(icon)
+  tray.setToolTip(APP_TITLE)
+  tray.setContextMenu(Menu.buildFromTemplate([
+    {
+      label: '显示主界面',
+      click: () => showMainWindow(),
+    },
+    {
+      label: '打开日志目录',
+      click: () => {
+        shell.openPath(logsRoot()).catch(() => {})
+      },
+    },
+    { type: 'separator' },
+    {
+      label: '退出并关闭服务',
+      click: () => {
+        void requestAppShutdown()
+      },
+    },
+  ]))
+
+  tray.on('double-click', () => {
+    showMainWindow()
+  })
+
+  tray.on('click', () => {
+    showMainWindow()
+  })
+
+  return tray
+}
+
+function minimizeToTray() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return
+  }
+
+  ensureTray()
+  mainWindow.hide()
+}
+
+function requestCloseConfirmation() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return false
+  }
+
+  if (mainWindow.webContents.isLoadingMainFrame()) {
+    return false
+  }
+
+  try {
+    showMainWindow()
+    mainWindow.webContents.send('desktop-shell:close-requested', {
+      title: '关闭桌面平台',
+      message: '你想退出并关闭服务，还是最小化到后台继续运行？',
+      detail: '最小化到后台会保留桌面程序与已托管的本机服务。退出并关闭服务会结束桌面程序以及它拉起的本机后端和 Agent。',
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
+function handleMainWindowClose(event) {
+  if (isQuitting || allowWindowClose) {
+    return
+  }
+
+  event.preventDefault()
+
+  if (closeDialogOpen) {
+    showMainWindow()
+    return
+  }
+
+  closeDialogOpen = true
+  if (!requestCloseConfirmation()) {
+    closeDialogOpen = false
+    minimizeToTray()
+  }
+}
+
+async function requestAppShutdown() {
+  if (isQuitting) {
+    return
+  }
+
+  isQuitting = true
+  closeDialogOpen = false
+
+  try {
+    await stopManagedProcesses()
+  } finally {
+    allowWindowClose = true
+    app.quit()
+  }
+}
+
 ipcMain.handle('desktop-shell:get-app-info', async () => ({
   name: APP_TITLE,
   version: currentAppVersion(),
@@ -217,6 +341,24 @@ ipcMain.handle('desktop-shell:open-external', async (_event, url) => {
   }
   await shell.openExternal(target)
   return { ok: true }
+})
+
+ipcMain.handle('desktop-shell:resolve-close-request', async (_event, rawAction) => {
+  const action = String(rawAction || 'cancel').trim()
+  closeDialogOpen = false
+
+  if (action === 'minimize') {
+    minimizeToTray()
+    return { ok: true, action }
+  }
+
+  if (action === 'quit') {
+    void requestAppShutdown()
+    return { ok: true, action }
+  }
+
+  showMainWindow()
+  return { ok: true, action: 'cancel' }
 })
 
 function emitBootStatus(message, progress) {
@@ -461,6 +603,8 @@ async function createMainWindow() {
   })
 
   mainWindow.removeMenu()
+  ensureTray()
+  mainWindow.on('close', handleMainWindowClose)
   mainWindow.on('closed', () => {
     mainWindow = null
   })
@@ -497,7 +641,7 @@ async function createMainWindow() {
         shell.openPath(logsRoot()).catch(() => {})
         return
       }
-      app.quit()
+      void requestAppShutdown()
     }).catch(() => {})
   })
 
@@ -551,6 +695,7 @@ async function launchWorkbenchWithRecovery() {
     await showStartupError(error)
     isQuitting = true
     await stopManagedProcesses()
+    allowWindowClose = true
     closeSplashWindow()
     app.quit()
   }
@@ -578,18 +723,17 @@ async function bootstrap() {
   })
 
   app.on('before-quit', async (event) => {
-    if (isQuitting) {
+    if (allowWindowClose) {
       return
     }
+
     event.preventDefault()
-    isQuitting = true
-    await stopManagedProcesses()
-    app.quit()
+    void requestAppShutdown()
   })
 
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {
-      app.quit()
+      void requestAppShutdown()
     }
   })
 
