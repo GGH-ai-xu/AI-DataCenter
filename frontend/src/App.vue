@@ -171,7 +171,7 @@ async function checkForUpdates() {
           ok: true,
           available: false,
           noReleaseYet: true,
-          currentVersion: appInfo.value.version || '1.0.4',
+          currentVersion: appInfo.value.version || '1.0.5',
           releasesUrl: appInfo.value.releasesUrl || result?.releasesUrl || '',
         }
       } else {
@@ -285,7 +285,7 @@ onUnmounted(() => {
 
       <div class="ink-header__right">
         <div v-if="isDesktop" class="desktop-meta">
-          <span class="desktop-meta__version">v{{ appInfo.version || '1.0.4' }}</span>
+          <span class="desktop-meta__version">v{{ appInfo.version || '1.0.5' }}</span>
           <button
             type="button"
             class="desktop-meta__action"

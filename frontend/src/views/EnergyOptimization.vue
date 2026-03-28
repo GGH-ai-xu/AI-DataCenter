@@ -11,12 +11,14 @@
 import { ref, computed, reactive, onMounted, onUnmounted, nextTick } from 'vue'
 import * as echarts from 'echarts'
 import { getEnergyMetrics, getTimeBreakdown, getGpuEfficiency, getPowerPrediction, getCarbonData, runOptimize, getScheduleHistory, getHistoryComparison, exportEnergyReport, getAiInsight, getAiAnomalies, getSchedulerStatus, healthCheck } from '../services/api'
+import { exportTextFile } from '../services/desktopExport'
 
 // ========== 数据 ==========
 const metrics = ref(null), breakdown = ref(null), efficiency = ref(null)
 const prediction = ref(null), carbon = ref(null)
 const scheduleHistory = ref(null), historyComparison = ref(null)
 const optimizeResult = ref(null), optimizing = ref(false), loading = ref(true), exporting = ref(false)
+const exportFeedback = ref(null)
 
 // AI能力数据
 const hasLlm = ref(false), aiInsight = ref(null), aiAnomalies = ref(null)
@@ -126,14 +128,19 @@ async function doExport(fmt='markdown') {
   exporting.value=true
   try {
     const res = await exportEnergyReport(24, fmt)
-    const blob = new Blob([res.data], { type: fmt==='html'?'text/html':'text/markdown' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url; a.download = fmt==='html'?'energy-report.html':'energy-report.md'
-    document.body.appendChild(a); a.click(); document.body.removeChild(a)
-    URL.revokeObjectURL(url)
+    const filename = fmt === 'html' ? 'energy-report.html' : 'energy-report.md'
+    const mime = fmt === 'html' ? 'text/html; charset=utf-8' : 'text/markdown; charset=utf-8'
+    const saved = await exportTextFile(res.data, { filename, mime })
+    exportFeedback.value = {
+      tone: 'ok',
+      text: saved.path ? `报告已保存到 ${saved.path}` : `已开始下载 ${saved.filename}`,
+    }
   } catch(err) {
     console.error('报告导出失败', err)
+    exportFeedback.value = {
+      tone: 'error',
+      text: err?.message || '报告导出失败',
+    }
   }
   exporting.value=false
 }
@@ -341,6 +348,15 @@ onUnmounted(()=>{clearInterval(timer);window.removeEventListener('resize',handle
         <div class="source-card__value">{{ sourceHint }}</div>
         <div class="source-card__hint">当前页面全部基于本地 Agent 实时采集，不再引用旧虚拟样例数据。</div>
       </div>
+    </section>
+
+    <section
+      v-if="exportFeedback"
+      class="ink-export-feedback si"
+      style="--d:.08s"
+      :class="`ink-export-feedback--${exportFeedback.tone}`"
+    >
+      {{ exportFeedback.text }}
     </section>
 
     <!-- ===== KPI 六宫格 ===== -->
@@ -602,6 +618,23 @@ onUnmounted(()=>{clearInterval(timer);window.removeEventListener('resize',handle
   position: relative;
   color: #2C2C2C;
   font-family: 'ZCOOL XiaoWei', 'Noto Serif SC', serif;
+}
+
+.ink-export-feedback {
+  margin: 0 0 18px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,0.06);
+  background: rgba(255,255,255,0.62);
+  font-size: 0.8125rem;
+  line-height: 1.7;
+  color: #3A5F4B;
+}
+
+.ink-export-feedback--error {
+  color: #C41E3A;
+  border-color: rgba(196,30,58,0.16);
+  background: rgba(196,30,58,0.06);
 }
 
 /* ===== 背景水墨山水 ===== */

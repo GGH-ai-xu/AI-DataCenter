@@ -468,6 +468,58 @@ async function resolveAgentExportTarget() {
   throw new Error('桌面、下载目录和运行目录都不可写，无法导出远端 Agent 包')
 }
 
+function sanitizeFilename(value, fallback = 'export.txt') {
+  const normalized = path.basename(String(value || fallback).trim() || fallback)
+  const safe = normalized.replace(/[<>:"/\\|?*\x00-\x1F]/g, '-').trim()
+  return safe || fallback
+}
+
+function uniqueFilePath(targetDir, rawFilename) {
+  const safeName = sanitizeFilename(rawFilename)
+  const parsed = path.parse(safeName)
+  let candidate = path.join(targetDir, safeName)
+
+  if (!fs.existsSync(candidate)) {
+    return candidate
+  }
+
+  for (let index = 1; index <= 200; index += 1) {
+    const suffix = `-${timestampLabel()}-${index}`
+    candidate = path.join(targetDir, `${parsed.name}${suffix}${parsed.ext}`)
+    if (!fs.existsSync(candidate)) {
+      return candidate
+    }
+  }
+
+  return path.join(targetDir, `${parsed.name}-${Date.now()}${parsed.ext}`)
+}
+
+async function resolveTextExportTarget(filename) {
+  const candidates = [
+    { label: 'downloads', baseDir: app.getPath('downloads') },
+    { label: 'desktop', baseDir: app.getPath('desktop') },
+    { label: 'runtime', baseDir: path.join(runtimeRoot(), 'exports') },
+  ]
+
+  for (const candidate of candidates) {
+    if (!candidate.baseDir) {
+      continue
+    }
+
+    const writable = await canWriteDirectory(candidate.baseDir)
+    if (!writable) {
+      continue
+    }
+
+    return {
+      destinationLabel: candidate.label,
+      targetPath: uniqueFilePath(candidate.baseDir, filename),
+    }
+  }
+
+  throw new Error('下载目录、桌面和运行目录都不可写，无法导出文件')
+}
+
 async function exportAgentPackage() {
   const sourceDir = agentPackageSourcePath()
   if (!fs.existsSync(sourceDir)) {
@@ -502,6 +554,51 @@ function buildWorkbenchUrl() {
   url.searchParams.set('desktopVersion', currentAppVersion())
   url.searchParams.set('boot', String(Date.now()))
   return url.toString()
+}
+
+function isNavigationAbortError(error) {
+  const message = String(error?.message || error || '').trim()
+  return /ERR_ABORTED\s*\(-?3\)/i.test(message) || /\bERR_ABORTED\b/i.test(message)
+}
+
+async function loadWorkbenchUrl(targetWindow, {
+  retries = 1,
+  retryDelayMs = 450,
+} = {}) {
+  if (!targetWindow || targetWindow.isDestroyed()) {
+    throw new Error('主窗口不可用，无法载入工作台')
+  }
+
+  const attempts = Math.max(1, retries + 1)
+  let lastError = null
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      await targetWindow.loadURL(buildWorkbenchUrl())
+      return
+    } catch (error) {
+      lastError = error
+      if (!isNavigationAbortError(error)) {
+        throw error
+      }
+
+      const currentUrl = String(targetWindow.webContents?.getURL?.() || '').trim()
+      if (currentUrl.startsWith(backendBaseUrl())) {
+        return
+      }
+
+      if (attempt >= attempts) {
+        break
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs))
+      if (targetWindow.isDestroyed()) {
+        throw error
+      }
+    }
+  }
+
+  throw lastError || new Error('工作台页面加载被中断')
 }
 
 function isPortFree(port, host = LOCAL_HOST) {
@@ -802,6 +899,19 @@ ipcMain.handle('desktop-shell:open-path', async (_event, value) => {
   return { ok: true }
 })
 
+ipcMain.handle('desktop-shell:save-text-file', async (_event, payload) => {
+  const filename = sanitizeFilename(payload?.filename, 'export.txt')
+  const content = String(payload?.content || '')
+  const { targetPath, destinationLabel } = await resolveTextExportTarget(filename)
+  await fs.promises.writeFile(targetPath, content, 'utf8')
+  return {
+    ok: true,
+    filename: path.basename(targetPath),
+    path: targetPath,
+    destinationLabel,
+  }
+})
+
 ipcMain.handle('desktop-shell:export-agent-package', async () => {
   return exportAgentPackage()
 })
@@ -841,7 +951,7 @@ ipcMain.handle('desktop-shell:restart-managed-services', async () => {
     await ensureServices()
 
     if (mainWindow && !mainWindow.isDestroyed()) {
-      await mainWindow.loadURL(buildWorkbenchUrl())
+      await loadWorkbenchUrl(mainWindow)
     }
 
     return {
@@ -1436,7 +1546,7 @@ async function createMainWindow() {
   emitBootStatus('正在渲染桌面界面', 97)
   await mainWindow.webContents.session.clearCache().catch(() => {})
   await mainWindow.webContents.session.clearStorageData({ storages: ['serviceworkers'] }).catch(() => {})
-  await mainWindow.loadURL(buildWorkbenchUrl())
+  await loadWorkbenchUrl(mainWindow)
 
   const showFallbackTimer = setTimeout(() => {
     if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {

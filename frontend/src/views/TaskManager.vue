@@ -12,6 +12,7 @@ import {
   setTaskPriority,
   terminateTask,
 } from '../services/api'
+import { exportTextFile } from '../services/desktopExport'
 
 const store = useAppStore()
 const keyword = ref('')
@@ -310,17 +311,21 @@ async function doExportGovernance(fmt = 'markdown') {
   exporting.value = true
   try {
     const res = await exportGovernanceReport(fmt)
-    const blob = new Blob([res.data], { type: fmt === 'html' ? 'text/html' : 'text/markdown' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = fmt === 'html' ? 'governance-report.html' : 'governance-report.md'
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
+    const filename = fmt === 'html' ? 'governance-report.html' : 'governance-report.md'
+    const mime = fmt === 'html' ? 'text/html; charset=utf-8' : 'text/markdown; charset=utf-8'
+    const saved = await exportTextFile(res.data, { filename, mime })
+    setActionNotice(
+      'ok',
+      '治理报告已导出',
+      saved.path ? `已保存到 ${saved.path}` : `已开始下载 ${saved.filename}`,
+    )
   } catch (error) {
     console.error(error)
+    setActionNotice(
+      'critical',
+      '治理报告导出失败',
+      error?.message || '治理报告导出失败',
+    )
   }
   exporting.value = false
 }

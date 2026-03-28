@@ -24,6 +24,9 @@ contextBridge.exposeInMainWorld('desktopShell', {
   openPath(value) {
     return ipcRenderer.invoke('desktop-shell:open-path', value)
   },
+  saveTextFile(payload) {
+    return ipcRenderer.invoke('desktop-shell:save-text-file', payload)
+  },
   exportAgentPackage() {
     return ipcRenderer.invoke('desktop-shell:export-agent-package')
   },
