@@ -1,5 +1,5 @@
 param(
-  [string]$PythonExe = "python",
+  [string]$PythonExe = "",
   [switch]$NoClean
 )
 
@@ -10,6 +10,21 @@ $pyiDist = Join-Path $root "dist\pyinstaller"
 $pyiWork = Join-Path $root "build\pyinstaller"
 $packageRoot = Join-Path $root "dist\windows-package"
 $frontendDir = Join-Path $root "frontend"
+$venvPython = Join-Path $root ".venv\Scripts\python.exe"
+
+function Resolve-PythonExe {
+  param([string]$Requested)
+
+  if ($Requested -and $Requested.Trim()) {
+    return $Requested.Trim()
+  }
+
+  if (Test-Path $venvPython) {
+    return $venvPython
+  }
+
+  return "python"
+}
 
 function Run-Step {
   param(
@@ -33,13 +48,30 @@ function Run-Step {
   }
 }
 
+function Ensure-Package {
+  param(
+    [string]$Interpreter,
+    [string]$PackageName
+  )
+
+  if (Get-Command uv -ErrorAction SilentlyContinue) {
+    Run-Step $root @("uv", "pip", "install", "--python", $Interpreter, $PackageName)
+    return
+  }
+
+  Run-Step $root @($Interpreter, "-m", "pip", "install", $PackageName)
+}
+
+$PythonExe = Resolve-PythonExe $PythonExe
+Write-Host "Using Python interpreter: $PythonExe"
+
 if (-not $NoClean) {
   Remove-Item $pyiDist -Recurse -Force -ErrorAction SilentlyContinue
   Remove-Item $pyiWork -Recurse -Force -ErrorAction SilentlyContinue
   Remove-Item $packageRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-Run-Step $root @($PythonExe, "-m", "pip", "install", "pyinstaller")
+Ensure-Package $PythonExe "pyinstaller"
 Run-Step $frontendDir @("npm", "run", "build")
 
 $backendArgs = @(

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, Menu, Tray, nativeImage, shell } = require('electron')
+const { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, Tray, nativeImage, screen, shell } = require('electron')
 const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
@@ -14,7 +14,14 @@ const LOCAL_HOST = '127.0.0.1'
 const DEFAULT_BACKEND_PORT = 8000
 const DEFAULT_AGENT_PORT = 8001
 const PORT_SCAN_LIMIT = 40
+const AUTO_RESTART_LIMIT = 3
+const AUTO_RESTART_DELAY_MS = 1500
+const MAIN_WINDOW_SHOW_FALLBACK_MS = 2600
+const WINDOW_TOPMOST_BOUNCE_MS = 220
 const RELEASE_EXE_PATTERN = /^GPUGovernanceWorkbench-Setup-.*\.exe$/i
+const AGENT_EXPORT_DIRNAME = 'GPU-Server-Agent'
+const AGENT_START_SCRIPT_NAME = 'Start-Agent.bat'
+const AGENT_README_NAME = 'README-REMOTE.txt'
 
 let mainWindow = null
 let splashWindow = null
@@ -28,6 +35,124 @@ let tray = null
 let closeDialogOpen = false
 let backendPort = DEFAULT_BACKEND_PORT
 let agentPort = DEFAULT_AGENT_PORT
+const managedServices = {
+  backend: {
+    key: 'backend',
+    label: '治理后端',
+    status: 'idle',
+    detail: '等待启动',
+    port: DEFAULT_BACKEND_PORT,
+    managed: false,
+    owned: false,
+    restartAttempts: 0,
+    launchSpec: null,
+    recoveryPending: false,
+    updatedAt: Date.now(),
+  },
+  agent: {
+    key: 'agent',
+    label: '本机采集代理',
+    status: 'idle',
+    detail: '等待启动',
+    port: DEFAULT_AGENT_PORT,
+    managed: false,
+    owned: false,
+    restartAttempts: 0,
+    launchSpec: null,
+    recoveryPending: false,
+    updatedAt: Date.now(),
+  },
+}
+
+function managedServicePort(key) {
+  return key === 'backend' ? backendPort : agentPort
+}
+
+function managedServiceProcess(key) {
+  return key === 'backend' ? backendProcess : agentProcess
+}
+
+function setManagedServiceProcess(key, child) {
+  if (key === 'backend') {
+    backendProcess = child
+    return
+  }
+  agentProcess = child
+}
+
+function setManagedServiceOwned(key, owned) {
+  if (key === 'backend') {
+    ownsBackend = owned
+  } else {
+    ownsAgent = owned
+  }
+  managedServices[key].owned = owned
+}
+
+function managedServiceSnapshot(key) {
+  const state = managedServices[key]
+  return {
+    key: state.key,
+    label: state.label,
+    status: state.status,
+    detail: state.detail,
+    port: state.port,
+    managed: state.managed,
+    owned: state.owned,
+    restartAttempts: state.restartAttempts,
+    updatedAt: state.updatedAt,
+  }
+}
+
+function allManagedServiceSnapshots() {
+  return {
+    backend: managedServiceSnapshot('backend'),
+    agent: managedServiceSnapshot('agent'),
+  }
+}
+
+function emitManagedServiceState() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return
+  }
+
+  try {
+    mainWindow.webContents.send('desktop-shell:service-state', {
+      services: allManagedServiceSnapshots(),
+    })
+  } catch {}
+}
+
+function updateManagedServiceState(key, patch = {}) {
+  const state = managedServices[key]
+  Object.assign(state, patch, {
+    port: patch.port ?? managedServicePort(key),
+    updatedAt: Date.now(),
+  })
+  emitManagedServiceState()
+}
+
+function markManagedServiceExternal(key, label, detail) {
+  updateManagedServiceState(key, {
+    label,
+    status: 'running',
+    detail,
+    managed: false,
+    owned: false,
+    restartAttempts: 0,
+    launchSpec: null,
+    recoveryPending: false,
+  })
+}
+
+function managedServiceFailureDetail(label, code, signal) {
+  return [
+    `${label} 已停止。`,
+    `退出码: ${code ?? '未知'}`,
+    `信号: ${signal ?? '无'}`,
+    `日志目录: ${logsRoot()}`,
+  ].join('\n')
+}
 
 function parseGitHubRepository(rawUrl) {
   const normalized = String(rawUrl || '')
@@ -168,6 +293,16 @@ function connectionConfigPath() {
   return path.join(runtimeRoot(), 'runtime', 'connection.json')
 }
 
+function runtimeInfoSnapshot() {
+  return {
+    runtimeRoot: runtimeRoot(),
+    logsRoot: logsRoot(),
+    backendBaseUrl: backendBaseUrl(),
+    agentBaseUrl: agentBaseUrl(),
+    connectionMode: readConnectionMode(),
+  }
+}
+
 function readConnectionMode() {
   try {
     const payload = JSON.parse(fs.readFileSync(connectionConfigPath(), 'utf-8'))
@@ -179,6 +314,10 @@ function readConnectionMode() {
 
 function resourcesPath(name, executable) {
   return path.join(installRoot(), name, executable)
+}
+
+function agentPackageSourcePath() {
+  return path.join(installRoot(), 'agent')
 }
 
 function backendBaseUrl(port = backendPort) {
@@ -195,6 +334,129 @@ function agentHealthUrl() {
 
 function agentBaseUrl(port = agentPort) {
   return `http://${LOCAL_HOST}:${port}`
+}
+
+function buildExportedAgentStartScript() {
+  return [
+    '@echo off',
+    'setlocal',
+    'cd /d "%~dp0"',
+    `set "GPU_AGENT_HOST=0.0.0.0"`,
+    `set "GPU_AGENT_PORT=${DEFAULT_AGENT_PORT}"`,
+    'echo Starting GPU Server Agent...',
+    `netsh advfirewall firewall add rule name="GPU Server Agent ${DEFAULT_AGENT_PORT}" dir=in action=allow protocol=TCP localport=${DEFAULT_AGENT_PORT} >nul 2>nul`,
+    'start "" "%~dp0GPUServerAgent.exe"',
+    'echo.',
+    `echo Health check: http://127.0.0.1:${DEFAULT_AGENT_PORT}/api/health`,
+    `echo If remote access still fails, allow TCP ${DEFAULT_AGENT_PORT} in Windows Firewall.`,
+    'pause',
+    '',
+  ].join('\r\n')
+}
+
+function buildExportedAgentReadme() {
+  return [
+    'GPU Remote Agent Quick Start',
+    '',
+    `1. Double-click ${AGENT_START_SCRIPT_NAME}`,
+    `2. On the remote host, open http://127.0.0.1:${DEFAULT_AGENT_PORT}/api/health`,
+    `3. In GPU Governance Workbench, fill in http://<server-ip>:${DEFAULT_AGENT_PORT}`,
+    '4. Click Test Connection, then Save and Switch',
+    '',
+    'Notes:',
+    `- The agent listens on port ${DEFAULT_AGENT_PORT}`,
+    '- If the health URL opens only on the remote host itself, check Windows Firewall',
+    '- Keep the whole folder together when copying to the remote host',
+    '',
+  ].join('\r\n')
+}
+
+function timestampLabel() {
+  const now = new Date()
+  const pad = (value) => String(value).padStart(2, '0')
+  return [
+    now.getFullYear(),
+    pad(now.getMonth() + 1),
+    pad(now.getDate()),
+    '-',
+    pad(now.getHours()),
+    pad(now.getMinutes()),
+    pad(now.getSeconds()),
+  ].join('')
+}
+
+async function canWriteDirectory(targetDir) {
+  try {
+    await fs.promises.mkdir(targetDir, { recursive: true })
+    const probe = path.join(targetDir, `.write-test-${process.pid}-${Date.now()}.tmp`)
+    await fs.promises.writeFile(probe, 'ok')
+    await fs.promises.unlink(probe)
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function resolveAgentExportTarget() {
+  const candidates = [
+    { label: 'desktop', baseDir: app.getPath('desktop') },
+    { label: 'downloads', baseDir: app.getPath('downloads') },
+    { label: 'runtime', baseDir: path.join(runtimeRoot(), 'exports') },
+  ]
+
+  for (const candidate of candidates) {
+    if (!candidate.baseDir) {
+      continue
+    }
+    const writable = await canWriteDirectory(candidate.baseDir)
+    if (!writable) {
+      continue
+    }
+
+    const preferred = path.join(candidate.baseDir, AGENT_EXPORT_DIRNAME)
+    if (!fs.existsSync(preferred)) {
+      return {
+        destinationLabel: candidate.label,
+        targetDir: preferred,
+      }
+    }
+
+    return {
+      destinationLabel: candidate.label,
+      targetDir: path.join(candidate.baseDir, `${AGENT_EXPORT_DIRNAME}-${timestampLabel()}`),
+    }
+  }
+
+  throw new Error('桌面、下载目录和运行目录都不可写，无法导出远端 Agent 包')
+}
+
+async function exportAgentPackage() {
+  const sourceDir = agentPackageSourcePath()
+  if (!fs.existsSync(sourceDir)) {
+    throw new Error(`Missing agent runtime: ${sourceDir}`)
+  }
+
+  const { targetDir, destinationLabel } = await resolveAgentExportTarget()
+  await fs.promises.cp(sourceDir, targetDir, { recursive: true, force: true })
+  await fs.promises.writeFile(
+    path.join(targetDir, AGENT_START_SCRIPT_NAME),
+    buildExportedAgentStartScript(),
+    'utf8',
+  )
+  await fs.promises.writeFile(
+    path.join(targetDir, AGENT_README_NAME),
+    buildExportedAgentReadme(),
+    'utf8',
+  )
+
+  return {
+    ok: true,
+    targetDir,
+    scriptName: AGENT_START_SCRIPT_NAME,
+    readmeName: AGENT_README_NAME,
+    healthUrl: `http://127.0.0.1:${DEFAULT_AGENT_PORT}/api/health`,
+    destinationLabel,
+  }
 }
 
 function buildWorkbenchUrl() {
@@ -244,16 +506,92 @@ function resolveWindowIcon() {
   return image.isEmpty() ? undefined : image
 }
 
+function rectsIntersect(left, right) {
+  return (
+    left.x < right.x + right.width &&
+    left.x + left.width > right.x &&
+    left.y < right.y + right.height &&
+    left.y + left.height > right.y
+  )
+}
+
+function centerBoundsWithinArea(bounds, area) {
+  const width = area.width < 980 ? area.width : Math.max(980, Math.min(bounds.width || 1520, area.width))
+  const height = area.height < 700 ? area.height : Math.max(700, Math.min(bounds.height || 940, area.height))
+  return {
+    width,
+    height,
+    x: Math.round(area.x + (area.width - width) / 2),
+    y: Math.round(area.y + (area.height - height) / 2),
+  }
+}
+
+function clampBoundsToArea(bounds, area) {
+  const width = Math.min(bounds.width || 1520, area.width)
+  const height = Math.min(bounds.height || 940, area.height)
+  return {
+    width,
+    height,
+    x: Math.min(Math.max(bounds.x, area.x), area.x + area.width - width),
+    y: Math.min(Math.max(bounds.y, area.y), area.y + area.height - height),
+  }
+}
+
+function ensureWindowVisible(targetWindow, { forceCenter = false } = {}) {
+  if (!targetWindow || targetWindow.isDestroyed()) {
+    return
+  }
+
+  const displays = screen.getAllDisplays()
+  if (!displays.length) {
+    return
+  }
+
+  const bounds = targetWindow.getBounds()
+  const visibleDisplay = displays.find((display) => rectsIntersect(bounds, display.workArea))
+  const primaryArea = screen.getPrimaryDisplay().workArea
+  const targetArea = (visibleDisplay || screen.getDisplayMatching(bounds) || screen.getPrimaryDisplay()).workArea || primaryArea
+  const normalizedBounds = forceCenter || !visibleDisplay
+    ? centerBoundsWithinArea(bounds, targetArea)
+    : clampBoundsToArea(bounds, targetArea)
+
+  const changed = ['x', 'y', 'width', 'height'].some((key) => normalizedBounds[key] !== bounds[key])
+  if (changed) {
+    targetWindow.setBounds(normalizedBounds)
+  }
+}
+
+function presentWindow(targetWindow, { forceCenter = false } = {}) {
+  if (!targetWindow || targetWindow.isDestroyed()) {
+    return
+  }
+
+  if (targetWindow.isMinimized()) {
+    targetWindow.restore()
+  }
+
+  ensureWindowVisible(targetWindow, { forceCenter })
+  targetWindow.show()
+  targetWindow.moveTop()
+  targetWindow.focus()
+
+  if (process.platform === 'win32') {
+    targetWindow.setAlwaysOnTop(true, 'screen-saver')
+    const timer = setTimeout(() => {
+      if (targetWindow && !targetWindow.isDestroyed()) {
+        targetWindow.setAlwaysOnTop(false)
+      }
+    }, WINDOW_TOPMOST_BOUNCE_MS)
+    timer.unref?.()
+  }
+}
+
 function showMainWindow() {
   if (!mainWindow || mainWindow.isDestroyed()) {
     return
   }
 
-  mainWindow.show()
-  if (mainWindow.isMinimized()) {
-    mainWindow.restore()
-  }
-  mainWindow.focus()
+  presentWindow(mainWindow)
 }
 
 function ensureTray() {
@@ -372,6 +710,12 @@ ipcMain.handle('desktop-shell:get-app-info', async () => ({
   releasesUrl: releasesPageUrl,
 }))
 
+ipcMain.handle('desktop-shell:get-service-state', async () => ({
+  services: allManagedServiceSnapshots(),
+}))
+
+ipcMain.handle('desktop-shell:get-runtime-info', async () => runtimeInfoSnapshot())
+
 ipcMain.handle('desktop-shell:check-for-updates', async () => {
   try {
     return {
@@ -400,6 +744,30 @@ ipcMain.handle('desktop-shell:open-external', async (_event, url) => {
   return { ok: true }
 })
 
+ipcMain.handle('desktop-shell:copy-text', async (_event, value) => {
+  clipboard.writeText(String(value || ''))
+  return { ok: true }
+})
+
+ipcMain.handle('desktop-shell:open-path', async (_event, value) => {
+  const target = String(value || '').trim()
+  if (!target) {
+    throw new Error('路径不能为空')
+  }
+  if (!fs.existsSync(target)) {
+    throw new Error(`路径不存在: ${target}`)
+  }
+  const errorMessage = await shell.openPath(target)
+  if (errorMessage) {
+    throw new Error(errorMessage)
+  }
+  return { ok: true }
+})
+
+ipcMain.handle('desktop-shell:export-agent-package', async () => {
+  return exportAgentPackage()
+})
+
 ipcMain.handle('desktop-shell:resolve-close-request', async (_event, rawAction) => {
   const action = String(rawAction || 'cancel').trim()
   closeDialogOpen = false
@@ -416,6 +784,41 @@ ipcMain.handle('desktop-shell:resolve-close-request', async (_event, rawAction) 
 
   showMainWindow()
   return { ok: true, action: 'cancel' }
+})
+
+ipcMain.handle('desktop-shell:restart-managed-services', async () => {
+  if (isQuitting) {
+    return {
+      ok: false,
+      error: '应用正在退出，无法重启本机服务',
+      services: allManagedServiceSnapshots(),
+      runtime: runtimeInfoSnapshot(),
+    }
+  }
+
+  try {
+    await stopManagedProcesses()
+    backendPort = DEFAULT_BACKEND_PORT
+    agentPort = DEFAULT_AGENT_PORT
+    await ensureServices()
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      await mainWindow.loadURL(buildWorkbenchUrl())
+    }
+
+    return {
+      ok: true,
+      services: allManagedServiceSnapshots(),
+      runtime: runtimeInfoSnapshot(),
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+      services: allManagedServiceSnapshots(),
+      runtime: runtimeInfoSnapshot(),
+    }
+  }
 })
 
 function emitBootStatus(message, progress) {
@@ -451,7 +854,35 @@ async function waitForHealth(url, timeoutMs) {
   return false
 }
 
-function spawnManagedProcess(executable, logName, label, extraEnv = {}) {
+function showManagedServiceFailure(label, detail) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    dialog.showMessageBox(mainWindow, {
+      type: 'warning',
+      title: APP_TITLE,
+      buttons: ['打开日志目录', '继续使用'],
+      defaultId: 1,
+      cancelId: 1,
+      message: `${label} 已停止`,
+      detail,
+    }).then((result) => {
+      if (result.response === 0) {
+        shell.openPath(logsRoot()).catch(() => {})
+      }
+    }).catch(() => {})
+    return
+  }
+
+  emitBootStatus(`${label} 已停止，请检查日志`, 100)
+}
+
+function spawnManagedProcess(spec) {
+  const {
+    key,
+    executable,
+    logName,
+    label,
+    extraEnv = {},
+  } = spec
   const logPath = path.join(logsRoot(), logName)
   const logStream = fs.createWriteStream(logPath, { flags: 'a' })
   const env = {
@@ -475,51 +906,184 @@ function spawnManagedProcess(executable, logName, label, extraEnv = {}) {
   writeLog('spawn ', `${executable} env=${JSON.stringify(extraEnv)}`)
   child.stdout?.pipe(logStream, { end: false })
   child.stderr?.pipe(logStream, { end: false })
+  setManagedServiceProcess(key, child)
 
   child.once('error', (error) => {
     writeLog('error ', error instanceof Error ? error.stack || error.message : String(error))
     logStream.end()
+    updateManagedServiceState(key, {
+      status: 'error',
+      detail: `${label} 启动失败，请检查日志目录`,
+    })
   })
 
   child.once('exit', (code, signal) => {
     writeLog('exit ', `code=${code ?? 'null'} signal=${signal ?? 'null'}`)
     logStream.end()
+    setManagedServiceProcess(key, null)
 
     if (isQuitting) {
+      updateManagedServiceState(key, {
+        status: 'idle',
+        detail: '应用正在退出',
+        managed: false,
+        owned: false,
+        restartAttempts: 0,
+        launchSpec: null,
+        recoveryPending: false,
+      })
       return
     }
 
-    const detail = [
-      `${label} 已停止。`,
-      `退出码: ${code ?? '未知'}`,
-      `信号: ${signal ?? '无'}`,
-      `日志目录: ${logsRoot()}`,
-    ].join('\n')
+    const state = managedServices[key]
+    const detail = managedServiceFailureDetail(label, code, signal)
 
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      dialog.showMessageBox(mainWindow, {
-        type: 'warning',
-        title: APP_TITLE,
-        buttons: ['打开日志目录', '继续使用'],
-        defaultId: 1,
-        cancelId: 1,
-        message: `${label} 已停止`,
-        detail,
-      }).then((result) => {
-        if (result.response === 0) {
-          shell.openPath(logsRoot()).catch(() => {})
-        }
-      }).catch(() => {})
+    if (state.recoveryPending) {
       return
     }
 
-    emitBootStatus(`${label} 已停止，请检查日志`, 100)
+    if (state.managed && state.owned && state.launchSpec && ['starting', 'restarting'].includes(state.status)) {
+      return
+    }
+
+    if (state.managed && state.owned && state.launchSpec && state.status === 'running') {
+      void restartManagedService(key, detail)
+      return
+    }
+
+    updateManagedServiceState(key, {
+      status: 'error',
+      detail: `${label} 已停止，请检查日志目录`,
+      managed: false,
+      owned: false,
+      launchSpec: null,
+      recoveryPending: false,
+    })
+    showManagedServiceFailure(label, detail)
   })
 
   return child
 }
 
+async function startManagedService(spec, options = {}) {
+  const {
+    key,
+    label,
+    healthUrl,
+    healthTimeoutMs,
+  } = spec
+  const { restart = false, restartAttempts = 0 } = options
+
+  updateManagedServiceState(key, {
+    label,
+    status: restart ? 'restarting' : 'starting',
+    detail: restart
+      ? `${label} 正在自动恢复`
+      : `${label} 正在启动`,
+    port: managedServicePort(key),
+    managed: true,
+    owned: true,
+    restartAttempts,
+    launchSpec: { ...spec },
+  })
+  setManagedServiceOwned(key, true)
+
+  const child = spawnManagedProcess(spec)
+  const started = await waitForHealth(healthUrl, healthTimeoutMs)
+  if (!started) {
+    await killProcessTree(child)
+    throw new Error(`${label} 启动超时，请检查日志目录 ${logsRoot()}`)
+  }
+
+  updateManagedServiceState(key, {
+    label,
+    status: 'running',
+    detail: restart ? `${label} 已自动恢复` : `${label} 已运行`,
+    port: managedServicePort(key),
+    restartAttempts: 0,
+    managed: true,
+    owned: true,
+    launchSpec: { ...spec },
+    recoveryPending: false,
+  })
+  return child
+}
+
+async function restartManagedService(key, failureDetail) {
+  const state = managedServices[key]
+  if (!state.launchSpec || isQuitting) {
+    return
+  }
+
+  const nextAttempt = state.restartAttempts + 1
+  if (nextAttempt > AUTO_RESTART_LIMIT) {
+    updateManagedServiceState(key, {
+      status: 'error',
+      detail: `${state.label} 已连续异常退出，自动恢复停止`,
+      restartAttempts: state.restartAttempts,
+      recoveryPending: false,
+    })
+    showManagedServiceFailure(state.label, failureDetail)
+    return
+  }
+
+  state.recoveryPending = true
+  updateManagedServiceState(key, {
+    status: 'restarting',
+    detail: `${state.label} 异常退出，正在自动重启（${nextAttempt}/${AUTO_RESTART_LIMIT}）`,
+    restartAttempts: nextAttempt,
+    managed: true,
+    owned: true,
+  })
+
+  await new Promise((resolve) => setTimeout(resolve, AUTO_RESTART_DELAY_MS))
+
+  try {
+    await startManagedService(state.launchSpec, { restart: true, restartAttempts: nextAttempt })
+    updateManagedServiceState(key, {
+      status: 'running',
+      detail: `${state.label} 已自动恢复`,
+      restartAttempts: 0,
+      recoveryPending: false,
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    state.recoveryPending = false
+
+    if (nextAttempt >= AUTO_RESTART_LIMIT) {
+      updateManagedServiceState(key, {
+        status: 'error',
+        detail: `${state.label} 自动恢复失败，请检查日志目录`,
+        restartAttempts: nextAttempt,
+      })
+      showManagedServiceFailure(state.label, `${failureDetail}\n\n自动恢复失败: ${message}`)
+      return
+    }
+
+    updateManagedServiceState(key, {
+      status: 'restarting',
+      detail: `${state.label} 自动恢复失败，准备重试（${nextAttempt}/${AUTO_RESTART_LIMIT}）`,
+      restartAttempts: nextAttempt,
+      managed: true,
+      owned: true,
+    })
+    await restartManagedService(key, `${failureDetail}\n\n自动恢复失败: ${message}`)
+  } finally {
+    state.recoveryPending = false
+  }
+}
+
 async function ensureServices(onStatus = () => {}) {
+  updateManagedServiceState('backend', {
+    status: 'starting',
+    detail: '正在检查治理后端状态',
+    port: DEFAULT_BACKEND_PORT,
+    managed: false,
+    owned: false,
+    restartAttempts: 0,
+    launchSpec: null,
+    recoveryPending: false,
+  })
   onStatus('正在检查治理后端状态', 12)
   const backendReady = await healthCheck(backendHealthUrl(DEFAULT_BACKEND_PORT))
 
@@ -535,6 +1099,16 @@ async function ensureServices(onStatus = () => {}) {
     const mode = readConnectionMode()
 
     if (mode === 'local') {
+      updateManagedServiceState('agent', {
+        status: 'starting',
+        detail: '正在检查本机采集代理',
+        port: DEFAULT_AGENT_PORT,
+        managed: false,
+        owned: false,
+        restartAttempts: 0,
+        launchSpec: null,
+        recoveryPending: false,
+      })
       onStatus('正在检查本机采集代理', 28)
       const defaultAgentReady = await healthCheck(`http://${LOCAL_HOST}:${DEFAULT_AGENT_PORT}/api/health`)
 
@@ -559,23 +1133,37 @@ async function ensureServices(onStatus = () => {}) {
         }
 
         onStatus('正在启动本机采集代理', 42)
-        agentProcess = spawnManagedProcess(agentExe, 'agent-shell.log', '本机采集代理', {
-          HOST: LOCAL_HOST,
-          PORT: String(agentPort),
-          GPU_AGENT_HOST: LOCAL_HOST,
-          GPU_AGENT_PORT: String(agentPort),
+        await startManagedService({
+          key: 'agent',
+          executable: agentExe,
+          logName: 'agent-shell.log',
+          label: '本机采集代理',
+          extraEnv: {
+            HOST: LOCAL_HOST,
+            PORT: String(agentPort),
+            GPU_AGENT_HOST: LOCAL_HOST,
+            GPU_AGENT_PORT: String(agentPort),
+          },
+          healthUrl: agentHealthUrl(),
+          healthTimeoutMs: 12000,
         })
-        ownsAgent = true
-
-        const agentStarted = await waitForHealth(agentHealthUrl(), 12000)
-        if (!agentStarted) {
-          throw new Error(`Agent start timeout. Check logs under ${logsRoot()}`)
-        }
       } else {
         onStatus('本机采集代理已在线', 42)
+        markManagedServiceExternal('agent', '本机采集代理', '检测到已存在的本机采集代理实例')
       }
     } else {
       onStatus('远程服务器模式已启用，跳过本机代理启动', 42)
+      updateManagedServiceState('agent', {
+        label: '本机采集代理',
+        status: 'external',
+        detail: '当前为远程服务器模式，桌面端不会启动本机采集代理',
+        port: agentPort,
+        managed: false,
+        owned: false,
+        restartAttempts: 0,
+        launchSpec: null,
+        recoveryPending: false,
+      })
     }
 
     const backendExe = resourcesPath('backend', 'GPUGovernanceBackend.exe')
@@ -584,16 +1172,54 @@ async function ensureServices(onStatus = () => {}) {
     }
 
     onStatus('正在启动治理后端', 64)
-    backendProcess = spawnManagedProcess(backendExe, 'backend-shell.log', '治理后端', {
-      HOST: LOCAL_HOST,
-      PORT: String(backendPort),
-      AGENT_URL: agentBaseUrl(),
+    await startManagedService({
+      key: 'backend',
+      executable: backendExe,
+      logName: 'backend-shell.log',
+      label: '治理后端',
+      extraEnv: {
+        HOST: LOCAL_HOST,
+        PORT: String(backendPort),
+        AGENT_URL: agentBaseUrl(),
+      },
+      healthUrl: backendHealthUrl(),
+      healthTimeoutMs: 18000,
     })
-    ownsBackend = true
   } else {
     backendPort = DEFAULT_BACKEND_PORT
     agentPort = DEFAULT_AGENT_PORT
     onStatus('治理后端已在线，正在同步工作台', 64)
+    markManagedServiceExternal('backend', '治理后端', '检测到已存在的治理后端实例')
+    if (readConnectionMode() === 'local') {
+      const localAgentReady = await healthCheck(`http://${LOCAL_HOST}:${DEFAULT_AGENT_PORT}/api/health`)
+      if (localAgentReady) {
+        markManagedServiceExternal('agent', '本机采集代理', '检测到已存在的本机采集代理实例')
+      } else {
+        updateManagedServiceState('agent', {
+          label: '本机采集代理',
+          status: 'idle',
+          detail: '当前会话未托管本机采集代理',
+          port: agentPort,
+          managed: false,
+          owned: false,
+          restartAttempts: 0,
+          launchSpec: null,
+          recoveryPending: false,
+        })
+      }
+    } else {
+      updateManagedServiceState('agent', {
+        label: '本机采集代理',
+        status: 'external',
+        detail: '当前为远程服务器模式，桌面端不会启动本机采集代理',
+        port: agentPort,
+        managed: false,
+        owned: false,
+        restartAttempts: 0,
+        launchSpec: null,
+        recoveryPending: false,
+      })
+    }
   }
 
   onStatus('正在等待工作台服务就绪', 82)
@@ -623,10 +1249,28 @@ async function stopManagedProcesses() {
   if (ownsBackend && backendProcess) tasks.push(killProcessTree(backendProcess))
   if (ownsAgent && agentProcess) tasks.push(killProcessTree(agentProcess))
   await Promise.all(tasks)
-  backendProcess = null
-  agentProcess = null
-  ownsBackend = false
-  ownsAgent = false
+  setManagedServiceProcess('backend', null)
+  setManagedServiceProcess('agent', null)
+  setManagedServiceOwned('backend', false)
+  setManagedServiceOwned('agent', false)
+  updateManagedServiceState('backend', {
+    status: 'idle',
+    detail: '本机治理后端已停止',
+    managed: false,
+    owned: false,
+    restartAttempts: 0,
+    launchSpec: null,
+    recoveryPending: false,
+  })
+  updateManagedServiceState('agent', {
+    status: 'idle',
+    detail: '本机采集代理已停止',
+    managed: false,
+    owned: false,
+    restartAttempts: 0,
+    launchSpec: null,
+    recoveryPending: false,
+  })
 }
 
 async function createSplashWindow() {
@@ -681,6 +1325,7 @@ async function createMainWindow() {
     minWidth: 1180,
     minHeight: 760,
     show: false,
+    center: true,
     title: APP_TITLE,
     autoHideMenuBar: true,
     backgroundColor: '#f8f5f0',
@@ -738,18 +1383,30 @@ async function createMainWindow() {
 
   mainWindow.webContents.once('did-finish-load', () => {
     emitBootStatus('桌面工作台已就绪', 100)
+    emitManagedServiceState()
+    const revealTimer = setTimeout(() => {
+      presentWindow(mainWindow)
+    }, 120)
+    revealTimer.unref?.()
   })
 
   mainWindow.once('ready-to-show', () => {
     closeSplashWindow()
-    mainWindow.show()
-    mainWindow.focus()
+    presentWindow(mainWindow, { forceCenter: true })
   })
 
   emitBootStatus('正在渲染桌面界面', 97)
   await mainWindow.webContents.session.clearCache().catch(() => {})
   await mainWindow.webContents.session.clearStorageData({ storages: ['serviceworkers'] }).catch(() => {})
   await mainWindow.loadURL(buildWorkbenchUrl())
+
+  const showFallbackTimer = setTimeout(() => {
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+      closeSplashWindow()
+      presentWindow(mainWindow, { forceCenter: true })
+    }
+  }, MAIN_WINDOW_SHOW_FALLBACK_MS)
+  showFallbackTimer.unref?.()
 }
 
 async function launchWorkbench() {
@@ -805,14 +1462,14 @@ async function bootstrap() {
   }
 
   app.on('second-instance', () => {
-    const activeWindow = mainWindow && !mainWindow.isDestroyed() ? mainWindow : splashWindow
-    if (!activeWindow) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      showMainWindow()
       return
     }
-    if (activeWindow.isMinimized()) {
-      activeWindow.restore()
+
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      presentWindow(splashWindow, { forceCenter: true })
     }
-    activeWindow.focus()
   })
 
   app.on('before-quit', async (event) => {
@@ -833,7 +1490,9 @@ async function bootstrap() {
   app.on('activate', async () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       await launchWorkbenchWithRecovery()
+      return
     }
+    showMainWindow()
   })
 
   await app.whenReady()

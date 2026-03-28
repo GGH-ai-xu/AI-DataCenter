@@ -1,43 +1,41 @@
 <script setup>
-/**
- * TaskManager.vue - 任务治理页
- * 在原有任务管理基础上补充公平治理、让路候选与用户占用画像
- */
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useAppStore } from '../stores/app'
-import { deleteGovernanceRule, exportGovernanceReport, getFairnessGovernance, getTasks, pauseTask, resumeTask, saveGovernanceRule, terminateTask, setTaskPriority } from '../services/api'
+import {
+  deleteGovernanceRule,
+  exportGovernanceReport,
+  getFairnessGovernance,
+  getTasks,
+  pauseTask,
+  resumeTask,
+  saveGovernanceRule,
+  setTaskPriority,
+  terminateTask,
+} from '../services/api'
 
 const store = useAppStore()
-const actionLoading = ref({})
-const exporting = ref(false)
-const ruleSaving = ref({})
 const keyword = ref('')
 const selectedPriority = ref('all')
-const ruleDrafts = ref({})
+const showAllProcesses = ref(false)
 const executionMode = ref('dry_run')
 const riskAcknowledged = ref(false)
+const exporting = ref(false)
 const actionNotice = ref(null)
+const actionLoading = ref({})
+const ruleSaving = ref({})
+const ruleDrafts = ref({})
 const fairnessState = ref({
-  overview: {
-    fairness_index: 100,
-    level: 'balanced',
-    summary: '当前共享较均衡。',
-    dominant_user: null,
-    highest_share_pct: 0,
-    reclaimable_candidates: 0,
-  },
+  overview: { fairness_index: 100, level: 'balanced', summary: '当前共享较均衡。' },
   users: [],
   yield_candidates: [],
   recommendations: [],
 })
 let refreshTimer = null
 
-const fmtMem = (bytes) => ((bytes || 0) / 1073741824).toFixed(1) + ' GB'
-
 const priorityColors = {
-  urgent: { bg: 'rgba(196,30,58,0.12)', color: '#C41E3A', label: '紧急', tip: '关键任务，预算紧张时优先保留' },
-  normal: { bg: 'rgba(58,95,75,0.12)', color: '#3A5F4B', label: '普通', tip: '常规任务，可适度压缩功耗' },
-  deferrable: { bg: 'rgba(148,163,184,0.12)', color: '#666666', label: '可延迟', tip: '预算紧张时优先让路' },
+  urgent: { bg: 'rgba(196,30,58,0.12)', color: '#C41E3A', label: '紧急' },
+  normal: { bg: 'rgba(58,95,75,0.12)', color: '#3A5F4B', label: '普通' },
+  deferrable: { bg: 'rgba(148,163,184,0.12)', color: '#666666', label: '可延迟' },
 }
 
 const roleOptions = {
@@ -46,87 +44,121 @@ const roleOptions = {
   restricted: '受限用户',
 }
 
+const fmtMem = (bytes) => `${((bytes || 0) / 1073741824).toFixed(1)} GB`
+
+function displayGpuMemory(proc) {
+  const used = Number(proc?.gpu_memory_used || 0)
+  if (!isManageable(proc) && used <= 0) return '低占用'
+  return fmtMem(used)
+}
+
+function displayCpuPercent(proc) {
+  const cpu = Number(proc?.cpu_percent || 0)
+  if (!isManageable(proc) && cpu <= 0) return '空闲'
+  return `${cpu.toFixed(1)}%`
+}
+
+function gpuMetricTitle(proc) {
+  const used = Number(proc?.gpu_memory_used || 0)
+  if (!isManageable(proc) && used <= 0) return '该进程当前没有检测到显著显存占用'
+  return fmtMem(used)
+}
+
+function cpuMetricTitle(proc) {
+  const cpu = Number(proc?.cpu_percent || 0)
+  if (!isManageable(proc) && cpu <= 0) return '该进程当前没有检测到显著 CPU 活动'
+  return `${cpu.toFixed(1)}%`
+}
+
+function sortProcesses(list) {
+  return [...list].sort((a, b) => {
+    const manageableDelta = Number(b?.manageable !== false) - Number(a?.manageable !== false)
+    if (manageableDelta) return manageableDelta
+    return (b?.gpu_memory_used || 0) - (a?.gpu_memory_used || 0)
+  })
+}
+
+function isManageable(proc) {
+  return proc?.manageable !== false
+}
+
+function getManageableReason(proc) {
+  if (proc?.manageable_reason) return proc.manageable_reason
+  return isManageable(proc) ? '可作为治理任务处理。' : '该进程不建议执行治理动作。'
+}
+
+function getReasonSummary(proc) {
+  if (proc?.manageable_summary) return proc.manageable_summary
+  if (proc?.process_category === 'system') return '系统图形'
+  if (proc?.process_category === 'background') return '背景陪跑'
+  return '可治理任务'
+}
+
+function getCategoryLabel(proc) {
+  if (proc?.process_category === 'system') return '系统进程'
+  if (proc?.process_category === 'background') return '背景进程'
+  return '可治理任务'
+}
+
+function getCategoryClass(proc) {
+  if (proc?.process_category === 'system') return 'status-badge--system'
+  if (proc?.process_category === 'background') return 'status-badge--background'
+  return 'status-badge--ok'
+}
+
+function setActionNotice(tone, title, detail) {
+  actionNotice.value = { tone, title, detail }
+}
+
+const manageableProcesses = computed(() =>
+  sortProcesses(store.processes.filter((proc) => proc.manageable !== false))
+)
+
+const visibleProcesses = computed(() =>
+  showAllProcesses.value ? sortProcesses(store.processes) : manageableProcesses.value
+)
+
 const filteredProcesses = computed(() => {
   const term = keyword.value.trim().toLowerCase()
-  return store.processes.filter((proc) => {
+  return visibleProcesses.value.filter((proc) => {
     const priority = proc.priority || 'normal'
-    const text = `${proc.pid} ${proc.name || ''} ${proc.username || ''} ${proc.command || ''}`.toLowerCase()
+    const haystack = `${proc.pid} ${proc.name || ''} ${proc.username || ''} ${proc.command || ''}`.toLowerCase()
     const matchPriority = selectedPriority.value === 'all' || selectedPriority.value === priority
-    const matchKeyword = !term || text.includes(term)
+    const matchKeyword = !term || haystack.includes(term)
     return matchPriority && matchKeyword
   })
 })
 
-const userCount = computed(() => new Set(store.processes.map(proc => proc.username || 'unknown')).size)
-const urgentCount = computed(() => store.processes.filter(proc => (proc.priority || 'normal') === 'urgent').length)
-const deferrableCount = computed(() => store.processes.filter(proc => (proc.priority || 'normal') === 'deferrable').length)
-const totalGpuMemory = computed(() =>
-  store.processes.reduce((sum, proc) => sum + (proc.gpu_memory_used || 0), 0)
-)
 const fairnessOverview = computed(() => fairnessState.value.overview || {})
 const fairnessUsers = computed(() => fairnessState.value.users || [])
 const yieldCandidates = computed(() => fairnessState.value.yield_candidates || [])
-
-const userSummary = computed(() => {
-  if (fairnessUsers.value.length) {
-    return fairnessUsers.value.slice(0, 4).map((user) => ({
-      username: user.username,
-      tasks: user.task_count,
-      memory: user.total_memory,
-      share: user.memory_share_pct,
-      level: user.level,
-      action: user.recommended_action,
-    }))
-  }
-
-  const map = new Map()
-  for (const proc of store.processes) {
-    const key = proc.username || 'unknown'
-    if (!map.has(key)) {
-      map.set(key, { username: key, tasks: 0, memory: 0 })
-    }
-    const entry = map.get(key)
-    entry.tasks += 1
-    entry.memory += proc.gpu_memory_used || 0
-  }
-  return [...map.values()].sort((a, b) => b.memory - a.memory).slice(0, 4)
-})
-
-const governanceNarrative = computed(() => {
-  if ((fairnessOverview.value.violation_user_count || 0) > 0) {
-    return `当前已有 ${fairnessOverview.value.violation_user_count} 个用户触发额度规则，建议优先处理规则违规与让路任务。`
-  }
-  if (fairnessOverview.value.level === 'critical') {
-    return `当前共享公平性偏弱，${fairnessOverview.value.dominant_user || '部分用户'}占用显著偏高，建议优先处理可延迟任务。`
-  }
-  if (fairnessOverview.value.level === 'watch') {
-    return '当前资源开始向少数用户集中，适合提前做额度提醒和让路治理。'
-  }
-  return '当前任务共享较均衡，平台可继续以监测、分级和轻量治理为主。'
-})
-
+const manageableProcessCount = computed(() => manageableProcesses.value.length)
+const backgroundProcessCount = computed(() =>
+  store.processes.filter((proc) => proc.manageable === false).length
+)
+const userCount = computed(() =>
+  new Set(manageableProcesses.value.map((proc) => proc.username || 'unknown')).size
+)
+const urgentCount = computed(() =>
+  manageableProcesses.value.filter((proc) => (proc.priority || 'normal') === 'urgent').length
+)
+const deferrableCount = computed(() =>
+  manageableProcesses.value.filter((proc) => (proc.priority || 'normal') === 'deferrable').length
+)
+const totalGpuMemory = computed(() =>
+  manageableProcesses.value.reduce((sum, proc) => sum + (proc.gpu_memory_used || 0), 0)
+)
 const executionSummary = computed(() =>
   executionMode.value === 'real'
-    ? '当前为真实执行模式，暂停、恢复、终止会直接作用于真实进程。'
-    : '当前为演练模式，只返回预演结果，不会改动真实进程。'
+    ? (riskAcknowledged.value
+      ? '当前为真实执行模式，操作会直接作用于可治理 GPU 任务。'
+      : '当前为真实执行模式，但还未确认风险，按钮会保持禁用。')
+    : '当前为演练模式，只生成预演结果，不会改动真实进程。'
 )
-
-function setActionNotice(tone, title, detail) {
-  actionNotice.value = { tone, title, detail, ts: Date.now() }
-}
-
-function buildActionOptions() {
-  const isReal = executionMode.value === 'real'
-  return {
-    dry_run: !isReal,
-    acknowledge_risk: isReal && riskAcknowledged.value,
-  }
-}
 
 function buildRuleDraft(user) {
   const rule = user.governance_rule || {}
   return {
-    username: user.username,
     role: rule.role || 'member',
     max_tasks: rule.max_tasks ?? 4,
     max_gpu_count: rule.max_gpu_count ?? 1,
@@ -151,55 +183,93 @@ async function loadTaskGovernance() {
       getFairnessGovernance(),
     ])
     store.processes = taskData?.processes || []
-    fairnessState.value = fairnessData
+    fairnessState.value = fairnessData || fairnessState.value
     syncRuleDrafts(fairnessData?.users || [])
-  } catch (e) {
-    console.error(e)
+  } catch (error) {
+    console.error(error)
   }
 }
 
-async function doAction(procId, action) {
+function buildActionOptions() {
   const isReal = executionMode.value === 'real'
-  if (isReal && !riskAcknowledged.value) {
+  return {
+    dry_run: !isReal,
+    acknowledge_risk: isReal && riskAcknowledged.value,
+  }
+}
+
+function isActionDisabled(proc, action) {
+  if (!isManageable(proc)) return true
+  if (executionMode.value === 'real' && !riskAcknowledged.value) return true
+  return Boolean(actionLoading.value[`${proc.pid}-${action}`])
+}
+
+function getActionHint(proc) {
+  if (!isManageable(proc)) return '仅观察，不开放治理动作'
+  if (executionMode.value === 'dry_run') return '演练模式，不改动真实进程'
+  if (!riskAcknowledged.value) return '确认风险后才会真实执行'
+  return '将直接作用于真实进程'
+}
+
+function getCommandPreview(proc) {
+  const command = (proc?.command || '-').trim()
+  if (command.length <= 56) return command
+  return `${command.slice(0, 53).trimEnd()}...`
+}
+
+async function doAction(proc, action) {
+  if (!isManageable(proc)) {
+    setActionNotice('warning', '当前进程不可治理', getManageableReason(proc))
+    return
+  }
+  if (executionMode.value === 'real' && !riskAcknowledged.value) {
     setActionNotice('warning', '尚未确认风险', '真实执行前请先勾选风险确认。')
     return
   }
-  if (isReal && action === 'terminate' && !window.confirm(`将终止真实进程 PID ${procId}，是否继续？`)) {
+  if (executionMode.value === 'real' && action === 'terminate' && !window.confirm(`将终止真实进程 PID ${proc.pid}，是否继续？`)) {
     return
   }
 
-  actionLoading.value[`${procId}-${action}`] = true
+  actionLoading.value[`${proc.pid}-${action}`] = true
   try {
-    let res = null
     const options = buildActionOptions()
-    if (action === 'pause') res = await pauseTask(procId, options)
-    else if (action === 'resume') res = await resumeTask(procId, options)
-    else if (action === 'terminate') res = await terminateTask(procId, options)
+    let response = null
+    if (action === 'pause') response = await pauseTask(proc.pid, options)
+    else if (action === 'resume') response = await resumeTask(proc.pid, options)
+    else if (action === 'terminate') response = await terminateTask(proc.pid, options)
 
-    const data = res?.data || {}
+    const data = response?.data || {}
     if (data.dry_run) {
-      setActionNotice('warning', '已生成演练结果', data.message || `已完成 PID ${procId} 的动作预演。`)
+      setActionNotice('warning', '已生成演练结果', data.message || `已完成 PID ${proc.pid} 的动作预演。`)
     } else {
-      setActionNotice('ok', '真实动作已执行', `${action === 'pause' ? '暂停' : action === 'resume' ? '恢复' : '终止'}指令已发送到 PID ${procId}。`)
+      const actionLabel = action === 'pause' ? '暂停' : action === 'resume' ? '恢复' : '终止'
+      const detail = data.message || `${actionLabel}指令已发送到 PID ${proc.pid}`
+      const suffix = action === 'terminate' && data.forced ? '，进程对普通终止无响应，已执行强制结束。' : '。'
+      setActionNotice('ok', '真实动作已执行', `${detail}${suffix}`)
     }
-  } catch (e) {
-    console.error(e)
+  } catch (error) {
+    console.error(error)
     setActionNotice(
       'critical',
       '动作执行失败',
-      e?.response?.data?.detail || e?.message || '任务动作执行失败',
+      error?.response?.data?.detail || error?.message || '任务动作执行失败',
     )
+  } finally {
+    actionLoading.value[`${proc.pid}-${action}`] = false
   }
-  actionLoading.value[`${procId}-${action}`] = false
   await loadTaskGovernance()
 }
 
-async function changePriority(procId, priority) {
+async function changePriority(proc, priority) {
+  if (!isManageable(proc)) {
+    setActionNotice('warning', '当前进程不可分级', getManageableReason(proc))
+    return
+  }
   try {
-    await setTaskPriority(procId, priority)
+    await setTaskPriority(proc.pid, priority)
     await loadTaskGovernance()
-  } catch (e) {
-    console.error(e)
+  } catch (error) {
+    console.error(error)
   }
 }
 
@@ -218,8 +288,8 @@ async function saveRuleForUser(user) {
       note: draft.note || '',
     })
     await loadTaskGovernance()
-  } catch (e) {
-    console.error(e)
+  } catch (error) {
+    console.error(error)
   }
   ruleSaving.value[user.username] = false
 }
@@ -230,8 +300,8 @@ async function resetRuleForUser(user) {
   try {
     await deleteGovernanceRule(user.username)
     await loadTaskGovernance()
-  } catch (e) {
-    console.error(e)
+  } catch (error) {
+    console.error(error)
   }
   ruleSaving.value[user.username] = false
 }
@@ -249,8 +319,8 @@ async function doExportGovernance(fmt = 'markdown') {
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
-  } catch (e) {
-    console.error(e)
+  } catch (error) {
+    console.error(error)
   }
   exporting.value = false
 }
@@ -267,238 +337,151 @@ onUnmounted(() => {
 
 <template>
   <div class="task-page ink-page-shell">
-    <section class="task-hero tech-card">
+    <section class="tech-card hero-card">
       <div>
-        <div class="task-hero__eyebrow">任务治理中心</div>
-        <h2 class="task-hero__title">把 GPU 进程从“看到”升级到“分级、让路、干预、追踪”</h2>
-        <p class="task-hero__desc">
-          {{ governanceNarrative }}
-        </p>
+        <div class="hero-card__eyebrow">任务治理中心</div>
+        <h2 class="hero-card__title">把 GPU 进程从“看到”升级到“分级、让路、干预、追踪”</h2>
+        <p class="hero-card__desc">{{ fairnessOverview.summary || '当前共享状态稳定。' }}</p>
       </div>
-      <div class="task-hero__actions">
+      <div class="hero-card__actions">
         <button class="btn-tech" :disabled="exporting" @click="doExportGovernance('markdown')">
           {{ exporting ? '导出中...' : '导出治理报告' }}
         </button>
-        <div class="task-mode-panel">
-          <div class="task-mode-switch">
-            <button
-              class="btn-tech"
-              :class="{ 'btn-tech--primary': executionMode === 'dry_run' }"
-              @click="executionMode = 'dry_run'"
-            >
-              演练模式
-            </button>
-            <button
-              class="btn-tech"
-              :class="{ 'btn-tech--primary': executionMode === 'real' }"
-              @click="executionMode = 'real'"
-            >
-              真实执行
-            </button>
+        <div class="mode-box">
+          <div class="mode-box__switch">
+            <button class="btn-tech" :class="{ 'btn-tech--primary': executionMode === 'dry_run' }" @click="executionMode = 'dry_run'">演练模式</button>
+            <button class="btn-tech" :class="{ 'btn-tech--primary': executionMode === 'real' }" @click="executionMode = 'real'">真实执行</button>
           </div>
-          <label v-if="executionMode === 'real'" class="task-mode-ack">
+          <label v-if="executionMode === 'real'" class="mode-box__ack">
             <input v-model="riskAcknowledged" type="checkbox" />
             我已确认会直接作用于真实进程
           </label>
-          <div class="task-hero__warn">{{ executionSummary }}</div>
+          <div class="mode-box__hint">{{ executionSummary }}</div>
         </div>
       </div>
     </section>
 
-    <div
-      v-if="actionNotice"
-      class="task-action-notice tech-card"
-      :class="`task-action-notice--${actionNotice.tone}`"
-    >
-      <div class="task-action-notice__title">{{ actionNotice.title }}</div>
-      <div class="task-action-notice__desc">{{ actionNotice.detail }}</div>
+    <div v-if="actionNotice" class="tech-card notice" :class="`notice--${actionNotice.tone}`">
+      <div class="notice__title">{{ actionNotice.title }}</div>
+      <div class="notice__detail">{{ actionNotice.detail }}</div>
     </div>
 
-    <div class="task-stats">
-      <div class="task-stat tech-card">
-        <div class="task-stat__label">当前任务总数</div>
-        <div class="task-stat__value stat-value">{{ store.processes.length }}</div>
-        <div class="task-stat__hint">GPU占用中的全部进程</div>
+    <section class="stats-grid">
+      <div class="tech-card stat-card">
+        <div class="stat-card__label">可治理任务</div>
+        <div class="stat-card__value stat-value">{{ manageableProcessCount }}</div>
+        <div class="stat-card__hint">默认只展示可真正干预的 GPU 任务</div>
       </div>
-      <div class="task-stat tech-card">
-        <div class="task-stat__label">活跃用户</div>
-        <div class="task-stat__value stat-value">{{ userCount }}</div>
-        <div class="task-stat__hint">共享实验室资源的使用者</div>
+      <div class="tech-card stat-card">
+        <div class="stat-card__label">背景 / 系统进程</div>
+        <div class="stat-card__value stat-value" style="color:#999">{{ backgroundProcessCount }}</div>
+        <div class="stat-card__hint">浏览器 GPU 子进程、桌面渲染等会自动归到这里</div>
       </div>
-      <div class="task-stat tech-card">
-        <div class="task-stat__label">紧急任务</div>
-        <div class="task-stat__value stat-value" style="color:#C41E3A">{{ urgentCount }}</div>
-        <div class="task-stat__hint">预算紧张时优先保障</div>
+      <div class="tech-card stat-card">
+        <div class="stat-card__label">治理用户</div>
+        <div class="stat-card__value stat-value">{{ userCount }}</div>
+        <div class="stat-card__hint">真正占用治理型 GPU 任务的用户数</div>
       </div>
-      <div class="task-stat tech-card">
-        <div class="task-stat__label">可延迟任务</div>
-        <div class="task-stat__value stat-value" style="color:#666">{{ deferrableCount }}</div>
-        <div class="task-stat__hint">高峰期优先让路</div>
+      <div class="tech-card stat-card">
+        <div class="stat-card__label">紧急任务</div>
+        <div class="stat-card__value stat-value" style="color:#C41E3A">{{ urgentCount }}</div>
+        <div class="stat-card__hint">预算紧张时优先保障</div>
       </div>
-      <div class="task-stat tech-card">
-        <div class="task-stat__label">总显存占用</div>
-        <div class="task-stat__value stat-value">{{ fmtMem(totalGpuMemory) }}</div>
-        <div class="task-stat__hint">用于评估资源紧张程度</div>
+      <div class="tech-card stat-card">
+        <div class="stat-card__label">可延迟任务</div>
+        <div class="stat-card__value stat-value" style="color:#666">{{ deferrableCount }}</div>
+        <div class="stat-card__hint">高峰期优先让路</div>
       </div>
-      <div class="task-stat tech-card">
-        <div class="task-stat__label">公平治理指数</div>
-        <div class="task-stat__value stat-value" :style="{ color: fairnessOverview.level === 'critical' ? '#C41E3A' : fairnessOverview.level === 'watch' ? '#B8860B' : '#2E8B57' }">
-          {{ fairnessOverview.fairness_index ?? 0 }}
-        </div>
-        <div class="task-stat__hint">{{ fairnessOverview.summary }}</div>
+      <div class="tech-card stat-card">
+        <div class="stat-card__label">治理显存占用</div>
+        <div class="stat-card__value stat-value">{{ fmtMem(totalGpuMemory) }}</div>
+        <div class="stat-card__hint">只统计可治理任务</div>
       </div>
-    </div>
+    </section>
 
-    <div class="task-grid">
-      <div class="tech-card task-side-card">
-        <div class="section-title" style="margin-bottom: 12px">优先级规则</div>
-        <div
-          v-for="(item, key) in priorityColors"
-          :key="key"
-          class="priority-rule"
-          :style="{ background: item.bg }"
-        >
-          <div class="priority-rule__head">
-            <span class="priority-rule__tag" :style="{ color: item.color }">{{ item.label }}</span>
-            <span class="priority-rule__count stat-value">{{ store.processes.filter(proc => (proc.priority || 'normal') === key).length }}</span>
-          </div>
-          <div class="priority-rule__tip">{{ item.tip }}</div>
+    <section class="summary-grid">
+      <div class="tech-card panel-card">
+        <div class="panel-card__title">公平治理建议</div>
+        <div class="panel-card__score">
+          <span class="stat-value">{{ fairnessOverview.fairness_index ?? 0 }}</span>
+          <span class="panel-card__meta">治理指数</span>
         </div>
-      </div>
-
-      <div class="tech-card task-side-card">
-        <div class="section-title" style="margin-bottom: 12px">用户占用概览</div>
-        <div v-if="userSummary.length" class="user-summary">
-          <div v-for="user in userSummary" :key="user.username" class="user-summary__item">
-            <div class="user-summary__top">
-              <span class="user-summary__name">{{ user.username }}</span>
-              <span class="user-summary__tasks">{{ user.tasks }} 个任务<span v-if="user.share !== undefined"> · {{ user.share }}%</span></span>
-            </div>
-            <div class="user-summary__mem">{{ fmtMem(user.memory) }} GPU显存</div>
-            <div v-if="user.action" class="user-summary__action">{{ user.action }}</div>
-          </div>
-        </div>
-        <div v-else class="task-empty">当前无GPU进程</div>
-      </div>
-
-      <div class="tech-card task-side-card">
-        <div class="section-title" style="margin-bottom: 12px">公平治理建议</div>
-        <div class="fairness-score-box">
-          <div class="fairness-score-box__value stat-value">{{ fairnessOverview.fairness_index ?? 0 }}</div>
-          <div class="fairness-score-box__meta">
-            <div>主导用户：{{ fairnessOverview.dominant_user || '无明显集中' }}</div>
-            <div>最高占用：{{ fairnessOverview.highest_share_pct || 0 }}%</div>
-            <div>建议让路：{{ fairnessOverview.reclaimable_candidates || 0 }} 个任务</div>
-          </div>
-        </div>
-        <div class="fairness-rec-list">
-          <div v-for="(item, index) in fairnessState.recommendations || []" :key="index" class="fairness-rec-item">
+        <div class="panel-card__list">
+          <div v-for="(item, index) in fairnessState.recommendations || []" :key="index" class="panel-card__item">
             {{ item }}
           </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="tech-card yield-panel" v-if="yieldCandidates.length">
-      <div class="yield-panel__header">
-        <div class="section-title">建议让路任务</div>
-        <div class="task-toolbar__right">按优先级、用户占用和显存压力综合排序</div>
-      </div>
-      <div class="yield-list">
-        <div v-for="candidate in yieldCandidates" :key="candidate.pid" class="yield-item">
-          <div class="yield-item__top">
-            <span class="yield-item__pid">PID {{ candidate.pid }}</span>
-            <span class="yield-item__user">{{ candidate.username }}</span>
-            <span class="yield-item__priority" :style="{ color: priorityColors[candidate.priority || 'normal'].color, background: priorityColors[candidate.priority || 'normal'].bg }">
-              {{ priorityColors[candidate.priority || 'normal'].label }}
-            </span>
-            <span class="yield-item__score">让路分 {{ candidate.yield_score }}</span>
+          <div v-if="!(fairnessState.recommendations || []).length" class="panel-card__item">
+            当前没有额外治理建议。
           </div>
-          <div class="yield-item__reason">{{ candidate.yield_reason }}</div>
-          <div class="yield-item__meta">GPU {{ candidate.gpu_index }} · {{ fmtMem(candidate.gpu_memory_used) }} · {{ candidate.name || 'unknown' }}</div>
         </div>
       </div>
-    </div>
 
-    <div class="tech-card rule-panel" v-if="fairnessUsers.length">
-      <div class="yield-panel__header">
-        <div class="section-title">用户额度规则</div>
-        <div class="task-toolbar__right">为活跃用户设置任务数、GPU数、显存额度与是否允许让路</div>
+      <div class="tech-card panel-card">
+        <div class="panel-card__title">建议让路任务</div>
+        <div class="yield-list">
+          <div v-for="candidate in yieldCandidates.slice(0, 5)" :key="candidate.pid" class="yield-item">
+            <div class="yield-item__top">
+              <span class="yield-item__pid">PID {{ candidate.pid }}</span>
+              <span class="yield-item__priority" :style="{ color: priorityColors[candidate.priority || 'normal'].color, background: priorityColors[candidate.priority || 'normal'].bg }">
+                {{ priorityColors[candidate.priority || 'normal'].label }}
+              </span>
+            </div>
+            <div class="yield-item__reason">{{ candidate.yield_reason }}</div>
+          </div>
+          <div v-if="!yieldCandidates.length" class="panel-card__item">当前没有需要优先让路的任务。</div>
+        </div>
       </div>
-      <div class="rule-grid">
+    </section>
+
+    <section v-if="fairnessUsers.length" class="tech-card rules-panel">
+      <div class="rules-panel__head">
+        <div class="panel-card__title">用户额度规则</div>
+        <div class="rules-panel__hint">为活跃用户设置任务数、GPU数、显存额度与是否允许让路</div>
+      </div>
+      <div class="rules-grid">
         <div v-for="user in fairnessUsers" :key="user.username" class="rule-card">
           <div class="rule-card__top">
             <div>
               <div class="rule-card__name">{{ user.username }}</div>
               <div class="rule-card__meta">
-                当前 {{ user.task_count }} 个任务 · {{ user.gpu_count }} 张GPU · {{ user.memory_share_pct }}% 占用
+                当前 {{ user.task_count }} 个任务 · {{ user.gpu_count }} 张GPU · {{ user.memory_share_pct }}%
               </div>
             </div>
-            <span
-              class="rule-card__status"
-              :class="user.violation_count ? 'rule-card__status--warn' : 'rule-card__status--ok'"
-            >
+            <span class="rule-card__status" :class="user.violation_count ? 'rule-card__status--warn' : 'rule-card__status--ok'">
               {{ user.violation_count ? `违规 ${user.violation_count}` : '规则内' }}
             </span>
           </div>
 
-          <div class="rule-form" v-if="ruleDrafts[user.username]">
-            <label class="rule-field">
-              <span>角色</span>
-              <select v-model="ruleDrafts[user.username].role" class="task-select">
-                <option value="protected">{{ roleOptions.protected }}</option>
-                <option value="member">{{ roleOptions.member }}</option>
-                <option value="restricted">{{ roleOptions.restricted }}</option>
-              </select>
-            </label>
-            <label class="rule-field">
-              <span>最多任务</span>
-              <input v-model.number="ruleDrafts[user.username].max_tasks" class="task-input" type="number" min="1" max="64" />
-            </label>
-            <label class="rule-field">
-              <span>最多GPU</span>
-              <input v-model.number="ruleDrafts[user.username].max_gpu_count" class="task-input" type="number" min="1" max="16" />
-            </label>
-            <label class="rule-field">
-              <span>显存额度(GB)</span>
-              <input v-model.number="ruleDrafts[user.username].max_memory_gb" class="task-input" type="number" min="1" step="0.5" max="1024" />
-            </label>
-            <label class="rule-field">
-              <span>允许让路</span>
-              <select v-model="ruleDrafts[user.username].allow_preempt" class="task-select">
-                <option :value="true">允许</option>
-                <option :value="false">保护</option>
-              </select>
-            </label>
-            <label class="rule-field rule-field--full">
-              <span>备注</span>
-              <input v-model="ruleDrafts[user.username].note" class="task-input" type="text" placeholder="如：核心训练任务 / 长任务保护" />
-            </label>
-          </div>
-
-          <div v-if="user.violations?.length" class="rule-violations">
-            <span v-for="(item, index) in user.violations" :key="index" class="rule-violation">
-              {{ item }}
-            </span>
+          <div v-if="ruleDrafts[user.username]" class="rule-card__form">
+            <select v-model="ruleDrafts[user.username].role" class="task-select">
+              <option value="protected">{{ roleOptions.protected }}</option>
+              <option value="member">{{ roleOptions.member }}</option>
+              <option value="restricted">{{ roleOptions.restricted }}</option>
+            </select>
+            <input v-model.number="ruleDrafts[user.username].max_tasks" class="task-input" type="number" min="1" max="64" placeholder="最多任务" />
+            <input v-model.number="ruleDrafts[user.username].max_gpu_count" class="task-input" type="number" min="1" max="16" placeholder="最多GPU" />
+            <input v-model.number="ruleDrafts[user.username].max_memory_gb" class="task-input" type="number" min="1" step="0.5" max="1024" placeholder="显存额度(GB)" />
+            <select v-model="ruleDrafts[user.username].allow_preempt" class="task-select">
+              <option :value="true">允许让路</option>
+              <option :value="false">保护任务</option>
+            </select>
+            <input v-model="ruleDrafts[user.username].note" class="task-input" type="text" placeholder="备注" />
           </div>
 
           <div class="rule-card__actions">
-            <div class="rule-card__action-buttons">
-              <button class="btn-tech" :disabled="ruleSaving[user.username]" @click="saveRuleForUser(user)">
-                {{ ruleSaving[user.username] ? '保存中...' : '保存规则' }}
-              </button>
-              <button class="btn-tech" :disabled="ruleSaving[user.username] || !user.governance_rule" @click="resetRuleForUser(user)">
-                恢复默认
-              </button>
-            </div>
-            <span class="rule-card__hint">{{ user.recommended_action }}</span>
+            <button class="btn-tech" :disabled="ruleSaving[user.username]" @click="saveRuleForUser(user)">
+              {{ ruleSaving[user.username] ? '保存中...' : '保存规则' }}
+            </button>
+            <button class="btn-tech" :disabled="ruleSaving[user.username] || !user.governance_rule" @click="resetRuleForUser(user)">
+              恢复默认
+            </button>
           </div>
         </div>
       </div>
-    </div>
+    </section>
 
-    <div class="task-toolbar tech-card">
-      <div class="task-toolbar__left">
+    <section class="tech-card toolbar-card">
+      <div class="toolbar-card__left">
         <input v-model="keyword" class="task-input" placeholder="搜索 PID / 用户 / 进程名 / 命令" />
         <select v-model="selectedPriority" class="task-select">
           <option value="all">全部优先级</option>
@@ -507,323 +490,277 @@ onUnmounted(() => {
           <option value="deferrable">可延迟</option>
         </select>
       </div>
-      <div class="task-toolbar__right">
-        <span>当前筛选结果 {{ filteredProcesses.length }} 条</span>
+      <div class="toolbar-card__right">
+        <div class="toolbar-card__switch">
+          <button class="btn-tech" :class="{ 'btn-tech--primary': !showAllProcesses }" @click="showAllProcesses = false">仅治理任务</button>
+          <button class="btn-tech" :class="{ 'btn-tech--primary': showAllProcesses }" @click="showAllProcesses = true">全部 GPU 相关进程</button>
+        </div>
+        <span class="toolbar-card__summary">当前显示 {{ filteredProcesses.length }} / {{ visibleProcesses.length }} 条</span>
       </div>
-    </div>
+    </section>
 
-    <div class="task-table tech-card">
-      <table>
+    <section class="tech-card table-card">
+      <table class="task-table">
+        <colgroup>
+          <col style="width: 82px" />
+          <col style="width: 76px" />
+          <col style="width: 128px" />
+          <col style="width: 118px" />
+          <col style="width: 96px" />
+          <col style="width: 78px" />
+          <col style="width: 110px" />
+          <col style="width: 110px" />
+          <col style="width: 240px" />
+          <col style="width: 300px" />
+          <col style="width: 250px" />
+        </colgroup>
         <thead>
           <tr>
             <th>PID</th>
             <th>GPU</th>
             <th>进程名</th>
             <th>用户</th>
-            <th>GPU显存</th>
+            <th>显存</th>
             <th>CPU</th>
             <th>优先级</th>
+            <th>治理状态</th>
+            <th>说明</th>
             <th>命令</th>
             <th>操作</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="proc in filteredProcesses" :key="proc.pid">
-            <td class="stat-value" style="color: var(--accent-primary)">{{ proc.pid }}</td>
-            <td><span class="gpu-tag">GPU {{ proc.gpu_index }}</span></td>
+            <td class="stat-value">{{ proc.pid }}</td>
+            <td>GPU {{ proc.gpu_index }}</td>
             <td>{{ proc.name }}</td>
-            <td style="color: var(--text-muted)">{{ proc.username }}</td>
-            <td class="stat-value">{{ fmtMem(proc.gpu_memory_used) }}</td>
-            <td class="stat-value">{{ proc.cpu_percent?.toFixed(1) }}%</td>
+            <td>{{ proc.username }}</td>
+            <td class="task-table__metric" :class="{ 'task-table__metric--muted': !isManageable(proc) && Number(proc.gpu_memory_used || 0) <= 0 }" :title="gpuMetricTitle(proc)">{{ displayGpuMemory(proc) }}</td>
+            <td class="task-table__metric" :class="{ 'task-table__metric--muted': !isManageable(proc) && Number(proc.cpu_percent || 0) <= 0 }" :title="cpuMetricTitle(proc)">{{ displayCpuPercent(proc) }}</td>
             <td>
               <select
                 class="priority-select"
+                :disabled="!isManageable(proc)"
                 :value="proc.priority || 'normal'"
-                @change="changePriority(proc.pid, $event.target.value)"
                 :style="{ color: priorityColors[proc.priority || 'normal'].color, background: priorityColors[proc.priority || 'normal'].bg }"
+                @change="changePriority(proc, $event.target.value)"
               >
                 <option value="urgent">紧急</option>
                 <option value="normal">普通</option>
                 <option value="deferrable">可延迟</option>
               </select>
             </td>
-            <td class="task-command">{{ proc.command || '-' }}</td>
             <td>
-              <div class="task-actions">
-                <button class="btn-tech" :disabled="actionLoading[`${proc.pid}-pause`]" style="padding: 4px 10px; font-size: 0.75rem" @click="doAction(proc.pid, 'pause')">暂停</button>
-                <button class="btn-tech" :disabled="actionLoading[`${proc.pid}-resume`]" style="padding: 4px 10px; font-size: 0.75rem" @click="doAction(proc.pid, 'resume')">恢复</button>
-                <button class="btn-tech btn-tech--danger" :disabled="actionLoading[`${proc.pid}-terminate`]" style="padding: 4px 10px; font-size: 0.75rem" @click="doAction(proc.pid, 'terminate')">终止</button>
+              <span class="status-badge" :class="getCategoryClass(proc)">{{ getCategoryLabel(proc) }}</span>
+            </td>
+            <td>
+              <div class="task-table__reason" :title="getManageableReason(proc)">{{ getReasonSummary(proc) }}</div>
+            </td>
+            <td>
+              <div class="task-table__command" :title="proc.command || '-'">{{ getCommandPreview(proc) }}</div>
+            </td>
+            <td class="task-table__ops">
+              <div v-if="isManageable(proc)">
+                <div class="task-table__actions">
+                  <button class="btn-tech" :disabled="isActionDisabled(proc, 'pause')" @click="doAction(proc, 'pause')">暂停</button>
+                  <button class="btn-tech" :disabled="isActionDisabled(proc, 'resume')" @click="doAction(proc, 'resume')">恢复</button>
+                  <button class="btn-tech btn-tech--danger" :disabled="isActionDisabled(proc, 'terminate')" @click="doAction(proc, 'terminate')">终止</button>
+                </div>
+                <div class="task-table__hint" :title="getActionHint(proc)">{{ getActionHint(proc) }}</div>
+              </div>
+              <div v-else class="task-table__readonly" :title="getManageableReason(proc)">
+                该类进程只做观测，不提供暂停/终止
               </div>
             </td>
           </tr>
           <tr v-if="!filteredProcesses.length">
-            <td colspan="9" class="task-empty">暂无匹配的GPU进程</td>
+            <td colspan="11" class="task-table__empty">
+              {{ showAllProcesses ? '暂无匹配的 GPU 相关进程。' : '当前没有可治理任务，可切换到“全部 GPU 相关进程”查看背景与系统进程。' }}
+            </td>
           </tr>
         </tbody>
       </table>
-    </div>
+    </section>
   </div>
 </template>
 
 <style scoped>
-.task-page { max-width: 1460px; margin: 0 auto; }
+.task-page {
+  max-width: 1460px;
+  margin: 0 auto;
+}
 
-.task-hero {
+.hero-card,
+.toolbar-card,
+.rules-panel,
+.table-card,
+.panel-card {
+  margin-bottom: 14px;
+}
+
+.hero-card {
   display: flex;
   justify-content: space-between;
   gap: 16px;
   padding: 22px 24px;
-  margin-bottom: 16px;
 }
 
-.task-hero__actions {
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-end;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.task-mode-panel {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
-}
-
-.task-mode-switch {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.task-mode-ack {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-}
-
-.task-hero__eyebrow {
+.hero-card__eyebrow,
+.rule-card__meta,
+.rules-panel__hint,
+.toolbar-card__summary,
+.mode-box__ack,
+.mode-box__hint {
   font-size: 0.75rem;
   color: var(--text-muted);
-  letter-spacing: 0.12em;
-  margin-bottom: 8px;
+  line-height: 1.6;
 }
 
-.task-hero__title {
+.hero-card__title {
+  margin: 8px 0;
   font-size: 1.5rem;
-  line-height: 1.4;
   color: var(--text-primary);
-  margin-bottom: 8px;
 }
 
-.task-hero__desc {
+.hero-card__desc {
   font-size: 0.875rem;
   color: var(--text-secondary);
   line-height: 1.7;
 }
 
-.task-hero__warn {
-  align-self: flex-start;
-  font-size: 0.75rem;
-  color: #B8860B;
-  background: rgba(184,134,11,0.08);
-  border: 1px solid rgba(184,134,11,0.16);
-  padding: 8px 12px;
-  border-radius: 999px;
-  white-space: normal;
-  max-width: 360px;
-  line-height: 1.6;
+.hero-card__actions,
+.mode-box,
+.mode-box__switch,
+.toolbar-card__right,
+.toolbar-card__switch,
+.rules-panel__head,
+.rule-card__actions,
+.task-table__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
-.task-action-notice {
+.hero-card__actions,
+.mode-box {
+  align-items: flex-end;
+}
+
+.mode-box {
+  flex-direction: column;
+}
+
+.mode-box__hint {
+  max-width: 360px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  color: #7B5D15;
+  background: rgba(212, 175, 55, 0.08);
+  border: 1px solid rgba(184, 134, 11, 0.16);
+}
+
+.notice {
   padding: 14px 16px;
   margin-bottom: 14px;
 }
 
-.task-action-notice--ok {
+.notice--ok {
   border-color: rgba(46,139,87,0.14);
   background: rgba(46,139,87,0.05);
 }
 
-.task-action-notice--warning {
+.notice--warning {
   border-color: rgba(184,134,11,0.16);
   background: rgba(212,175,55,0.08);
 }
 
-.task-action-notice--critical {
+.notice--critical {
   border-color: rgba(196,30,58,0.14);
   background: rgba(196,30,58,0.06);
 }
 
-.task-action-notice__title {
-  font-size: 0.8rem;
-  color: var(--text-primary);
+.notice__title {
+  font-size: 0.82rem;
   font-weight: 700;
+  color: var(--text-primary);
 }
 
-.task-action-notice__desc {
+.notice__detail {
   margin-top: 6px;
   font-size: 0.78rem;
   color: var(--text-secondary);
   line-height: 1.7;
 }
 
-.task-stats {
+.stats-grid {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   gap: 12px;
   margin-bottom: 14px;
 }
 
-.task-stat {
+.stat-card {
   padding: 16px;
 }
 
-.task-stat__label,
-.task-stat__hint {
+.stat-card__label,
+.stat-card__hint {
   font-size: 0.75rem;
   color: var(--text-muted);
 }
 
-.task-stat__value {
-  font-size: 1.8rem;
+.stat-card__value {
   margin: 6px 0 4px;
+  font-size: 1.8rem;
 }
 
-.task-grid {
+.summary-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 14px;
   margin-bottom: 14px;
 }
 
-.task-side-card {
+.panel-card,
+.rules-panel {
   padding: 18px;
 }
 
-.priority-rule {
-  padding: 12px 14px;
-  border-radius: 10px;
-  margin-bottom: 10px;
+.panel-card__title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 12px;
 }
 
-.priority-rule__head,
-.user-summary__top {
+.panel-card__score {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 12px;
 }
 
-.priority-rule__tag {
-  font-size: 0.8125rem;
-  font-weight: 600;
-}
-
-.priority-rule__count {
-  font-size: 1rem;
-}
-
-.priority-rule__tip,
-.user-summary__mem,
-.user-summary__tasks,
-.task-toolbar__right {
+.panel-card__meta {
   font-size: 0.75rem;
   color: var(--text-muted);
-  line-height: 1.6;
 }
 
-.user-summary {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.user-summary__item {
-  padding: 12px 14px;
-  border-radius: 10px;
-  background: rgba(58,95,75,0.04);
-  border: 1px solid rgba(58,95,75,0.08);
-}
-
-.user-summary__name {
-  color: var(--text-primary);
-  font-size: 0.875rem;
-  font-weight: 600;
-}
-
-.user-summary__action {
-  margin-top: 6px;
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-  line-height: 1.6;
-}
-
-.fairness-score-box {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 14px;
-  background: rgba(91,75,140,0.04);
-  border: 1px solid rgba(91,75,140,0.08);
-  border-radius: 10px;
-  margin-bottom: 12px;
-}
-
-.fairness-score-box__value {
-  font-size: 2rem;
-  color: #5B4B8C;
-}
-
-.fairness-score-box__meta {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-  line-height: 1.7;
-}
-
-.fairness-rec-list {
+.panel-card__list,
+.yield-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.fairness-rec-item {
+.panel-card__item,
+.yield-item {
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: 10px;
   background: rgba(58,95,75,0.04);
   border: 1px solid rgba(58,95,75,0.08);
-  font-size: 0.75rem;
-  color: var(--text-secondary);
+  font-size: 0.78rem;
   line-height: 1.7;
-}
-
-.yield-panel {
-  padding: 18px;
-  margin-bottom: 14px;
-}
-
-.yield-panel__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.yield-list {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-}
-
-.yield-item {
-  padding: 14px;
-  border-radius: 10px;
-  background: rgba(196,30,58,0.03);
-  border: 1px solid rgba(196,30,58,0.1);
+  color: var(--text-secondary);
 }
 
 .yield-item__top {
@@ -831,84 +768,47 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .yield-item__pid {
-  font-size: 0.75rem;
   font-weight: 700;
   color: #C41E3A;
-}
-
-.yield-item__user,
-.yield-item__score,
-.yield-item__meta {
-  font-size: 0.75rem;
-  color: var(--text-muted);
 }
 
 .yield-item__priority {
   padding: 2px 8px;
   border-radius: 999px;
   font-size: 0.6875rem;
-  font-weight: 600;
+  font-weight: 700;
 }
 
-.yield-item__reason {
-  font-size: 0.8125rem;
-  color: var(--text-secondary);
-  line-height: 1.6;
-  margin-bottom: 6px;
-}
-
-.rule-panel {
-  padding: 18px;
-  margin-bottom: 14px;
-}
-
-.rule-grid {
+.rules-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 12px;
+  margin-top: 12px;
 }
 
 .rule-card {
-  padding: 16px;
+  padding: 14px;
   border-radius: 12px;
   background: rgba(91,75,140,0.03);
   border: 1px solid rgba(91,75,140,0.08);
 }
 
-.rule-card__top,
-.rule-card__actions {
+.rule-card__top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-}
-
-.rule-card__action-buttons {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.rule-card__top {
-  margin-bottom: 12px;
+  gap: 10px;
+  margin-bottom: 10px;
 }
 
 .rule-card__name {
-  font-size: 0.95rem;
-  color: var(--text-primary);
+  font-size: 0.92rem;
   font-weight: 700;
-}
-
-.rule-card__meta,
-.rule-card__hint {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  line-height: 1.6;
+  color: var(--text-primary);
 }
 
 .rule-card__status {
@@ -928,54 +828,22 @@ onUnmounted(() => {
   background: rgba(196,30,58,0.08);
 }
 
-.rule-form {
+.rule-card__form {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 10px 12px;
-  margin-bottom: 12px;
-}
-
-.rule-field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.rule-field span {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-}
-
-.rule-field--full {
-  grid-column: 1 / -1;
-}
-
-.rule-violations {
-  display: flex;
-  flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
-.rule-violation {
-  font-size: 0.6875rem;
-  color: #C41E3A;
-  background: rgba(196,30,58,0.08);
-  border: 1px solid rgba(196,30,58,0.12);
-  padding: 4px 8px;
-  border-radius: 999px;
-}
-
-.task-toolbar {
+.toolbar-card {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   padding: 14px 16px;
-  margin-bottom: 14px;
 }
 
-.task-toolbar__left {
+.toolbar-card__left {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -997,84 +865,149 @@ onUnmounted(() => {
   flex: 1;
 }
 
-.task-table { overflow-x: auto; }
+.priority-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 
-table { width: 100%; border-collapse: collapse; }
+.table-card {
+  overflow-x: auto;
+}
 
-th {
+.task-table {
+  width: 100%;
+  min-width: 1480px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.task-table th {
   text-align: left;
   padding: 12px 16px;
   font-size: 0.75rem;
-  font-weight: 600;
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
   border-bottom: 1px solid var(--border-color);
 }
 
-td {
+.task-table td {
   padding: 12px 16px;
   font-size: 0.8125rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-  vertical-align: top;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  vertical-align: middle;
 }
 
-tr:hover td { background: rgba(58, 95, 75, 0.03); }
+.task-table tr:hover td {
+  background: rgba(58,95,75,0.03);
+}
 
-.gpu-tag {
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
   font-size: 0.6875rem;
-  font-weight: 600;
-  color: var(--accent-primary);
-  background: rgba(58, 95, 75, 0.1);
-  padding: 2px 8px;
-  border-radius: 4px;
+  font-weight: 700;
 }
 
-.task-command {
-  max-width: 320px;
+.status-badge--ok {
+  color: #2F6A46;
+  background: rgba(46,139,87,0.08);
+}
+
+.status-badge--background {
+  color: #666666;
+  background: rgba(153,153,153,0.12);
+}
+
+.status-badge--system {
+  color: #7A4B14;
+  background: rgba(212,175,55,0.14);
+}
+
+.task-table__reason {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  line-height: 1.5;
   color: var(--text-secondary);
+}
+
+.task-table__command {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.task-table__metric {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.task-table__metric--muted {
+  color: var(--text-muted);
+}
+
+.task-table__ops {
+  vertical-align: middle;
+}
+
+.task-table__actions--disabled {
+  opacity: 0.58;
+}
+
+.task-table__readonly,
+.task-table__hint {
+  margin-top: 8px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 0.72rem;
   line-height: 1.6;
-  word-break: break-word;
+  color: var(--text-muted);
 }
 
-.task-actions {
-  display: flex;
-  gap: 6px;
+.task-table__readonly {
+  margin-top: 0;
 }
 
-.task-empty {
+.task-table__empty {
+  padding: 40px 16px;
   text-align: center;
   color: var(--text-muted);
-  padding: 40px 16px;
 }
 
 @media (max-width: 1400px) {
-  .task-stats { grid-template-columns: repeat(3, 1fr); }
-  .task-grid { grid-template-columns: 1fr; }
-  .yield-list { grid-template-columns: 1fr; }
-  .rule-grid { grid-template-columns: 1fr; }
+  .stats-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .summary-grid,
+  .rules-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 860px) {
-  .task-hero,
-  .task-hero__actions,
-  .task-mode-panel,
-  .task-toolbar,
-  .task-toolbar__left,
-  .task-actions,
-  .yield-panel__header,
+  .hero-card,
+  .hero-card__actions,
+  .toolbar-card,
+  .toolbar-card__left,
+  .toolbar-card__right,
+  .toolbar-card__switch,
   .rule-card__top,
-  .rule-card__actions,
-  .rule-card__action-buttons {
+  .rule-card__actions {
     flex-direction: column;
     align-items: stretch;
   }
 
-  .task-mode-panel {
-    align-items: stretch;
+  .stats-grid {
+    grid-template-columns: 1fr;
   }
 
-  .task-stats { grid-template-columns: 1fr; }
-  .rule-form { grid-template-columns: 1fr; }
+  .rule-card__form {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

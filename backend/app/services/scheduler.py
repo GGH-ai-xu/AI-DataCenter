@@ -344,11 +344,14 @@ class SchedulerEngine:
 
         # 补充任务优先级信息
         processes = await self._attach_priorities(processes)
-        if self.privacy:
-            processes = self.privacy.sanitize_processes(processes)
+        llm_processes = (
+            self.privacy.sanitize_processes(processes)
+            if self.privacy
+            else [dict(proc) for proc in processes]
+        )
 
         time_period = get_time_period_label()
-        strategy = await self.llm.generate_schedule(gpus, processes, time_period)
+        strategy = await self.llm.generate_schedule(gpus, llm_processes, time_period)
         return strategy
 
     async def execute_actions(self, actions: list[dict], dry_run: bool = False) -> list[dict]:
@@ -360,10 +363,10 @@ class SchedulerEngine:
             reason = action.get("reason", "")
             result = {
                 "action": act,
+                "target": target,
                 "reason": reason,
                 "success": False,
                 "dry_run": dry_run,
-                "applied": False,
             }
 
             # 校验动作参数合法性
@@ -389,13 +392,13 @@ class SchedulerEngine:
                 results.append(result)
                 continue
 
-            if dry_run:
-                result["success"] = True
-                result["message"] = "演练模式，未实际执行"
-                results.append(result)
-                continue
-
             try:
+                if dry_run:
+                    result["success"] = True
+                    result["applied"] = False
+                    results.append(result)
+                    continue
+
                 if act == "set_power_limit":
                     resp = await self.agent.set_power_limit(
                         target["gpu_index"], target["power_limit"]
@@ -407,6 +410,7 @@ class SchedulerEngine:
                 elif act == "resume_task":
                     resp = await self.agent.resume_task(target["pid"])
                     result["success"] = resp.get("success", False)
+                result["applied"] = bool(result["success"])
 
                 # 记录日志
                 await self.store.save_schedule_log(
@@ -423,7 +427,6 @@ class SchedulerEngine:
                             self._budget_managed_limits[gpu_index] = int(round(original))
                     elif rule == "restore_budget_cap":
                         self._budget_managed_limits.pop(gpu_index, None)
-                result["applied"] = result["success"]
             except Exception as e:
                 result["error"] = str(e)
                 logger.error(f"执行调度动作失败: {act} - {e}")

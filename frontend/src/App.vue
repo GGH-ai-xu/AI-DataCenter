@@ -9,164 +9,82 @@ const router = useRouter()
 const store = useAppStore()
 const wsConnected = ref(false)
 const currentTime = ref('')
-const currentDate = ref('')
-const shellStatus = ref({
-  connected: false,
-  modeLabel: '待接入',
-  agentLabel: '接入中心',
-  agentUrl: '',
-})
-const desktopShellReady = ref(false)
-const desktopInfo = ref({
+const workspaceStatusChecked = ref(false)
+const lockHint = ref('')
+const appInfo = ref({
+  name: 'GPU 共享治理平台',
   version: '',
   updateSupported: false,
   releasesUrl: '',
 })
-const closePrompt = ref({
-  visible: false,
-  busy: false,
-  title: '关闭桌面平台',
-  message: '你想退出并关闭服务，还是最小化到后台继续运行？',
-  detail: '最小化到后台会保留桌面程序与已托管的本机服务。退出并关闭服务会结束桌面程序以及它拉起的本机后端和 Agent。',
-})
-const updateState = ref({
-  loading: false,
-  tone: 'idle',
-  title: '',
-  detail: '',
-  latestVersion: '',
-  downloadUrl: '',
-  releaseUrl: '',
-})
+const updateState = ref(null)
+const updateBusy = ref(false)
+const closeDialog = ref(null)
+const closeBusy = ref(false)
 let ws = null
 let reconnectTimer = null
 let clockTimer = null
-let shellStatusTimer = null
-let removeCloseRequestListener = null
+let workspaceTimer = null
+let lockHintTimer = null
+let removeCloseListener = null
 
 const navItems = [
-  { path: '/', label: '工作台', icon: '台', en: 'Desk' },
-  { path: '/scheduler', label: '治理台', icon: '治', en: 'Control' },
-  { path: '/tasks', label: '处置台', icon: '令', en: 'Action' },
-  { path: '/alerts', label: '风险台', icon: '警', en: 'Risk' },
-  { path: '/energy', label: '复盘台', icon: '证', en: 'Replay' },
-  { path: '/monitor', label: '观察台', icon: '察', en: 'Observe' },
-  { path: '/ai', label: '助手', icon: '智', en: 'Copilot' },
+  { path: '/', label: '总览', icon: '览', desc: '接入中心与自检' },
+  { path: '/tasks', label: '任务', icon: '务', desc: '处置真实任务' },
+  { path: '/scheduler', label: '调度', icon: '策', desc: '预算与治理动作' },
+  { path: '/energy', label: '能耗', icon: '能', desc: '节能复盘与测算' },
+  { path: '/monitor', label: '观察', icon: '观', desc: '画像与过程观察' },
+  { path: '/ai', label: '智能', icon: '智', desc: 'AI 解释与问答' },
+  { path: '/alerts', label: '告警', icon: '警', desc: '风险台与异常确认' },
 ]
 
-const routeScenes = {
-  '/': {
-    kicker: '工作台',
-    title: '先判断，再执行，再回放',
-    desc: '把预算、风险、用户公平性与真实处置动作汇到同一桌面，让平台先像治理台，再像看板。',
-    quote: '先有处置能力，后有展示价值。',
-  },
-  '/tasks': {
-    kicker: '处置台',
-    title: '围绕真实进程，做暂停、恢复、终止与分级',
-    desc: '把谁该让路、谁该保留、谁该被约束落到真实动作，不让治理停留在建议层。',
-    quote: '没有处置动作，治理就只是评论。',
-  },
-  '/scheduler': {
-    kicker: '治理台',
-    title: '把总功率预算、规则和调度动作收进一个控制面',
-    desc: '你可以在这里启动预算治理、执行一次调度、限制功耗上限，并观察动作是否真正落地。',
-    quote: '治理不是看见问题，而是让系统按规则行动。',
-  },
-  '/energy': {
-    kicker: '复盘台',
-    title: '把功耗、节能和调度效果沉淀成证据链',
-    desc: '这里负责回答一个关键问题: 动作之后，到底节了多少电，是否真的更稳、更公平。',
-    quote: '没有量化复盘，治理就难以服众。',
-  },
-  '/monitor': {
-    kicker: '观察台',
-    title: '把系统、用户、训练和任务时间线连成一张证据图',
-    desc: '它不是用来堆指标，而是用来辅助判断: 当前异常来自哪里，治理前后发生了什么变化。',
-    quote: '先把证据看全，再下结论。',
-  },
-  '/ai': {
-    kicker: '助手台',
-    title: '把运行数据、治理策略和报告生成交给同一个副驾驶',
-    desc: '当你需要快速解释现场、总结风险或生成表达材料时，助手承担的是运维副驾而不是聊天挂件。',
-    quote: '助手的价值，在于缩短判断到表达的距离。',
-  },
-  '/alerts': {
-    kicker: '风险台',
-    title: '把高温、超额和异常事件整理成可处置的风险队列',
-    desc: '风险页不只是看红点，而是帮助你判断什么要立刻动手，什么只需继续观察。',
-    quote: '风险页的价值，在于给出优先级。',
-  },
-  '/gpu': {
-    kicker: '单卡侧写',
-    title: '把单卡状态拆开看清，作为精细治理的落点',
-    desc: '当你需要确认一张 GPU 是否该被限功率、是否过热、是否正在拖累预算时，这里提供最细颗粒度依据。',
-    quote: '一张卡的细节，常常决定治理动作能否站住脚。',
-  },
+const isDesktop = computed(() => typeof window !== 'undefined' && Boolean(window.desktopShell))
+const workspaceLocked = computed(() => workspaceStatusChecked.value && !store.workspaceReady)
+
+function getDesktopShellBridge() {
+  if (typeof window === 'undefined') return null
+  return window.desktopShell || null
 }
-
-const activeUsers = computed(() => new Set(store.processes.map((proc) => proc.username || 'unknown')).size)
-const urgentTasks = computed(() => store.processes.filter((proc) => (proc.priority || 'normal') === 'urgent').length)
-const criticalAlerts = computed(() => store.alerts.filter((alert) => alert.severity === 'critical').length)
-const workspaceUnlocked = computed(() => shellStatus.value.connected)
-const visibleNavItems = computed(() => workspaceUnlocked.value ? navItems : [])
-
-const activePath = computed(() => {
-  if (route.path.startsWith('/gpu/')) return '/gpu'
-  const matched = navItems.find(
-    (item) => route.path === item.path || (item.path !== '/' && route.path.startsWith(item.path)),
-  )
-  return matched?.path || '/'
-})
-
-const activeNav = computed(() =>
-  navItems.find((item) => item.path === activePath.value) || navItems[0],
-)
-
-const activeScene = computed(() => {
-  if (!workspaceUnlocked.value) {
-    return {
-      kicker: '接入优先',
-      title: '先完成 Agent 接入，再解锁治理工作台',
-      desc: '当前先只展示接入中心。等本机或远程服务器 Agent 接通后，再开放治理台、处置台、风险台与复盘台。',
-      quote: '先接入，后治理；先连通，后动作。',
-    }
-  }
-  return routeScenes[activePath.value] || routeScenes['/']
-})
-
-const currentVersionLabel = computed(() => desktopInfo.value.version ? `v${desktopInfo.value.version}` : '未识别')
-
-const updateButtonLabel = computed(() => {
-  if (updateState.value.loading) return '检查中...'
-  return '检查更新'
-})
-
-const canDownloadUpdate = computed(() =>
-  updateState.value.tone === 'warning' && Boolean(updateState.value.downloadUrl || updateState.value.releaseUrl),
-)
-
-const shellStatusText = computed(() => workspaceUnlocked.value ? '工作台已解锁' : '等待 Agent 接入')
-const shellTargetText = computed(() => {
-  if (shellStatus.value.agentUrl) return shellStatus.value.agentUrl
-  if (workspaceUnlocked.value) return shellStatus.value.agentLabel || '已连接 Agent'
-  return '请先在接入中心选择本机或远程 Agent'
-})
 
 function updateClock() {
   const now = new Date()
-  currentTime.value = now.toLocaleTimeString('zh-CN', {
+  currentTime.value = now.toLocaleString('zh-CN', {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
     hour12: false,
   })
-  currentDate.value = now.toLocaleDateString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    weekday: 'short',
-  })
+}
+
+function setLockHint(message) {
+  lockHint.value = message
+  clearTimeout(lockHintTimer)
+  lockHintTimer = setTimeout(() => {
+    lockHint.value = ''
+  }, 3200)
+}
+
+function enforceRouteAccess(path = route.path) {
+  if (!workspaceLocked.value || path === '/') {
+    return
+  }
+
+  if (route.path !== '/') {
+    router.replace('/')
+  }
+  setLockHint('当前还未接入 Agent，已返回首页接入中心。')
+}
+
+async function refreshWorkspaceStatus() {
+  try {
+    const { data } = await healthCheck()
+    store.setWorkspaceReady(Boolean(data?.agent_connected))
+  } catch {
+    store.setWorkspaceReady(false)
+  } finally {
+    workspaceStatusChecked.value = true
+    enforceRouteAccess(route.path)
+  }
 }
 
 function connectWs() {
@@ -193,1268 +111,697 @@ function connectWs() {
   ws.onerror = () => ws?.close()
 }
 
-async function refreshShellStatus() {
-  try {
-    const { data } = await healthCheck()
-    shellStatus.value = {
-      connected: !!data?.agent_connected,
-      modeLabel: data?.connection?.mode_label || '待接入',
-      agentLabel: data?.connection?.agent_label || '接入中心',
-      agentUrl: data?.connection?.agent_url || '',
+function navigateTo(item) {
+  if (workspaceLocked.value && item.path !== '/') {
+    setLockHint(`请先在首页完成 Agent 接入，再进入“${item.label}”页面。`)
+    if (route.path !== '/') {
+      router.replace('/')
     }
-  } catch {
-    shellStatus.value = {
-      connected: false,
-      modeLabel: '待接入',
-      agentLabel: '接入中心',
-      agentUrl: '',
-    }
+    return
+  }
+  if (route.path !== item.path) {
+    router.push(item.path)
   }
 }
 
 async function loadDesktopInfo() {
-  if (!window.desktopShell?.getAppInfo) {
-    desktopShellReady.value = false
+  const shellBridge = getDesktopShellBridge()
+  if (!shellBridge) {
     return
   }
 
-  try {
-    const info = await window.desktopShell.getAppInfo()
-    desktopInfo.value = {
-      version: info?.version || '',
-      updateSupported: !!info?.updateSupported,
-      releasesUrl: info?.releasesUrl || '',
-    }
-    desktopShellReady.value = true
-  } catch {
-    desktopShellReady.value = false
+  if (shellBridge.getAppInfo) {
+    try {
+      appInfo.value = {
+        ...appInfo.value,
+        ...await shellBridge.getAppInfo(),
+      }
+    } catch {}
+  }
+
+  if (shellBridge.onCloseRequest) {
+    removeCloseListener?.()
+    removeCloseListener = shellBridge.onCloseRequest((payload) => {
+      closeBusy.value = false
+      closeDialog.value = payload || {
+        title: '关闭桌面平台',
+        message: '你可以选择退出并关闭服务，或者最小化到后台继续运行。',
+        detail: '最小化到后台会保留桌面程序和本机托管服务。',
+      }
+    })
   }
 }
 
 async function checkForUpdates() {
-  if (!window.desktopShell?.checkForUpdates) {
+  const shellBridge = getDesktopShellBridge()
+  if (!shellBridge?.checkForUpdates) {
     return
   }
 
-  updateState.value = {
-    ...updateState.value,
-    loading: true,
-  }
-
+  updateBusy.value = true
   try {
-    const result = await window.desktopShell.checkForUpdates()
+    const result = await shellBridge.checkForUpdates()
     if (!result?.ok) {
-      const noRelease = (result?.error || '').includes('还没有发布正式版本')
-      updateState.value = {
-        loading: false,
-        tone: noRelease ? 'warning' : 'critical',
-        title: noRelease ? '尚未发布桌面更新' : '更新检查失败',
-        detail: result?.error || '无法连接 GitHub Releases，请稍后再试。',
-        latestVersion: '',
-        downloadUrl: '',
-        releaseUrl: desktopInfo.value.releasesUrl,
+      const errorText = String(result?.error || '')
+      if (
+        errorText.includes('还没有发布正式版本')
+        || errorText.includes('未配置 GitHub Releases 发布源')
+      ) {
+        updateState.value = {
+          ok: true,
+          available: false,
+          noReleaseYet: true,
+          currentVersion: appInfo.value.version || '1.0.3',
+          releasesUrl: appInfo.value.releasesUrl || result?.releasesUrl || '',
+        }
+      } else {
+        updateState.value = result
       }
       return
     }
-
-    if (result.available) {
-      updateState.value = {
-        loading: false,
-        tone: 'warning',
-        title: `发现新版本 v${result.latestVersion}`,
-        detail: result.notes
-          ? `当前版本 v${result.currentVersion}，最新版本 v${result.latestVersion}。${result.notes}`
-          : `当前版本 v${result.currentVersion}，最新版本 v${result.latestVersion}，可以前往 GitHub Releases 下载。`,
-        latestVersion: result.latestVersion,
-        downloadUrl: result.downloadUrl || '',
-        releaseUrl: result.releaseUrl || desktopInfo.value.releasesUrl,
-      }
-      return
-    }
-
-    updateState.value = {
-      loading: false,
-      tone: 'ok',
-      title: '已经是最新版本',
-      detail: `当前桌面版 ${currentVersionLabel.value} 已是最新可用版本。`,
-      latestVersion: result.latestVersion || '',
-      downloadUrl: '',
-      releaseUrl: result.releaseUrl || desktopInfo.value.releasesUrl,
-    }
+    updateState.value = result
   } catch (error) {
     updateState.value = {
-      loading: false,
-      tone: 'critical',
-      title: '更新检查失败',
-      detail: error?.message || '无法连接 GitHub Releases，请稍后再试。',
-      latestVersion: '',
-      downloadUrl: '',
-      releaseUrl: desktopInfo.value.releasesUrl,
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
     }
+  } finally {
+    updateBusy.value = false
   }
 }
 
-async function openUpdateLink() {
-  const target = updateState.value.downloadUrl || updateState.value.releaseUrl || desktopInfo.value.releasesUrl
-  if (!target || !window.desktopShell?.openExternal) {
+async function openUpdateTarget(url) {
+  const target = String(url || '').trim()
+  if (!target) return
+
+  const shellBridge = getDesktopShellBridge()
+  if (shellBridge?.openExternal) {
+    await shellBridge.openExternal(target)
     return
   }
+
+  window.open(target, '_blank', 'noopener,noreferrer')
+}
+
+async function resolveCloseAction(action) {
+  const shellBridge = getDesktopShellBridge()
+  closeBusy.value = true
 
   try {
-    await window.desktopShell.openExternal(target)
-  } catch (error) {
-    updateState.value = {
-      ...updateState.value,
-      tone: 'critical',
-      title: '无法打开下载链接',
-      detail: error?.message || '请稍后重试。',
+    if (shellBridge?.resolveCloseRequest) {
+      await shellBridge.resolveCloseRequest(action)
     }
+    closeDialog.value = null
+  } finally {
+    closeBusy.value = false
   }
 }
 
-function openClosePrompt(payload = {}) {
-  closePrompt.value = {
-    visible: true,
-    busy: false,
-    title: payload?.title || '关闭桌面平台',
-    message: payload?.message || '你想退出并关闭服务，还是最小化到后台继续运行？',
-    detail: payload?.detail || '最小化到后台会保留桌面程序与已托管的本机服务。退出并关闭服务会结束桌面程序以及它拉起的本机后端和 Agent。',
-  }
-}
+watch(
+  () => route.path,
+  (path) => {
+    enforceRouteAccess(path)
+  },
+)
 
-async function resolveClosePrompt(action) {
-  if (closePrompt.value.busy) {
-    return
-  }
-
-  if (!window.desktopShell?.resolveCloseRequest) {
-    closePrompt.value = {
-      ...closePrompt.value,
-      visible: false,
-      busy: false,
-    }
-    return
-  }
-
-  if (action === 'quit') {
-    closePrompt.value = {
-      ...closePrompt.value,
-      busy: true,
-      title: '正在关闭桌面平台',
-      message: '正在停止本机服务并安全退出，请稍候。',
-      detail: '这一步会先结束桌面程序拉起的本机后端与 Agent，再真正退出应用。',
-    }
-  } else {
-    closePrompt.value = {
-      ...closePrompt.value,
-      busy: true,
-    }
-  }
-
-  try {
-    await window.desktopShell.resolveCloseRequest(action)
-    if (action !== 'quit') {
-      closePrompt.value = {
-        ...closePrompt.value,
-        visible: false,
-        busy: false,
-      }
-    }
-  } catch {
-    closePrompt.value = {
-      ...closePrompt.value,
-      visible: false,
-      busy: false,
-    }
-  }
-}
-
-function handleWindowKeydown(event) {
-  if (!closePrompt.value.visible || closePrompt.value.busy) {
-    return
-  }
-
-  if (event.key === 'Escape') {
-    event.preventDefault()
-    void resolveClosePrompt('cancel')
-  }
-}
+watch(
+  () => store.workspaceReady,
+  () => {
+    enforceRouteAccess(route.path)
+  },
+)
 
 onMounted(() => {
   updateClock()
   clockTimer = setInterval(updateClock, 1000)
-  loadDesktopInfo()
-  refreshShellStatus()
-  shellStatusTimer = setInterval(refreshShellStatus, 15000)
   connectWs()
-  if (window.desktopShell?.onCloseRequest) {
-    removeCloseRequestListener = window.desktopShell.onCloseRequest(openClosePrompt)
-  }
-  window.addEventListener('keydown', handleWindowKeydown)
+  void refreshWorkspaceStatus()
+  workspaceTimer = setInterval(() => {
+    void refreshWorkspaceStatus()
+  }, 15000)
+  void loadDesktopInfo()
 })
 
 onUnmounted(() => {
   clearInterval(clockTimer)
-  clearInterval(shellStatusTimer)
+  clearInterval(workspaceTimer)
   clearTimeout(reconnectTimer)
+  clearTimeout(lockHintTimer)
+  removeCloseListener?.()
   ws?.close()
-  removeCloseRequestListener?.()
-  window.removeEventListener('keydown', handleWindowKeydown)
 })
-
-watch(
-  () => [workspaceUnlocked.value, route.path],
-  ([unlocked, path]) => {
-    if (!unlocked && path !== '/') {
-      router.replace('/')
-    }
-  },
-)
 </script>
 
 <template>
-  <div class="app-shell">
-    <div class="app-shell__wash app-shell__wash--one"></div>
-    <div class="app-shell__wash app-shell__wash--two"></div>
-    <div class="app-shell__wash app-shell__wash--three"></div>
-
-    <aside class="ink-rail tech-card">
-      <div class="ink-rail__brand">
-        <div class="logo-seal">
-          <span>智</span>
-          <span>算</span>
-          <span>有</span>
-          <span>度</span>
-        </div>
-        <div class="ink-brand">
-          <div class="ink-brand__kicker">Open Source · GPU Governance Workbench</div>
-          <h1 class="ink-brand__title">GPU 共享治理</h1>
-          <p class="ink-brand__sub">DESK · CONTROL · REPLAY</p>
+  <div class="app-layout">
+    <header class="ink-header">
+      <div class="ink-header__left">
+        <div class="logo-seal"><span>智</span><span>能</span></div>
+        <div class="logo-text">
+          <h1 class="logo-title">{{ appInfo.name || 'GPU 共享治理平台' }}</h1>
+          <p class="logo-sub">
+            {{ workspaceLocked ? 'CONNECT FIRST · UNLOCK LATER' : 'LAB · OPS · POWER BUDGET' }}
+          </p>
         </div>
       </div>
 
-      <div class="ink-rail__note">
-        <div class="ink-rail__note-label">当前视角</div>
-        <p class="ink-rail__note-text">{{ activeScene.quote }}</p>
-      </div>
-
-      <div v-if="workspaceUnlocked" class="ink-rail__pulse">
-        <div class="ink-rail__pulse-item">
-          <span class="ink-rail__pulse-label">在线 GPU</span>
-          <strong class="stat-value">{{ store.gpus.length }}</strong>
-        </div>
-        <div class="ink-rail__pulse-item">
-          <span class="ink-rail__pulse-label">活跃用户</span>
-          <strong class="stat-value">{{ activeUsers }}</strong>
-        </div>
-        <div class="ink-rail__pulse-item">
-          <span class="ink-rail__pulse-label">紧急任务</span>
-          <strong class="stat-value">{{ urgentTasks }}</strong>
-        </div>
-        <div class="ink-rail__pulse-item">
-          <span class="ink-rail__pulse-label">严重告警</span>
-          <strong class="stat-value">{{ criticalAlerts }}</strong>
-        </div>
-      </div>
-
-      <nav v-if="workspaceUnlocked" class="ink-nav" aria-label="主导航">
-        <router-link
-          v-for="(item, index) in visibleNavItems"
+      <nav class="ink-nav">
+        <button
+          v-for="item in navItems"
           :key="item.path"
-          :to="item.path"
+          type="button"
           class="ink-nav__item"
-          :class="{ 'ink-nav__item--active': activePath === item.path }"
+          :class="{
+            'ink-nav__item--active': route.path === item.path || (item.path !== '/' && route.path.startsWith(item.path)),
+            'ink-nav__item--locked': workspaceLocked && item.path !== '/',
+          }"
+          :title="workspaceLocked && item.path !== '/' ? `请先接入 Agent，再打开${item.label}` : item.desc"
+          @click="navigateTo(item)"
         >
-          <span class="ink-nav__index stat-value">0{{ index + 1 }}</span>
-          <span class="ink-nav__stamp">{{ item.icon }}</span>
-          <span class="ink-nav__copy">
-            <strong>{{ item.label }}</strong>
-            <small>{{ item.en }}</small>
-          </span>
-        </router-link>
+          <span class="ink-nav__seal">{{ item.icon }}</span>
+          <span class="ink-nav__label">{{ item.label }}</span>
+        </button>
       </nav>
 
-      <div v-else class="ink-lock-panel">
-        <div class="ink-lock-panel__badge">仅开放接入中心</div>
-        <div class="ink-lock-panel__title">接通 Agent 后，再解锁治理台、处置台、风险台与复盘台</div>
-        <div class="ink-lock-panel__desc">
-          当前状态：{{ shellStatusText }}。你可以先在首页接入中心选择“本机模式”或“远程服务器模式”。
+      <div class="ink-header__right">
+        <div v-if="isDesktop" class="desktop-meta">
+          <span class="desktop-meta__version">v{{ appInfo.version || '1.0.3' }}</span>
+          <button
+            type="button"
+            class="desktop-meta__action"
+            :disabled="updateBusy"
+            @click="checkForUpdates"
+          >
+            {{ updateBusy ? '检查中...' : '检查更新' }}
+          </button>
         </div>
-        <div class="ink-lock-panel__target">{{ shellTargetText }}</div>
-        <div class="ink-lock-panel__steps">
-          <div class="ink-lock-panel__step">
-            <span>1</span>
-            <p>先进入首页接入中心，选择本机或远端 Agent。</p>
-          </div>
-          <div class="ink-lock-panel__step">
-            <span>2</span>
-            <p>确认目标地址的 <code>/api/health</code> 可以返回健康状态。</p>
-          </div>
-          <div class="ink-lock-panel__step">
-            <span>3</span>
-            <p>保存接入配置后，其余页面会自动开放。</p>
-          </div>
+        <div class="ink-status" :class="wsConnected ? 'ink-status--on' : 'ink-status--off'">
+          <span class="ink-status__dot"></span>
+          {{ wsConnected ? '在线' : '离线' }}
         </div>
+        <div class="ink-clock">{{ currentTime }}</div>
       </div>
 
-      <div class="ink-rail__footer">
-        <div class="ink-rail__status">
-          <span class="status-badge" :class="wsConnected ? 'status-badge--ok' : 'status-badge--critical'">
-            {{ wsConnected ? '实时联通' : '等待重连' }}
-          </span>
-          <span class="status-badge status-badge--warning">真实治理界面</span>
-        </div>
+      <div class="ink-header__brush"></div>
+    </header>
 
-        <div v-if="desktopShellReady" class="ink-update">
-          <div class="ink-update__head">
-            <div>
-              <div class="ink-update__label">桌面版本</div>
-              <div class="ink-update__version stat-value">{{ currentVersionLabel }}</div>
-            </div>
-            <span class="stage-chip">GitHub Releases</span>
-          </div>
-
-          <div class="ink-update__actions">
-            <button class="ink-update__btn" :disabled="updateState.loading || !desktopInfo.updateSupported" @click="checkForUpdates">
-              {{ updateButtonLabel }}
-            </button>
-            <button
-              v-if="canDownloadUpdate"
-              class="ink-update__btn ink-update__btn--primary"
-              @click="openUpdateLink"
-            >
-              下载新版
-            </button>
-          </div>
-
-          <div v-if="updateState.title" class="ink-update__feedback" :class="`ink-update__feedback--${updateState.tone}`">
-            <div class="ink-update__feedback-title">{{ updateState.title }}</div>
-            <div class="ink-update__feedback-desc">{{ updateState.detail }}</div>
-          </div>
-        </div>
-
-        <div class="ink-rail__clock">
-          <div class="ink-rail__date">{{ currentDate }}</div>
-          <div class="ink-rail__time stat-value">{{ currentTime }}</div>
-        </div>
+    <div v-if="workspaceLocked || lockHint || updateState" class="app-banner-stack">
+      <div v-if="workspaceLocked" class="app-banner app-banner--warning">
+        当前未接入 Agent，平台先只开放首页接入中心；任务、治理、观察、风险、AI 与复盘页面暂不开放。
       </div>
-
-      <div class="ink-rail__vertical vertical-text">功率预算 公平治理 共享秩序</div>
-    </aside>
-
-    <section class="app-stage">
-      <header class="stage-banner tech-card">
-        <div class="stage-banner__body">
-          <div class="stage-banner__eyebrow">
-            {{ workspaceUnlocked ? `${activeScene.kicker} · ${activeNav.label}` : activeScene.kicker }}
-          </div>
-          <h2 class="stage-banner__title">{{ activeScene.title }}</h2>
-          <p class="stage-banner__desc">{{ activeScene.desc }}</p>
-        </div>
-        <div class="stage-banner__side">
-          <div class="stage-banner__quote">{{ activeScene.quote }}</div>
-          <div class="stage-banner__badges">
-            <span class="status-badge" :class="wsConnected ? 'status-badge--ok' : 'status-badge--critical'">
-              {{ wsConnected ? '在线采集' : '连接中断' }}
-            </span>
-            <span class="stage-chip">{{ shellStatus.modeLabel }}</span>
-            <span class="stage-chip">{{ shellStatusText }}</span>
-            <span class="stage-chip stage-chip--wide">{{ shellTargetText }}</span>
-            <template v-if="workspaceUnlocked">
-              <span class="stage-chip">{{ store.gpus.length }} 张 GPU</span>
-              <span class="stage-chip">{{ activeUsers }} 位用户</span>
-              <span class="stage-chip">{{ store.processes.length }} 个进程</span>
-              <span class="stage-chip">{{ criticalAlerts }} 条严重风险</span>
-            </template>
-          </div>
-        </div>
-        <div class="stage-banner__brush"></div>
-      </header>
-
-      <main class="app-main">
-        <router-view v-slot="{ Component }">
-          <transition name="ink-page" mode="out-in">
-            <component :is="Component" />
-          </transition>
-        </router-view>
-      </main>
-    </section>
-
-    <transition name="ink-overlay">
+      <div v-if="lockHint" class="app-banner app-banner--soft">
+        {{ lockHint }}
+      </div>
       <div
-        v-if="closePrompt.visible"
-        class="ink-dialog-backdrop"
-        @click.self="!closePrompt.busy && resolveClosePrompt('cancel')"
+        v-if="updateState"
+        class="app-banner"
+        :class="updateState.ok
+          ? (updateState.available ? 'app-banner--ok' : 'app-banner--neutral')
+          : 'app-banner--critical'"
       >
-        <div class="ink-dialog tech-card" role="dialog" aria-modal="true" aria-labelledby="app-close-dialog-title">
-          <div class="ink-dialog__seal">印</div>
-          <div class="ink-dialog__eyebrow">桌面平台 · 退出确认</div>
-          <h3 id="app-close-dialog-title" class="ink-dialog__title">{{ closePrompt.title }}</h3>
-          <p class="ink-dialog__desc">{{ closePrompt.message }}</p>
-          <div class="ink-dialog__detail">{{ closePrompt.detail }}</div>
-          <div class="ink-dialog__actions">
-            <button class="btn-tech" :disabled="closePrompt.busy" @click="resolveClosePrompt('cancel')">
-              继续停留
-            </button>
-            <button class="btn-tech btn-tech--primary" :disabled="closePrompt.busy" @click="resolveClosePrompt('minimize')">
-              最小化到后台
-            </button>
-            <button class="btn-tech btn-tech--danger" :disabled="closePrompt.busy" @click="resolveClosePrompt('quit')">
-              退出并关闭服务
-            </button>
-          </div>
+        <template v-if="updateState.ok && updateState.available">
+          检测到新版本 `v{{ updateState.latestVersion }}`，当前版本 `v{{ updateState.currentVersion }}`。
+          <button type="button" class="app-banner__link" @click="openUpdateTarget(updateState.downloadUrl || updateState.releaseUrl)">
+            打开下载地址
+          </button>
+        </template>
+        <template v-else-if="updateState.ok">
+          {{ updateState.noReleaseYet ? '当前仓库还没有发布正式 Release，暂时无法在线更新。' : `当前已是最新版本 v${updateState.currentVersion}。` }}
+          <button
+            v-if="updateState.releasesUrl"
+            type="button"
+            class="app-banner__link"
+            @click="openUpdateTarget(updateState.releasesUrl)"
+          >
+            打开 Releases
+          </button>
+        </template>
+        <template v-else>
+          更新检查失败：{{ updateState.error || '无法连接 GitHub Releases。' }}
+        </template>
+      </div>
+    </div>
+
+    <main class="app-main">
+      <router-view v-slot="{ Component }">
+        <transition name="ink-page" mode="out-in">
+          <component :is="Component" />
+        </transition>
+      </router-view>
+    </main>
+
+    <div class="side-deco">
+      <span class="side-deco__text">绿色计算</span>
+    </div>
+
+    <div v-if="closeDialog" class="shell-modal">
+      <div class="shell-modal__mask" @click="resolveCloseAction('cancel')"></div>
+      <div class="shell-modal__panel tech-card">
+        <div class="shell-modal__eyebrow">桌面程序关闭选项</div>
+        <h2 class="shell-modal__title">{{ closeDialog.title || '关闭桌面平台' }}</h2>
+        <p class="shell-modal__message">{{ closeDialog.message }}</p>
+        <p class="shell-modal__detail">{{ closeDialog.detail }}</p>
+        <div class="shell-modal__actions">
+          <button type="button" class="btn-tech" :disabled="closeBusy" @click="resolveCloseAction('cancel')">
+            继续使用
+          </button>
+          <button type="button" class="btn-tech" :disabled="closeBusy" @click="resolveCloseAction('minimize')">
+            最小化到后台
+          </button>
+          <button type="button" class="btn-tech btn-tech--primary" :disabled="closeBusy" @click="resolveCloseAction('quit')">
+            退出并关闭服务
+          </button>
         </div>
       </div>
-    </transition>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.app-shell {
-  position: relative;
-  display: grid;
-  grid-template-columns: 286px minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
-  gap: 22px;
+.app-layout {
+  display: flex;
+  flex-direction: column;
   width: 100%;
   height: 100vh;
-  padding: 20px;
   overflow: hidden;
+  position: relative;
 }
 
-.app-shell__wash {
-  position: fixed;
-  inset: auto;
+/* ===== 水墨顶栏 ===== */
+.ink-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 56px;
+  padding: 0 32px;
+  background: rgba(248, 245, 240, 0.92);
+  backdrop-filter: blur(16px);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 100;
+}
+
+/* 底部毛笔笔触线 */
+.ink-header__brush {
+  position: absolute;
+  bottom: 0; left: 3%; right: 3%;
+  height: 1px;
+  /* 模拟毛笔不均匀笔触 */
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(0,0,0,0.03) 5%,
+    rgba(0,0,0,0.08) 15%,
+    rgba(0,0,0,0.12) 30%,
+    rgba(0,0,0,0.1) 45%,
+    rgba(0,0,0,0.06) 55%,
+    rgba(0,0,0,0.1) 65%,
+    rgba(0,0,0,0.08) 80%,
+    rgba(0,0,0,0.04) 92%,
+    transparent 100%
+  );
+}
+
+.ink-header__left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+/* 朱红印章 Logo */
+.logo-seal {
+  width: 36px; height: 36px;
+  border: 2.5px solid var(--ink-vermillion);
+  border-radius: 3px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  justify-items: center;
+  font-family: var(--font-seal);
+  font-size: 0.6rem;
+  color: var(--ink-vermillion);
+  transform: rotate(-4deg);
+  opacity: 0.7;
+  line-height: 1;
+  padding: 2px;
+  transition: all 0.3s;
+}
+
+.logo-seal:hover {
+  opacity: 1;
+  transform: rotate(0deg);
+}
+
+.logo-title {
+  font-family: var(--font-xingshu);
+  font-size: 1.2rem;
+  font-weight: 400;
+  color: #1a1a1a;
+  letter-spacing: 0.18em;
+  line-height: 1.2;
+}
+
+.logo-sub {
+  font-family: var(--font-song);
+  font-size: 0.5rem;
+  color: #bbb;
+  letter-spacing: 0.35em;
+  font-weight: 300;
+  margin-top: 1px;
+}
+
+/* ===== 水墨导航 ===== */
+.ink-nav {
+  display: flex;
+  gap: 2px;
+}
+
+.ink-nav__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  text-decoration: none;
+  transition: all 0.3s;
+  position: relative;
+  cursor: pointer;
+}
+
+.ink-nav__seal {
+  font-family: var(--font-seal);
+  font-size: 0.7rem;
+  color: #bbb;
+  width: 20px; height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid transparent;
+  border-radius: 2px;
+  transition: all 0.3s;
+}
+
+.ink-nav__label {
+  font-family: var(--font-kaishu);
+  font-size: 0.8125rem;
+  color: #888;
+  letter-spacing: 0.1em;
+  transition: color 0.3s;
+}
+
+.ink-nav__item:hover .ink-nav__label {
+  color: #333;
+}
+
+.ink-nav__item:hover .ink-nav__seal {
+  color: #999;
+  border-color: rgba(0,0,0,0.08);
+}
+
+/* 活跃项 */
+.ink-nav__item--active .ink-nav__seal {
+  color: var(--ink-vermillion);
+  border-color: var(--ink-vermillion);
+  opacity: 0.6;
+}
+
+.ink-nav__item--active .ink-nav__label {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+/* 活跃项底部朱红墨点 */
+.ink-nav__item--active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  background: var(--ink-vermillion);
+  border-radius: 50%;
+  transform: translateX(-50%);
+  opacity: 0.5;
+}
+
+.ink-nav__item--locked {
+  opacity: 0.52;
+}
+
+.ink-nav__item--locked .ink-nav__seal,
+.ink-nav__item--locked .ink-nav__label {
+  color: #b6afa7;
+}
+
+/* ===== 右侧 ===== */
+.ink-header__right {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.desktop-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.desktop-meta__version {
+  font-family: var(--font-song);
+  font-size: 0.75rem;
+  color: #9c968f;
+}
+
+.desktop-meta__action {
+  border: 1px solid rgba(46, 139, 87, 0.14);
+  background: rgba(46, 139, 87, 0.07);
+  color: #3A5F4B;
   border-radius: 999px;
-  filter: blur(48px);
-  pointer-events: none;
-  z-index: 0;
-  opacity: 0.55;
+  padding: 5px 12px;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
 
-.app-shell__wash--one {
-  top: 6%;
-  right: 10%;
-  width: 260px;
-  height: 180px;
-  background: radial-gradient(circle, rgba(46, 139, 87, 0.1) 0%, rgba(46, 139, 87, 0) 72%);
+.desktop-meta__action:hover:not(:disabled) {
+  background: rgba(46, 139, 87, 0.12);
 }
 
-.app-shell__wash--two {
-  bottom: 8%;
-  left: 22%;
-  width: 320px;
-  height: 220px;
-  background: radial-gradient(circle, rgba(196, 30, 58, 0.06) 0%, rgba(196, 30, 58, 0) 72%);
+.desktop-meta__action:disabled {
+  opacity: 0.6;
+  cursor: wait;
 }
 
-.app-shell__wash--three {
-  bottom: 18%;
-  right: 14%;
-  width: 220px;
-  height: 220px;
-  background: radial-gradient(circle, rgba(212, 175, 55, 0.09) 0%, rgba(212, 175, 55, 0) 72%);
+.ink-status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.6875rem;
+  padding: 3px 10px;
+  border-radius: 3px;
+  font-family: var(--font-kaishu);
+  letter-spacing: 0.1em;
 }
 
-.ink-rail,
-.stage-banner,
+.ink-status--on {
+  color: #2E8B57;
+  background: rgba(46, 139, 87, 0.05);
+}
+
+.ink-status--off {
+  color: #C41E3A;
+  background: rgba(196, 30, 58, 0.05);
+}
+
+.ink-status__dot {
+  width: 4px; height: 4px;
+  border-radius: 50%;
+}
+
+.ink-status--on .ink-status__dot {
+  background: #2E8B57;
+  box-shadow: 0 0 4px rgba(46,139,87,0.3);
+  animation: pulse-glow 3s ease-in-out infinite;
+}
+
+.ink-status--off .ink-status__dot {
+  background: #C41E3A;
+}
+
+.ink-clock {
+  font-family: var(--font-song);
+  font-size: 0.8125rem;
+  color: #bbb;
+  font-weight: 300;
+  letter-spacing: 0.08em;
+}
+
+/* ===== 内容区 ===== */
 .app-main {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 28px 32px;
   position: relative;
   z-index: 1;
 }
 
-.ink-rail {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  height: 100%;
-  max-height: 100%;
-  padding: 22px 18px 18px;
-  gap: 20px;
-  overflow-y: auto;
-  overflow-x: hidden;
-  scrollbar-gutter: stable;
-  overscroll-behavior: contain;
-}
-
-.ink-rail.tech-card {
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-
-.ink-rail::-webkit-scrollbar {
-  width: 8px;
-}
-
-.ink-rail::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: rgba(58, 95, 75, 0.16);
-}
-
-.ink-rail::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.ink-rail__brand {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-}
-
-.logo-seal {
-  width: 58px;
-  height: 58px;
-  border: 2px solid var(--ink-vermillion);
-  border-radius: 6px;
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  align-items: center;
-  justify-items: center;
-  padding: 6px;
-  color: var(--ink-vermillion);
-  font-family: var(--font-seal);
-  font-size: 0.8rem;
-  transform: rotate(-6deg);
-  box-shadow: 0 12px 26px rgba(196, 30, 58, 0.08);
-}
-
-.ink-brand__kicker {
-  font-size: 0.7rem;
-  letter-spacing: 0.18em;
-  color: var(--text-muted);
-  text-transform: uppercase;
-}
-
-.ink-brand__title {
-  margin-top: 8px;
-  font-family: var(--font-caoshu);
-  font-size: clamp(2rem, 2.8vw, 2.7rem);
-  line-height: 1;
-  color: var(--text-primary);
-}
-
-.ink-brand__sub {
-  margin-top: 6px;
-  font-family: var(--font-song);
-  font-size: 0.68rem;
-  letter-spacing: 0.28em;
-  color: var(--text-muted);
-}
-
-.ink-rail__note {
-  padding: 14px 14px 12px;
-  border-radius: 16px;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.64), rgba(255, 255, 255, 0.3));
-  border: 1px solid rgba(0, 0, 0, 0.05);
-}
-
-.ink-rail__note-label {
-  font-size: 0.72rem;
-  color: var(--text-muted);
-  letter-spacing: 0.18em;
-}
-
-.ink-rail__note-text {
-  margin-top: 8px;
-  font-family: var(--font-xingcao);
-  font-size: 1.2rem;
-  line-height: 1.6;
-  color: var(--text-secondary);
-}
-
-.ink-nav {
+.app-banner-stack {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  padding: 12px 32px 0;
 }
 
-.ink-lock-panel {
-  display: grid;
-  gap: 12px;
-  padding: 16px;
-  border-radius: 18px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 252, 247, 0.44));
-  border: 1px solid rgba(58, 95, 75, 0.08);
-}
-
-.ink-lock-panel__badge {
-  display: inline-flex;
-  width: fit-content;
-  padding: 5px 10px;
-  border-radius: 999px;
-  background: rgba(212, 175, 55, 0.12);
-  color: #8d6b12;
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
-}
-
-.ink-lock-panel__title {
-  font-family: var(--font-song);
-  font-size: 1.02rem;
-  line-height: 1.6;
-  color: var(--text-primary);
-}
-
-.ink-lock-panel__desc,
-.ink-lock-panel__step p {
-  font-size: 0.8rem;
-  line-height: 1.76;
-  color: var(--text-secondary);
-}
-
-.ink-lock-panel__target {
-  padding: 10px 12px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(58, 95, 75, 0.08);
-  word-break: break-all;
-  font-size: 0.78rem;
-  color: var(--text-primary);
-}
-
-.ink-lock-panel__steps {
-  display: grid;
-  gap: 10px;
-}
-
-.ink-lock-panel__step {
-  display: grid;
-  grid-template-columns: 24px 1fr;
-  gap: 10px;
-  align-items: start;
-}
-
-.ink-lock-panel__step span {
-  width: 24px;
-  height: 24px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  background: rgba(196, 30, 58, 0.08);
-  color: var(--ink-vermillion);
-  font-size: 0.75rem;
-}
-
-.ink-lock-panel__step p {
-  margin: 0;
-}
-
-.ink-rail__pulse {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.ink-rail__pulse-item {
-  padding: 12px 12px 10px;
-  border-radius: 14px;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.66), rgba(255, 255, 255, 0.32));
-  border: 1px solid rgba(58, 95, 75, 0.08);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.ink-rail__pulse-label {
-  font-size: 0.68rem;
-  color: var(--text-muted);
-  letter-spacing: 0.14em;
-}
-
-.ink-rail__pulse-item strong {
-  font-size: 1.18rem;
-  color: var(--text-primary);
-}
-
-.ink-nav__item {
-  display: grid;
-  grid-template-columns: 36px 34px 1fr;
-  align-items: center;
-  gap: 10px;
-  text-decoration: none;
-  padding: 10px 10px 10px 12px;
-  border-radius: 16px;
-  border: 1px solid transparent;
-  transition: transform 0.24s ease, border-color 0.24s ease, background 0.24s ease;
-}
-
-.ink-nav__item:hover {
-  transform: translateX(3px);
-  border-color: rgba(58, 95, 75, 0.12);
-  background: rgba(255, 255, 255, 0.48);
-}
-
-.ink-nav__item--active {
-  border-color: rgba(196, 30, 58, 0.14);
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.72), rgba(196, 30, 58, 0.05));
-}
-
-.ink-nav__index {
-  font-size: 0.78rem;
-  color: rgba(26, 26, 26, 0.3);
-}
-
-.ink-nav__stamp {
-  width: 34px;
-  height: 34px;
-  border-radius: 9px;
-  border: 1px solid rgba(58, 95, 75, 0.1);
+.app-banner {
   display: flex;
   align-items: center;
-  justify-content: center;
-  font-family: var(--font-seal);
-  font-size: 0.9rem;
-  color: var(--accent-primary);
-  background: rgba(255, 255, 255, 0.58);
-}
-
-.ink-nav__item--active .ink-nav__stamp {
-  color: var(--ink-vermillion);
-  border-color: rgba(196, 30, 58, 0.18);
-}
-
-.ink-nav__copy {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
-
-.ink-nav__copy strong {
-  font-family: var(--font-xingshu);
-  font-size: 1rem;
-  font-weight: 400;
-  color: var(--text-primary);
-  letter-spacing: 0.08em;
-}
-
-.ink-nav__copy small {
-  font-family: var(--font-song);
-  font-size: 0.64rem;
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
-  color: var(--text-muted);
-}
-
-.ink-rail__footer {
-  margin-top: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.ink-rail__status {
-  display: flex;
+  gap: 10px;
   flex-wrap: wrap;
-  gap: 8px;
-}
-
-.ink-update {
-  padding: 14px;
-  border-radius: 18px;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.68), rgba(255, 255, 255, 0.34));
-  border: 1px solid rgba(58, 95, 75, 0.08);
-}
-
-.ink-update__head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.ink-update__label {
-  font-size: 0.72rem;
-  color: var(--text-muted);
-  letter-spacing: 0.12em;
-}
-
-.ink-update__version {
-  margin-top: 6px;
-  font-size: 1.1rem;
-  color: var(--text-primary);
-}
-
-.ink-update__actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.ink-update__btn {
-  border: 1px solid rgba(58, 95, 75, 0.12);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.72);
-  color: var(--text-primary);
-  font-size: 0.8rem;
-  padding: 10px 12px;
-  cursor: pointer;
-  transition: transform 0.24s ease, border-color 0.24s ease, background 0.24s ease;
-}
-
-.ink-update__btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-  border-color: rgba(58, 95, 75, 0.2);
-}
-
-.ink-update__btn:disabled {
-  opacity: 0.58;
-  cursor: not-allowed;
-}
-
-.ink-update__btn--primary {
-  background: linear-gradient(135deg, rgba(46, 139, 87, 0.92), rgba(58, 95, 75, 0.88));
-  color: #fffaf1;
-  border-color: transparent;
-}
-
-.ink-update__feedback {
-  margin-top: 12px;
-  padding: 12px;
+  padding: 12px 16px;
   border-radius: 14px;
-  border: 1px solid rgba(58, 95, 75, 0.08);
-  background: rgba(255, 255, 255, 0.66);
-}
-
-.ink-update__feedback--ok {
-  border-color: rgba(46, 139, 87, 0.14);
-  background: rgba(46, 139, 87, 0.06);
-}
-
-.ink-update__feedback--warning {
-  border-color: rgba(184, 134, 11, 0.16);
-  background: rgba(212, 175, 55, 0.08);
-}
-
-.ink-update__feedback--critical {
-  border-color: rgba(196, 30, 58, 0.16);
-  background: rgba(196, 30, 58, 0.06);
-}
-
-.ink-update__feedback-title {
-  font-size: 0.78rem;
-  color: var(--text-primary);
-}
-
-.ink-update__feedback-desc {
-  margin-top: 8px;
-  font-size: 0.76rem;
+  border: 1px solid rgba(26, 26, 26, 0.06);
+  background: rgba(255, 255, 255, 0.52);
+  box-shadow: 0 8px 18px rgba(79, 59, 22, 0.05);
+  font-family: var(--font-kaishu);
+  font-size: 0.82rem;
+  line-height: 1.6;
   color: var(--text-secondary);
-  line-height: 1.7;
 }
 
-.ink-rail__clock {
-  padding-top: 12px;
-  border-top: 1px solid rgba(0, 0, 0, 0.06);
+.app-banner--warning,
+.app-banner--soft {
+  border-color: rgba(212, 175, 55, 0.14);
+  background: rgba(212, 175, 55, 0.08);
+  color: #7B5D15;
 }
 
-.ink-rail__date {
-  font-size: 0.74rem;
-  color: var(--text-muted);
-  letter-spacing: 0.1em;
+.app-banner--ok {
+  border-color: rgba(46, 139, 87, 0.16);
+  background: rgba(46, 139, 87, 0.08);
+  color: #2F6A46;
 }
 
-.ink-rail__time {
-  margin-top: 6px;
-  font-size: 1.32rem;
-  color: var(--text-primary);
+.app-banner--neutral {
+  border-color: rgba(58, 95, 75, 0.12);
+  background: rgba(58, 95, 75, 0.06);
+  color: #3A5F4B;
 }
 
-.ink-rail__vertical {
-  position: absolute;
-  right: 10px;
-  top: 84px;
-  font-family: var(--font-xingcao);
-  font-size: 0.88rem;
-  letter-spacing: 0.34em;
-  color: rgba(0, 0, 0, 0.1);
+.app-banner--critical {
+  border-color: rgba(196, 30, 58, 0.16);
+  background: rgba(196, 30, 58, 0.08);
+  color: #9A1730;
+}
+
+.app-banner__link {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* ===== 右侧竖排装饰 ===== */
+.side-deco {
+  position: fixed;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 50;
   pointer-events: none;
 }
 
-.app-stage {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
-  max-height: 100%;
-  gap: 18px;
-}
-
-.stage-banner {
-  display: flex;
-  align-items: stretch;
-  justify-content: space-between;
-  gap: 18px;
-  min-height: 142px;
-  padding: 22px 26px;
-}
-
-.stage-banner__body {
-  flex: 1;
-  min-width: 0;
-}
-
-.stage-banner__eyebrow {
-  font-size: 0.74rem;
-  color: var(--text-muted);
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-}
-
-.stage-banner__title {
-  margin-top: 10px;
-  font-family: var(--font-song);
-  font-weight: 700;
-  font-size: clamp(1.8rem, 3.5vw, 2.7rem);
-  line-height: 1.1;
-  color: var(--text-primary);
-}
-
-.stage-banner__desc {
-  max-width: 880px;
-  margin-top: 10px;
-  font-size: 0.95rem;
-  line-height: 1.85;
-  color: var(--text-secondary);
-}
-
-.stage-banner__side {
-  width: min(340px, 34%);
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 14px;
-}
-
-.stage-banner__quote {
+.side-deco__text {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
   font-family: var(--font-xingcao);
-  font-size: 1.16rem;
-  color: var(--accent-primary);
-  text-align: right;
-  line-height: 1.6;
+  font-size: 0.875rem;
+  color: rgba(0, 0, 0, 0.04);
+  letter-spacing: 0.6em;
 }
 
-.stage-banner__badges {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
+/* ===== 页面切换 - 云雾出入 ===== */
+.ink-page-enter-active {
+  animation: cloud-appear 0.4s ease-out;
+}
+.ink-page-leave-active {
+  transition: opacity 0.2s ease, filter 0.2s ease;
+}
+.ink-page-leave-to {
+  opacity: 0;
+  filter: blur(3px);
 }
 
-.stage-chip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 5px 12px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.62);
-  border: 1px solid rgba(58, 95, 75, 0.08);
-  font-size: 0.75rem;
-  color: var(--text-secondary);
+@keyframes cloud-appear {
+  from { opacity: 0; transform: translateY(10px); filter: blur(3px); }
+  to   { opacity: 1; transform: translateY(0); filter: blur(0); }
 }
 
-.stage-chip--wide {
-  max-width: 100%;
-  line-height: 1.45;
-  text-align: center;
-  white-space: normal;
-  word-break: break-all;
-}
-
-.stage-banner__brush {
-  position: absolute;
-  left: 26px;
-  right: 26px;
-  bottom: 0;
-  height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(26, 26, 26, 0.06) 12%,
-    rgba(26, 26, 26, 0.12) 42%,
-    rgba(46, 139, 87, 0.18) 60%,
-    rgba(26, 26, 26, 0.05) 84%,
-    transparent
-  );
-}
-
-.app-main {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding-right: 6px;
-}
-
-.ink-dialog-backdrop {
+.shell-modal {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  z-index: 300;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background:
-    radial-gradient(circle at 18% 20%, rgba(46, 139, 87, 0.1) 0%, transparent 28%),
-    radial-gradient(circle at 82% 16%, rgba(212, 175, 55, 0.08) 0%, transparent 24%),
-    radial-gradient(circle at 70% 82%, rgba(196, 30, 58, 0.07) 0%, transparent 22%),
-    rgba(248, 245, 240, 0.72);
-  backdrop-filter: blur(12px);
 }
 
-.ink-dialog {
-  width: min(560px, calc(100vw - 40px));
-  padding: 28px 28px 24px;
-  border-radius: 30px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(255, 252, 247, 0.72)),
-    radial-gradient(circle at top right, rgba(46, 139, 87, 0.08), transparent 32%);
-}
-
-.ink-dialog:hover {
-  transform: none;
-  border-color: var(--border-color);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(255, 252, 247, 0.72)),
-    radial-gradient(circle at top right, rgba(46, 139, 87, 0.08), transparent 32%);
-  box-shadow: var(--shadow-card);
-}
-
-.ink-dialog__seal {
+.shell-modal__mask {
   position: absolute;
-  top: 24px;
-  right: 26px;
-  width: 42px;
-  height: 42px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 2px solid rgba(196, 30, 58, 0.78);
-  border-radius: 10px;
-  color: var(--ink-vermillion);
-  font-family: var(--font-seal);
-  font-size: 1rem;
-  transform: rotate(-8deg);
-  background: rgba(255, 250, 244, 0.86);
+  inset: 0;
+  background: rgba(38, 30, 18, 0.24);
+  backdrop-filter: blur(8px);
 }
 
-.ink-dialog__eyebrow {
+.shell-modal__panel {
+  position: relative;
+  z-index: 1;
+  width: min(620px, calc(100vw - 48px));
+  padding: 28px 28px 24px;
+}
+
+.shell-modal__eyebrow {
+  font-family: var(--font-song);
   font-size: 0.72rem;
-  color: var(--text-muted);
   letter-spacing: 0.22em;
+  color: #9a948d;
   text-transform: uppercase;
 }
 
-.ink-dialog__title {
-  margin-top: 12px;
-  padding-right: 56px;
+.shell-modal__title {
+  margin-top: 10px;
   font-family: var(--font-xingshu);
-  font-size: clamp(1.55rem, 2.8vw, 2rem);
+  font-size: 2rem;
   font-weight: 400;
-  line-height: 1.24;
   color: var(--text-primary);
 }
 
-.ink-dialog__desc {
+.shell-modal__message {
   margin-top: 12px;
-  font-size: 0.94rem;
-  line-height: 1.85;
-  color: var(--text-secondary);
-}
-
-.ink-dialog__detail {
-  margin-top: 16px;
-  padding: 14px 16px;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.6);
-  border: 1px solid rgba(58, 95, 75, 0.08);
-  font-size: 0.82rem;
+  font-family: var(--font-kaishu);
+  font-size: 0.95rem;
   line-height: 1.8;
   color: var(--text-secondary);
 }
 
-.ink-dialog__actions {
+.shell-modal__detail {
+  margin-top: 10px;
+  white-space: pre-line;
+  font-size: 0.82rem;
+  line-height: 1.7;
+  color: var(--text-tertiary);
+}
+
+.shell-modal__actions {
   display: flex;
   justify-content: flex-end;
+  gap: 12px;
+  margin-top: 22px;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 20px;
-}
-
-.ink-overlay-enter-active,
-.ink-overlay-leave-active {
-  transition: opacity 0.24s ease;
-}
-
-.ink-overlay-enter-active .ink-dialog,
-.ink-overlay-leave-active .ink-dialog {
-  transition: transform 0.28s ease, opacity 0.28s ease, filter 0.28s ease;
-}
-
-.ink-overlay-enter-from,
-.ink-overlay-leave-to {
-  opacity: 0;
-}
-
-.ink-overlay-enter-from .ink-dialog,
-.ink-overlay-leave-to .ink-dialog {
-  opacity: 0;
-  transform: translateY(12px) scale(0.98);
-  filter: blur(5px);
-}
-
-.ink-page-enter-active {
-  animation: cloud-appear 0.42s ease-out;
-}
-
-.ink-page-leave-active {
-  transition: opacity 0.22s ease, filter 0.22s ease;
-}
-
-.ink-page-leave-to {
-  opacity: 0;
-  filter: blur(4px);
-}
-
-@keyframes cloud-appear {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-    filter: blur(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-    filter: blur(0);
-  }
-}
-
-@media (max-width: 1180px) {
-  .app-shell {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(0, 1fr);
-    gap: 16px;
-    padding: 14px;
-    height: auto;
-    min-height: 100vh;
-    overflow-y: auto;
-    overflow-x: hidden;
-  }
-
-  .ink-rail {
-    gap: 16px;
-    padding: 18px 16px;
-    max-height: none;
-    overflow: visible;
-  }
-
-  .ink-nav {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-
-  .ink-rail__pulse {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-
-  .ink-update__actions {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .ink-nav__item {
-    grid-template-columns: 24px 28px 1fr;
-    padding: 10px;
-  }
-
-  .ink-rail__vertical {
-    display: none;
-  }
-
-  .stage-banner {
-    flex-direction: column;
-    min-height: auto;
-  }
-
-  .stage-banner__side {
-    width: 100%;
-    align-items: flex-start;
-  }
-
-  .stage-banner__quote,
-  .stage-banner__badges {
-    text-align: left;
-    justify-content: flex-start;
-  }
-}
-
-@media (max-width: 780px) {
-  .app-shell {
-    padding: 10px;
-  }
-
-  .ink-rail__brand {
-    flex-direction: column;
-  }
-
-  .logo-seal {
-    width: 50px;
-    height: 50px;
-  }
-
-  .ink-nav {
-    display: flex;
-    flex-direction: row;
-    overflow-x: auto;
-    padding-bottom: 4px;
-  }
-
-  .ink-update__actions {
-    grid-template-columns: 1fr;
-  }
-
-  .ink-nav__item {
-    min-width: 162px;
-    flex: 0 0 auto;
-  }
-
-  .stage-banner {
-    padding: 18px 18px 20px;
-  }
-
-  .stage-banner__title {
-    font-size: 1.65rem;
-  }
-
-  .stage-banner__desc {
-    font-size: 0.88rem;
-  }
-
-  .ink-dialog {
-    padding: 22px 20px 20px;
-  }
-
-  .ink-dialog__seal {
-    top: 18px;
-    right: 18px;
-    width: 38px;
-    height: 38px;
-  }
-
-  .ink-dialog__title {
-    padding-right: 48px;
-    font-size: 1.42rem;
-  }
-
-  .ink-dialog__actions {
-    flex-direction: column-reverse;
-  }
-
-  .ink-dialog__actions .btn-tech {
-    width: 100%;
-  }
 }
 </style>

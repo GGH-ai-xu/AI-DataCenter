@@ -11,6 +11,7 @@ export const useAppStore = defineStore('app', () => {
   const processes = ref([])
   const alerts = ref([])
   const wsConnected = ref(false)
+  const workspaceReady = ref(false)
 
   // 调度器状态
   const schedulerAuto = ref(false)
@@ -48,10 +49,14 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
+  function setWorkspaceReady(value) {
+    workspaceReady.value = Boolean(value)
+  }
+
   return {
-    gpus, system, processes, alerts, wsConnected,
+    gpus, system, processes, alerts, wsConnected, workspaceReady,
     schedulerAuto, timePeriod,
     totalPower, avgTemperature, totalMemoryUsed, totalMemoryTotal, avgUtilization,
-    updateFromWs,
+    updateFromWs, setWorkspaceReady,
   }
 })

@@ -18,6 +18,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.services.agent_client import AgentClient
 from app.services.data_store import DataStore
@@ -28,11 +29,28 @@ from app.services.energy_analytics import EnergyAnalytics
 from app.services.governance import GovernanceService
 from app.services.privacy import PrivacyService
 from app.services.connection_settings import ConnectionSettingsService
+from app.services.llm_settings import LLMSettingsService
 from app.ws.realtime import ws_manager
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+class SPAStaticFiles(StaticFiles):
+    """为 Vue Router history 模式提供 index.html 回退。"""
+
+    async def get_response(self, path: str, scope):
+        try:
+            response = await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code != 404:
+                raise
+            return await super().get_response("index.html", scope)
+
+        if response.status_code == 404:
+            return await super().get_response("index.html", scope)
+        return response
 
 
 class AppState:
@@ -46,12 +64,31 @@ class AppState:
     governance: GovernanceService
     privacy: PrivacyService
     connection: ConnectionSettingsService
+    llm_settings: LLMSettingsService
     _collect_task: asyncio.Task | None = None
     _cleanup_task: asyncio.Task | None = None
     _agent_fail_count: int = 0
 
 
 app_state = AppState()
+
+
+def resolve_runtime_dir() -> str:
+    configured_home = os.getenv("GPU_GOV_HOME", "").strip()
+    if configured_home:
+        return os.path.join(configured_home, "runtime")
+    return os.getenv(
+        "RUNTIME_DIR",
+        os.path.join(os.path.dirname(__file__), "..", "..", "runtime"),
+    )
+
+
+def bind_llm_service(llm_service: LLMService | None):
+    app_state.llm = llm_service
+    if getattr(app_state, "scheduler", None):
+        app_state.scheduler.llm = llm_service
+    if getattr(app_state, "energy", None):
+        app_state.energy.llm = llm_service
 
 
 async def cleanup_loop():
@@ -131,14 +168,20 @@ async def lifespan(app: FastAPI):
     # 初始化服务
     default_agent_url = os.getenv("AGENT_URL", "http://127.0.0.1:8001")
     db_path = os.getenv("DB_PATH", "./data/history.db")
-    runtime_dir = os.path.join(os.path.dirname(__file__), "..", "..", "runtime")
+    runtime_dir = resolve_runtime_dir()
     connection_config_path = os.getenv(
         "CONNECTION_CONFIG_PATH",
         os.path.join(runtime_dir, "connection.json"),
     )
+    llm_config_path = os.getenv(
+        "LLM_CONFIG_PATH",
+        os.path.join(runtime_dir, "llm.json"),
+    )
 
     app_state.connection = ConnectionSettingsService(connection_config_path, default_agent_url)
+    app_state.llm_settings = LLMSettingsService(llm_config_path)
     connection_settings = app_state.connection.load()
+    app_state.llm_settings.load()
     app_state.agent = AgentClient(connection_settings["agent_url"])
     app_state.store = DataStore(db_path)
     await app_state.store.init()
@@ -154,18 +197,16 @@ async def lifespan(app: FastAPI):
         memory_threshold=int(os.getenv("ALERT_MEMORY_THRESHOLD", "90")),
     )
 
-    # LLM服务（可选）
-    llm_key = os.getenv("LLM_API_KEY", "")
-    if llm_key and llm_key != "sk-your-key-here":
-        app_state.llm = LLMService(
-            api_key=llm_key,
-            base_url=os.getenv("LLM_BASE_URL", "https://api.deepseek.com/v1"),
-            model=os.getenv("LLM_MODEL", "deepseek-chat"),
+    bind_llm_service(app_state.llm_settings.build_service())
+    if app_state.llm:
+        llm_snapshot = app_state.llm_settings.snapshot(True)
+        logger.info(
+            "LLM服务已初始化，来源=%s，模型=%s",
+            llm_snapshot["source"],
+            llm_snapshot["model"],
         )
-        logger.info("LLM服务已初始化")
     else:
-        app_state.llm = None
-        logger.warning("LLM_API_KEY未配置，AI功能不可用")
+        logger.warning("LLM 未配置或未启用，AI功能不可用")
 
     # 调度引擎
     app_state.scheduler = SchedulerEngine(
@@ -188,6 +229,7 @@ async def lifespan(app: FastAPI):
         app_state.privacy,
         app_state.governance,
     )
+    bind_llm_service(app_state.llm)
 
     # 启动采集循环
     app_state._collect_task = asyncio.create_task(collect_loop())
@@ -254,6 +296,7 @@ async def health():
         "ws_connections": ws_manager.connection_count,
         "llm_available": app_state.llm is not None,
         "connection": app_state.connection.snapshot(agent_health),
+        "llm": app_state.llm_settings.snapshot(app_state.llm is not None),
     }
 
 
@@ -281,7 +324,7 @@ if not _frontend_dist:
     else:
         _frontend_dist = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist")
 if os.path.isdir(_frontend_dist):
-    app.mount("/", StaticFiles(directory=_frontend_dist, html=True), name="frontend")
+    app.mount("/", SPAStaticFiles(directory=_frontend_dist, html=True), name="frontend")
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
-"""GPU任务/进程监控 - 获取真实占用 GPU 的进程列表"""
+"""GPU任务/进程监控 - 获取占用GPU的进程列表"""
 
+import time
 from typing import List
 
 try:
@@ -14,9 +15,28 @@ try:
 except ImportError:
     PSUTIL_AVAILABLE = False
 
+from process_policy import classify_process
+
+
+# 模拟进程（无真实GPU时使用）
+_SIM_PROCESSES = [
+    {"pid": 12481, "gpu_index": 0, "gpu_memory_used": 18 * 1073741824, "name": "python",
+     "username": "researcher", "command": "python train_llm.py --model gpt2-xl --epochs 100",
+     "cpu_percent": 45.2, "priority": "urgent"},
+    {"pid": 13302, "gpu_index": 1, "gpu_memory_used": 9 * 1073741824, "name": "python",
+     "username": "api-server", "command": "python serve.py --port 8080 --model chat",
+     "cpu_percent": 12.8, "priority": "normal"},
+    {"pid": 14156, "gpu_index": 2, "gpu_memory_used": 14 * 1073741824, "name": "python",
+     "username": "researcher", "command": "python finetune.py --dataset alpaca --lr 2e-5",
+     "cpu_percent": 62.1, "priority": "normal"},
+    {"pid": 15789, "gpu_index": 3, "gpu_memory_used": 2 * 1073741824, "name": "python",
+     "username": "student", "command": "python test_inference.py --batch 8",
+     "cpu_percent": 3.4, "priority": "deferrable"},
+]
+
 
 def get_gpu_processes(gpu_index: int) -> List[dict]:
-    """获取指定 GPU 上运行的真实进程列表"""
+    """获取指定GPU上运行的进程列表"""
     if not NVML_AVAILABLE:
         return []
     try:
@@ -47,12 +67,18 @@ def get_gpu_processes(gpu_index: int) -> List[dict]:
                 info["create_time"] = p.create_time()
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
-        result.append(info)
+        result.append(classify_process(info))
     return result
 
 
-def get_all_gpu_processes(device_count: int) -> List[dict]:
-    """获取所有真实 GPU 上的进程"""
+def get_all_gpu_processes(device_count: int, simulate: bool = False) -> List[dict]:
+    """获取所有GPU上的进程"""
+    if simulate:
+        now = time.time()
+        return [
+            classify_process({**p, "create_time": now - (i + 1) * 3600})
+            for i, p in enumerate(_SIM_PROCESSES)
+        ]
     all_procs = []
     for i in range(device_count):
         all_procs.extend(get_gpu_processes(i))

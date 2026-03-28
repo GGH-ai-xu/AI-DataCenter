@@ -31,6 +31,18 @@ class AgentClient:
             if self._client and not self._client.is_closed:
                 await self._client.aclose()
 
+    @staticmethod
+    def _extract_http_error(e: httpx.HTTPStatusError) -> str:
+        try:
+            payload = e.response.json()
+            if isinstance(payload, dict) and payload.get("detail"):
+                return str(payload.get("detail"))
+        except Exception:
+            pass
+
+        text = (e.response.text or "").strip()
+        return text or str(e)
+
     async def reconfigure(self, base_url: str, timeout: float | None = None):
         async with self._client_lock:
             if self._client and not self._client.is_closed:
@@ -98,7 +110,7 @@ class AgentClient:
             resp.raise_for_status()
             return resp.json()
         except httpx.HTTPStatusError as e:
-            return {"success": False, "error": e.response.text}
+            return {"success": False, "error": self._extract_http_error(e)}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -109,7 +121,7 @@ class AgentClient:
             resp.raise_for_status()
             return resp.json()
         except httpx.HTTPStatusError as e:
-            return {"success": False, "error": e.response.text}
+            return {"success": False, "error": self._extract_http_error(e)}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -120,7 +132,7 @@ class AgentClient:
             resp.raise_for_status()
             return resp.json()
         except httpx.HTTPStatusError as e:
-            return {"success": False, "error": e.response.text}
+            return {"success": False, "error": self._extract_http_error(e)}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -131,7 +143,7 @@ class AgentClient:
             resp.raise_for_status()
             return resp.json()
         except httpx.HTTPStatusError as e:
-            return {"success": False, "error": e.response.text}
+            return {"success": False, "error": self._extract_http_error(e)}
         except Exception as e:
             return {"success": False, "error": str(e)}
 

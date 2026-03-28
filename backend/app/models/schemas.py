@@ -40,6 +40,12 @@ class ProcessInfo(BaseModel):
     cpu_percent: float
     create_time: float
     priority: str = "normal"  # urgent / normal / deferrable
+    manageable: bool = True
+    process_category: str = "governable"
+    manageable_reason_code: str = ""
+    manageable_summary: str = ""
+    manageable_reason: str = ""
+    is_background_process: bool = False
 
 
 class TaskActionRequest(BaseModel):
@@ -105,6 +111,25 @@ class ChatResponse(BaseModel):
     suggestions: list[str] = []
 
 
+class AIControlPlanRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=2000)
+
+
+class AIControlAction(BaseModel):
+    action: str = Field(
+        pattern=r"^(set_power_limit|pause_task|resume_task|terminate_task|set_task_priority|configure_budget|run_schedule_once)$"
+    )
+    target: dict = Field(default_factory=dict)
+    reason: str = Field(default="", max_length=500)
+
+
+class AIControlExecuteRequest(BaseModel):
+    message: str = Field(default="", max_length=2000)
+    actions: list[AIControlAction] = Field(default_factory=list)
+    dry_run: bool = True
+    acknowledge_risk: bool = False
+
+
 # ========== 任务优先级 ==========
 
 class TaskPriorityUpdate(BaseModel):
@@ -130,3 +155,13 @@ class ConnectionConfigRequest(BaseModel):
     mode: str = Field(default="local", pattern=r"^(local|remote)$")
     agent_url: Optional[str] = Field(default=None, max_length=300)
     agent_label: str = Field(default="", max_length=120)
+
+
+# ========== LLM 配置 ==========
+
+class LLMConfigRequest(BaseModel):
+    enabled: bool = True
+    base_url: str = Field(default="", max_length=500)
+    model: str = Field(default="", max_length=200)
+    api_key: Optional[str] = Field(default="", max_length=500)
+    keep_existing_key: bool = True

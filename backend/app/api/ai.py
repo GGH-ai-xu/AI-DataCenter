@@ -1,10 +1,15 @@
-"""AI对话API - 基于实时数据的LLM智能问答"""
+"""AI对话API - 基于实时数据的LLM智能问答与执行控制台"""
 
 import json
 
 from fastapi import APIRouter, HTTPException
 
-from app.models.schemas import ChatRequest
+from app.models.schemas import (
+    AIControlExecuteRequest,
+    AIControlPlanRequest,
+    ChatRequest,
+)
+from app.services.ai_control import execute_control_actions, plan_control_actions
 
 router = APIRouter(prefix="/api/ai", tags=["AI"])
 
@@ -52,3 +57,33 @@ async def chat(req: ChatRequest):
 
     result = await app_state.llm.chat(req.message, gpu_context)
     return result
+
+
+@router.post("/control/plan")
+async def control_plan(req: AIControlPlanRequest):
+    """AI执行控制台 - 先生成动作计划，不直接执行"""
+    from app.main import app_state
+
+    message = req.message.strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="请输入控制意图")
+
+    return await plan_control_actions(app_state, message)
+
+
+@router.post("/control/execute")
+async def control_execute(req: AIControlExecuteRequest):
+    """AI执行控制台 - 执行动作计划"""
+    from app.main import app_state
+
+    if not req.actions:
+        raise HTTPException(status_code=400, detail="当前没有可执行动作")
+    if not req.dry_run and not req.acknowledge_risk:
+        raise HTTPException(status_code=400, detail="真实执行前请先确认风险")
+
+    payload = [item.model_dump() for item in req.actions]
+    return await execute_control_actions(
+        app_state,
+        payload,
+        dry_run=req.dry_run,
+    )

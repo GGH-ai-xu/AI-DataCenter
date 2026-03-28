@@ -86,8 +86,7 @@ async def get_optimization_history(hours: float = Query(default=72.0, ge=1, le=7
 async def get_schedule_history(hours: float = Query(default=72.0, ge=1, le=720)):
     """调度历史回放"""
     from app.main import app_state
-    history = await app_state.energy.get_schedule_history(hours)
-    return app_state.privacy.sanitize_schedule_history(history)
+    return await app_state.energy.get_schedule_history(hours)
 
 
 @router.get("/history-comparison")
@@ -95,13 +94,6 @@ async def get_history_comparison(hours: float = Query(default=72.0, ge=1, le=720
     """优化效果历史对比"""
     from app.main import app_state
     return await app_state.energy.get_history_comparison(hours)
-
-
-@router.get("/strategy-benchmark")
-async def get_strategy_benchmark():
-    """基于当前真实快照的离线策略对比"""
-    from app.main import app_state
-    return await app_state.energy.get_strategy_benchmark(app_state.scheduler)
 
 
 @router.get("/export-report")

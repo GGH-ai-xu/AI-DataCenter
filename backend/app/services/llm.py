@@ -94,6 +94,42 @@ EVALUATE_PROMPT = """上次调度执行了以下操作：
 严格按JSON返回：
 {{"score": 0, "verdict": "一句话评价", "effective_actions": [], "ineffective_actions": [], "improvement": "改进建议"}}"""
 
+CONTROL_PROMPT = """你是 GPU 治理工作台里的 AI 执行控制台规划器。
+
+你的任务不是直接执行动作，而是把用户的自然语言要求翻译成“可审核、可演练、可执行”的结构化动作计划。
+
+你只能使用以下动作：
+1. set_power_limit -> {{"gpu_index": 0, "power_limit": 220}}
+2. pause_task -> {{"pid": 1234}}
+3. resume_task -> {{"pid": 1234}}
+4. terminate_task -> {{"pid": 1234}}
+5. set_task_priority -> {{"pid": 1234, "priority": "urgent|normal|deferrable"}}
+6. configure_budget -> {{"enabled": true, "total_power_budget": 1200}}
+7. run_schedule_once -> {{}}
+
+要求：
+- 只能引用上下文中真实存在的 GPU 编号和 PID
+- 不要臆造 PID、GPU 编号、用户名
+- 如果信息不足，就返回空 actions，并在 warnings 中说明需要什么信息
+- terminate_task 属于高风险动作，只在用户明确表达“终止/结束进程”等强动作时使用
+- 如果用户只是说“优化/处理一下”，优先给出更保守的动作，如 set_power_limit、set_task_priority、run_schedule_once
+- 只返回 JSON，不要额外解释
+
+返回格式：
+{{
+  "summary": "一句话说明 AI 打算怎么做",
+  "risk_level": "low|medium|high",
+  "requires_confirmation": true,
+  "warnings": ["注意事项1", "注意事项2"],
+  "actions": [
+    {{
+      "action": "pause_task",
+      "target": {{"pid": 1234}},
+      "reason": "为什么这样做"
+    }}
+  ]
+}}"""
+
 
 class LLMService:
     """LLM服务 - 支持对话和调度策略生成"""
@@ -300,6 +336,30 @@ class LLMService:
             return self._parse_json_response(content)
         except Exception as e:
             logger.error(f"AI调度评估失败: {e}")
+            return None
+
+    async def generate_control_plan(
+        self, user_message: str, control_context: str
+    ) -> Optional[dict]:
+        """AI执行控制台 - 生成结构化动作计划"""
+        prompt = (
+            f"用户指令：{user_message}\n\n"
+            f"当前工作台上下文：\n{control_context}\n\n"
+            "请输出结构化动作计划 JSON。"
+        )
+        try:
+            content = await self._call_with_retry(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": CONTROL_PROMPT},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.2,
+                max_tokens=1500,
+            )
+            return self._parse_json_response(content)
+        except Exception as e:
+            logger.error(f"AI执行控制台计划生成失败: {e}")
             return None
 
     @staticmethod

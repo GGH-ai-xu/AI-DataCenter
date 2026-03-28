@@ -26,11 +26,24 @@ async function loadAlerts() {
 async function ackAlert(id) {
   try {
     await acknowledgeAlert(id)
+    store.$patch({
+      alerts: store.alerts.map((alert) => (
+        alert.id === id
+          ? { ...alert, acknowledged: true }
+          : alert
+      )),
+    })
     await loadAlerts()
   } catch (e) {}
 }
 
 const fmtTime = (ts) => new Date(ts * 1000).toLocaleString('zh-CN')
+const formatAlertType = (value = '') => ({
+  temperature: '温度',
+  power: '功率',
+  memory: '显存',
+  self_check: '平台自检',
+}[value] || value || '未知')
 
 const severityConfig = {
   critical: { bg: 'rgba(196,30,58,0.08)', border: 'rgba(196,30,58,0.2)', color: '#C41E3A', icon: '⚠', label: '严重' },
@@ -39,6 +52,7 @@ const severityConfig = {
 
 const pendingCount = computed(() => historyAlerts.value.filter(alert => !alert.acknowledged).length)
 const criticalCount = computed(() => historyAlerts.value.filter(alert => alert.severity === 'critical').length)
+const realtimeAlerts = computed(() => store.alerts.filter((alert) => !alert.acknowledged).slice(0, 5))
 
 onMounted(loadAlerts)
 </script>
@@ -58,7 +72,7 @@ onMounted(loadAlerts)
         <div class="ink-inline-meta">
           <span class="status-badge status-badge--critical">{{ criticalCount }} 条严重</span>
           <span class="status-badge status-badge--warning">{{ pendingCount }} 条未确认</span>
-          <span class="status-badge status-badge--ok">{{ store.alerts.length }} 条实时</span>
+          <span class="status-badge status-badge--ok">{{ realtimeAlerts.length }} 条实时</span>
         </div>
       </div>
     </section>
@@ -75,11 +89,11 @@ onMounted(loadAlerts)
     </div>
 
     <!-- 实时告警（WebSocket推送） -->
-    <div v-if="store.alerts.length" style="margin-bottom: 20px">
+    <div v-if="realtimeAlerts.length" style="margin-bottom: 20px">
       <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em">实时告警</div>
       <div class="alert-stream">
         <div
-          v-for="(alert, i) in store.alerts.slice(0, 5)"
+          v-for="(alert, i) in realtimeAlerts"
           :key="i"
           class="alert-card"
           :style="{ background: severityConfig[alert.severity]?.bg, borderColor: severityConfig[alert.severity]?.border }"
@@ -116,7 +130,7 @@ onMounted(loadAlerts)
               </span>
             </td>
             <td><span class="gpu-tag">GPU {{ alert.gpu_index }}</span></td>
-            <td style="color: var(--text-secondary)">{{ alert.alert_type }}</td>
+            <td style="color: var(--text-secondary)">{{ formatAlertType(alert.alert_type) }}</td>
             <td style="max-width: 300px">{{ alert.message }}</td>
             <td class="stat-value" :style="{ color: severityConfig[alert.severity]?.color }">{{ alert.value?.toFixed(1) }}</td>
             <td class="stat-value" style="color: var(--text-muted)">{{ alert.threshold }}</td>

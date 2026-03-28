@@ -1,11 +1,21 @@
 param(
-  [string]$PythonExe = "python"
+  [string]$PythonExe = ""
 )
 
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
 $desktopShellDir = Join-Path $root "desktop-shell"
+$venvPython = Join-Path $root ".venv\Scripts\python.exe"
+
+if (-not $PythonExe -and (Test-Path $venvPython)) {
+  $PythonExe = $venvPython
+}
+if (-not $PythonExe) {
+  $PythonExe = "python"
+}
+
+Write-Host "Using Python interpreter: $PythonExe"
 
 Write-Host "Step 1/2: build backend and agent runtime..."
 powershell -ExecutionPolicy Bypass -File (Join-Path $root "scripts\build-windows.ps1") -PythonExe $PythonExe

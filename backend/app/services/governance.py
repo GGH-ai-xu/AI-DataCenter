@@ -226,6 +226,9 @@ class GovernanceService:
         return md
 
     def _is_governable_process(self, proc: dict) -> bool:
+        if proc.get("manageable") is not None:
+            return bool(proc.get("manageable"))
+
         priority = proc.get("priority", "normal")
         if priority in {"urgent", "deferrable"}:
             return True

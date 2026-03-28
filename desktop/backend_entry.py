@@ -42,6 +42,7 @@ def configure_environment():
         frontend_dist = root / "_internal" / "frontend" / "dist"
     os.environ.setdefault("DB_PATH", str(data_dir / "history.db"))
     os.environ.setdefault("CONNECTION_CONFIG_PATH", str(runtime_dir / "connection.json"))
+    os.environ.setdefault("LLM_CONFIG_PATH", str(runtime_dir / "llm.json"))
     os.environ.setdefault("FRONTEND_DIST_DIR", str(frontend_dist))
     os.environ.setdefault("HOST", "127.0.0.1")
     os.environ.setdefault("PORT", "8000")

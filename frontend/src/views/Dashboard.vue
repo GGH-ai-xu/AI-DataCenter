@@ -5,7 +5,7 @@
  */
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { getConnectionConfig, getFairnessGovernance, healthCheck, getSchedulerStatus, runOptimize, runScheduleOnce, setPowerBudget, testConnectionConfig, updateConnectionConfig } from '../services/api'
+import { createDemoAlert, getConnectionConfig, getFairnessGovernance, getSystemSelfCheck, healthCheck, getSchedulerStatus, runOptimize, runScheduleOnce, setPowerBudget, testConnectionConfig, updateConnectionConfig } from '../services/api'
 import { useAppStore } from '../stores/app'
 import PowerTrendChart from '../components/charts/PowerTrendChart.vue'
 import UtilizationChart from '../components/charts/UtilizationChart.vue'
@@ -68,8 +68,43 @@ const lastDispatch = ref(null)
 const connectionBusy = ref(false)
 const connectionDirty = ref(false)
 const connectionFeedback = ref(null)
+const remoteAssistState = ref({
+  busy: false,
+  exportedPath: '',
+  feedback: null,
+})
+const selfCheckBusy = ref(false)
+const demoAlertBusy = ref(false)
+const demoAlertFeedback = ref(null)
+const selfCheckState = ref({
+  checked_at: null,
+  summary: {
+    status: 'warning',
+    title: '建议先执行平台自检',
+    message: '先确认治理后端、Agent、GPU 采集和实时连接是否正常，再去做真实治理动作。',
+  },
+  checks: [],
+  gpu_count: 0,
+  process_count: 0,
+  ws_connections: 0,
+  llm_available: false,
+})
+const desktopOpsReady = ref(false)
+const desktopRuntime = ref({
+  runtimeRoot: '',
+  logsRoot: '',
+  backendBaseUrl: '',
+  agentBaseUrl: '',
+  connectionMode: '',
+})
+const desktopServiceState = ref({})
+const desktopOpsBusy = ref(false)
+const desktopOpsFeedback = ref(null)
 let refreshTimer = null
+let removeDesktopServiceListener = null
 const REMOTE_AGENT_PORT = 8001
+const REMOTE_AGENT_EXPORT_DIRNAME = 'GPU-Server-Agent'
+const REMOTE_AGENT_START_SCRIPT = 'Start-Agent.bat'
 
 const fmtMem = (bytes) => (bytes / 1073741824).toFixed(1)
 const shortUser = (username = 'unknown') => username.split('\\').pop() || username
@@ -85,6 +120,23 @@ const formatConnectionTime = (timestamp) => {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+const formatRuntimeTime = (timestamp) => {
+  const value = Number(timestamp || 0)
+  if (!value) return '未执行'
+  const dateValue = value > 1e12 ? value : value * 1000
+  return new Date(dateValue).toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  })
+}
+
+function getDesktopShellBridge() {
+  if (typeof window === 'undefined') return null
+  return window.desktopShell || null
 }
 
 const quickRoutes = [
@@ -214,6 +266,18 @@ const remoteAddressState = computed(() => {
   }
 })
 
+const remoteTargetUrl = computed(() => (
+  remoteAddressState.value.normalized || `http://${remoteAddressState.value.host}:${REMOTE_AGENT_PORT}`
+))
+
+const remoteLocalHealthUrl = computed(() => `http://127.0.0.1:${REMOTE_AGENT_PORT}/api/health`)
+const canExportRemoteAgent = computed(() => Boolean(getDesktopShellBridge()?.exportAgentPackage))
+const canOpenLocalPath = computed(() => Boolean(getDesktopShellBridge()?.openPath))
+const canCopyFromWorkbench = computed(() => (
+  Boolean(getDesktopShellBridge()?.copyText) ||
+  (typeof navigator !== 'undefined' && Boolean(navigator.clipboard?.writeText))
+))
+
 const connectionGuide = computed(() => {
   if (connectionForm.value.mode === 'local') {
     return {
@@ -234,20 +298,37 @@ const connectionGuide = computed(() => {
   }
 
   return {
-    title: '远端主机最短启动步骤',
-    desc: '适合连接实验室服务器。平台接的是远端 Agent 接口，不是远程桌面账号本身。',
-    steps: [
-      '把打包好的 agent 整个文件夹复制到远端主机，例如 C:\\gpu-agent。',
-      '在远端主机上运行 GPUServerAgent.exe。',
-      `先在远端主机本机确认 ${remoteAddressState.value.healthUrl.replace(remoteAddressState.value.normalized || `http://${remoteAddressState.value.host}:${REMOTE_AGENT_PORT}`, `http://127.0.0.1:${REMOTE_AGENT_PORT}`)} 可返回 JSON，再回平台连接。`,
-    ],
-    commands: [
-      'cd C:\\gpu-agent',
-      'Start-Process -FilePath .\\GPUServerAgent.exe -WorkingDirectory $PWD',
-      `Invoke-RestMethod http://127.0.0.1:${REMOTE_AGENT_PORT}/api/health`,
-      `netsh advfirewall firewall add rule name="GPU Server Agent ${REMOTE_AGENT_PORT}" dir=in action=allow protocol=TCP localport=${REMOTE_AGENT_PORT}`,
-    ],
-    extra: `平台会连接 ${remoteAddressState.value.normalized || `http://${remoteAddressState.value.host}:${REMOTE_AGENT_PORT}`}。如果你只填 IP，系统会自动补全默认端口 ${REMOTE_AGENT_PORT}。`,
+    title: canExportRemoteAgent.value ? '远端接入向导' : '远端主机最短启动步骤',
+    desc: canExportRemoteAgent.value
+      ? '桌面版会直接把远端 Agent 包导出到本机桌面。把整个文件夹复制到服务器后，双击启动脚本即可运行。'
+      : '适合连接实验室服务器。平台接的是远端 Agent 接口，不是远程桌面账号本身。',
+    steps: canExportRemoteAgent.value
+      ? [
+          '先点击下方“导出远端 Agent 包”，平台会直接把完整 Agent 文件夹放到本机桌面。',
+          `把整个 ${REMOTE_AGENT_EXPORT_DIRNAME} 文件夹复制到远端主机，例如桌面或 C:\\gpu-agent。`,
+          `在远端主机双击 ${REMOTE_AGENT_START_SCRIPT}；它会启动 GPUServerAgent.exe，并尝试放行 ${REMOTE_AGENT_PORT} 端口。`,
+          `回到平台填写服务器 IP 或完整地址，例如 ${remoteTargetUrl.value}，然后点击“测试连接”或“保存并切换”。`,
+        ]
+      : [
+          '把打包好的 agent 整个文件夹复制到远端主机，例如 C:\\gpu-agent。',
+          '在远端主机上运行 GPUServerAgent.exe。',
+          `先在远端主机本机确认 ${remoteLocalHealthUrl.value} 可返回 JSON，再回平台连接。`,
+        ],
+    commands: canExportRemoteAgent.value
+      ? [
+          `双击: ${REMOTE_AGENT_START_SCRIPT}`,
+          `健康检查: ${remoteLocalHealthUrl.value}`,
+          `平台连接地址: ${remoteTargetUrl.value}`,
+        ]
+      : [
+          'cd C:\\gpu-agent',
+          'Start-Process -FilePath .\\GPUServerAgent.exe -WorkingDirectory $PWD',
+          `Invoke-RestMethod ${remoteLocalHealthUrl.value}`,
+          `netsh advfirewall firewall add rule name="GPU Server Agent ${REMOTE_AGENT_PORT}" dir=in action=allow protocol=TCP localport=${REMOTE_AGENT_PORT}`,
+        ],
+    extra: canExportRemoteAgent.value
+      ? `平台会连接 ${remoteTargetUrl.value}。如果你只填 IP，系统会自动补全默认端口 ${REMOTE_AGENT_PORT}。${remoteAssistState.value.exportedPath ? ` 最近一次导出目录：${remoteAssistState.value.exportedPath}。` : ''}`
+      : `平台会连接 ${remoteTargetUrl.value}。如果你只填 IP，系统会自动补全默认端口 ${REMOTE_AGENT_PORT}。`,
   }
 })
 
@@ -260,6 +341,9 @@ const connectionDiagnostics = computed(() => {
   }
 
   const hints = []
+  if (canExportRemoteAgent.value) {
+    hints.push(`桌面版可直接导出远端 Agent 包；复制到服务器后双击 ${REMOTE_AGENT_START_SCRIPT} 即可启动。`)
+  }
   if (!remoteAddressState.value.raw) {
     hints.push(`请输入远端 Agent 地址，格式如 http://10.151.225.108:${REMOTE_AGENT_PORT}。`)
   } else {
@@ -268,7 +352,7 @@ const connectionDiagnostics = computed(() => {
     } else {
       hints.push(`当前将按 ${remoteAddressState.value.normalized} 测试远端 Agent。`)
     }
-    hints.push(`先在远端主机本机打开 ${remoteAddressState.value.healthUrl}，确认能返回健康状态。`)
+    hints.push(`先在远端主机本机打开 ${remoteLocalHealthUrl.value}，确认能返回健康状态。`)
   }
   hints.push('如果端口能通但平台仍提示不可达，通常是 8001 上不是我们的 Agent，或 Agent 已卡住。')
   return hints
@@ -316,6 +400,81 @@ const recommendationList = computed(() => {
   const recommendations = fairnessState.value.recommendations || []
   if (recommendations.length) return recommendations.slice(0, 3)
   return [governanceTip.value]
+})
+
+const selfCheckSummary = computed(() => selfCheckState.value.summary || {})
+const selfCheckBadgeClass = computed(() => ({
+  ok: 'status-badge--ok',
+  warning: 'status-badge--warning',
+  critical: 'status-badge--critical',
+}[selfCheckSummary.value.status] || 'status-badge--warning'))
+const selfCheckBadgeLabel = computed(() => ({
+  ok: '主体链路正常',
+  warning: '仍需确认',
+  critical: '链路异常',
+}[selfCheckSummary.value.status] || '等待自检'))
+const selfCheckLastTime = computed(() => formatRuntimeTime(selfCheckState.value.checked_at))
+const canRestartDesktopServices = computed(() => Boolean(getDesktopShellBridge()?.restartManagedServices))
+const desktopServiceCards = computed(() =>
+  ['backend', 'agent']
+    .map((key) => desktopServiceState.value?.[key])
+    .filter(Boolean),
+)
+const hasDemoAlert = computed(() =>
+  store.alerts.some((alert) => alert?.alert_type === 'self_check' && !alert?.acknowledged),
+)
+const journeySteps = computed(() => {
+  const selfCheckOk = selfCheckSummary.value.status === 'ok'
+  const hasDispatch = Boolean(lastDispatch.value)
+
+  return [
+    {
+      key: 'connect',
+      index: 1,
+      title: '接通 Agent',
+      done: workspaceReady.value,
+      active: !workspaceReady.value,
+      action: '留在接入中心',
+      desc: workspaceReady.value
+        ? `当前已接入 ${connectionSummary.value}，可以继续验证平台主体链路。`
+        : '先在上方接入中心完成本机或远程 Agent 的测试和保存。',
+    },
+    {
+      key: 'self-check',
+      index: 2,
+      title: '完成平台自检',
+      done: selfCheckOk,
+      active: workspaceReady.value && !selfCheckOk,
+      action: selfCheckOk ? '自检已完成' : '点击平台自检',
+      desc: selfCheckOk
+        ? '治理后端、Agent、GPU 采集和实时连接已经过一轮主体检查。'
+        : '确认后端、Agent、GPU 与实时连接状态，不要在链路未通时直接做治理动作。',
+    },
+    {
+      key: 'alert',
+      index: 3,
+      title: '验证风险链路',
+      done: hasDemoAlert.value,
+      active: workspaceReady.value && selfCheckOk && !hasDemoAlert.value,
+      action: hasDemoAlert.value ? '去风险台确认' : '生成测试告警',
+      desc: hasDemoAlert.value
+        ? '测试告警已经出现，现在可以进入风险台完成确认流程。'
+        : '生成一条可安全忽略的测试告警，确认“工作台 -> 风险台”链路真的能走通。',
+    },
+    {
+      key: 'dispatch',
+      index: 4,
+      title: '执行一次治理',
+      done: hasDispatch,
+      active: workspaceReady.value && selfCheckOk && (!hasDemoAlert.value || hasDemoAlert.value) && !hasDispatch,
+      action: hasDispatch ? '已完成首轮治理' : '执行真实治理或去治理台',
+      desc: hasDispatch
+        ? '平台已经完成过一轮真实治理动作，接下来可以去复盘台看结果。'
+        : store.gpus.length
+          ? '当真实 GPU 在线时，执行一次治理动作或预算治理，验证平台不是只会看。'
+          : '当前还没有真实 GPU 或真实负载，建议先等待可演示的真实窗口。',
+    },
+  ]
 })
 
 const todoItems = computed(() => {
@@ -384,6 +543,22 @@ const todoItems = computed(() => {
   return items.slice(0, 4)
 })
 
+function statusBadgeClass(status = 'warning') {
+  return {
+    ok: 'status-badge--ok',
+    warning: 'status-badge--warning',
+    critical: 'status-badge--critical',
+  }[status] || 'status-badge--warning'
+}
+
+function statusLabel(status = 'warning') {
+  return {
+    ok: '正常',
+    warning: '需关注',
+    critical: '异常',
+  }[status] || '待确认'
+}
+
 function syncConnectionState(connection, force = false) {
   if (!connection) return
   connectionState.value = {
@@ -422,6 +597,186 @@ async function loadConnectionConfig(force = false) {
   } catch {}
 }
 
+function applyDesktopServiceState(payload = {}) {
+  const services = payload?.services
+  if (!services || typeof services !== 'object') {
+    return
+  }
+  desktopServiceState.value = services
+}
+
+async function loadDesktopOpsState() {
+  const shellBridge = getDesktopShellBridge()
+  if (!shellBridge?.getRuntimeInfo || !shellBridge?.getServiceState) {
+    desktopOpsReady.value = false
+    return
+  }
+
+  try {
+    const [runtime, serviceState] = await Promise.all([
+      shellBridge.getRuntimeInfo(),
+      shellBridge.getServiceState(),
+    ])
+    desktopRuntime.value = {
+      runtimeRoot: runtime?.runtimeRoot || '',
+      logsRoot: runtime?.logsRoot || '',
+      backendBaseUrl: runtime?.backendBaseUrl || '',
+      agentBaseUrl: runtime?.agentBaseUrl || '',
+      connectionMode: runtime?.connectionMode || '',
+    }
+    applyDesktopServiceState(serviceState)
+    desktopOpsReady.value = true
+  } catch (error) {
+    desktopOpsReady.value = false
+    desktopOpsFeedback.value = {
+      tone: 'warning',
+      title: '无法读取桌面服务状态',
+      detail: error?.message || '当前环境没有返回桌面运行时信息。',
+    }
+  }
+}
+
+async function refreshDesktopOpsState() {
+  desktopOpsBusy.value = true
+  try {
+    await loadDesktopOpsState()
+    desktopOpsFeedback.value = {
+      tone: 'ok',
+      title: '桌面服务状态已刷新',
+      detail: '当前展示的是桌面壳维护的本机服务状态。',
+    }
+  } finally {
+    desktopOpsBusy.value = false
+  }
+}
+
+async function openDesktopPath(targetPath, title) {
+  const shellBridge = getDesktopShellBridge()
+  if (!targetPath || !shellBridge?.openPath) {
+    return
+  }
+
+  try {
+    await shellBridge.openPath(targetPath)
+  } catch (error) {
+    desktopOpsFeedback.value = {
+      tone: 'warning',
+      title: `${title}打开失败`,
+      detail: error?.message || '请稍后重试。',
+    }
+  }
+}
+
+async function restartDesktopServices() {
+  const shellBridge = getDesktopShellBridge()
+  if (!shellBridge?.restartManagedServices) {
+    return
+  }
+  if (!window.confirm('这会让桌面壳重新检查并拉起本机后端与本机 Agent，是否继续？')) {
+    return
+  }
+
+  desktopOpsBusy.value = true
+  desktopOpsFeedback.value = {
+    tone: 'warning',
+    title: '正在重拉本机服务',
+    detail: '桌面壳正在重新检查本机后端和 Agent，页面可能会自动刷新。',
+  }
+
+  try {
+    const result = await shellBridge.restartManagedServices()
+    applyDesktopServiceState(result)
+    if (result?.runtime) {
+      desktopRuntime.value = {
+        runtimeRoot: result.runtime.runtimeRoot || desktopRuntime.value.runtimeRoot,
+        logsRoot: result.runtime.logsRoot || desktopRuntime.value.logsRoot,
+        backendBaseUrl: result.runtime.backendBaseUrl || desktopRuntime.value.backendBaseUrl,
+        agentBaseUrl: result.runtime.agentBaseUrl || desktopRuntime.value.agentBaseUrl,
+        connectionMode: result.runtime.connectionMode || desktopRuntime.value.connectionMode,
+      }
+    }
+
+    if (!result?.ok) {
+      desktopOpsFeedback.value = {
+        tone: 'critical',
+        title: '本机服务重拉失败',
+        detail: result?.error || '请打开日志目录查看失败原因。',
+      }
+      return
+    }
+
+    desktopOpsFeedback.value = {
+      tone: 'ok',
+      title: '本机服务已重新检查',
+      detail: '桌面壳已经重新同步本机服务，接下来会自动恢复页面数据。',
+    }
+    await Promise.all([
+      loadGovernance(),
+      runPlatformSelfCheck(),
+      loadDesktopOpsState(),
+    ])
+  } catch (error) {
+    desktopOpsFeedback.value = {
+      tone: 'critical',
+      title: '本机服务重拉失败',
+      detail: error?.message || '请打开日志目录查看失败原因。',
+    }
+  } finally {
+    desktopOpsBusy.value = false
+  }
+}
+
+async function runPlatformSelfCheck() {
+  selfCheckBusy.value = true
+  try {
+    const { data } = await getSystemSelfCheck()
+    selfCheckState.value = data
+  } catch (error) {
+    const detail = error?.response?.data?.detail || error?.message || '平台自检失败'
+    selfCheckState.value = {
+      checked_at: Date.now() / 1000,
+      summary: {
+        status: 'critical',
+        title: '平台自检失败',
+        message: detail,
+      },
+      checks: [],
+      gpu_count: 0,
+      process_count: 0,
+      ws_connections: 0,
+      llm_available: false,
+    }
+  } finally {
+    selfCheckBusy.value = false
+  }
+}
+
+async function generateDemoAlert() {
+  demoAlertBusy.value = true
+  try {
+    const { data } = await createDemoAlert()
+    demoAlertFeedback.value = {
+      tone: 'ok',
+      title: '测试告警已写入',
+      detail: data?.message || '现在可以进入风险台，验证告警确认链路。',
+    }
+    if (data?.alert) {
+      store.$patch({
+        alerts: [data.alert, ...store.alerts].slice(0, 100),
+      })
+    }
+  } catch (error) {
+    const detail = error?.response?.data?.detail || error?.message || '测试告警写入失败'
+    demoAlertFeedback.value = {
+      tone: 'critical',
+      title: '测试告警写入失败',
+      detail,
+    }
+  } finally {
+    demoAlertBusy.value = false
+  }
+}
+
 async function testConnection() {
   connectionBusy.value = true
   try {
@@ -457,11 +812,116 @@ async function saveConnection() {
         : `配置已保存到 ${data.connection.mode_label}，当前尝试目标为 ${data.connection.agent_url}，但目标 Agent 目前不可达。`,
     }
     await loadGovernance()
+    await runPlatformSelfCheck()
   } catch (error) {
     const detail = error?.response?.data?.detail || error?.message || '接入配置保存失败'
     connectionFeedback.value = { tone: 'critical', title: '接入配置保存失败', detail }
   } finally {
     connectionBusy.value = false
+  }
+}
+
+function setRemoteAssistFeedback(tone, title, detail) {
+  remoteAssistState.value = {
+    ...remoteAssistState.value,
+    feedback: { tone, title, detail },
+  }
+}
+
+async function copyPlainText(value) {
+  const text = String(value || '')
+  const shellBridge = getDesktopShellBridge()
+
+  if (shellBridge?.copyText) {
+    await shellBridge.copyText(text)
+    return
+  }
+
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text)
+    return
+  }
+
+  throw new Error('当前环境不支持复制到剪贴板')
+}
+
+async function copyGuideCommands() {
+  try {
+    await copyPlainText(connectionGuide.value.commands.join('\r\n'))
+    setRemoteAssistFeedback('ok', '已复制启动说明', '可以直接发给远端主机的使用者。')
+  } catch (error) {
+    setRemoteAssistFeedback('warning', '复制失败', error?.message || '无法复制启动说明。')
+  }
+}
+
+async function copyRemoteHealthUrl() {
+  try {
+    await copyPlainText(remoteLocalHealthUrl.value)
+    setRemoteAssistFeedback('ok', '已复制健康检查地址', `请在远端主机本机打开 ${remoteLocalHealthUrl.value}。`)
+  } catch (error) {
+    setRemoteAssistFeedback('warning', '复制失败', error?.message || '无法复制健康检查地址。')
+  }
+}
+
+async function exportRemoteAgentPackage() {
+  const shellBridge = getDesktopShellBridge()
+  if (!shellBridge?.exportAgentPackage) {
+    setRemoteAssistFeedback('warning', '当前环境不支持导出', '请使用桌面安装版来导出远端 Agent 包。')
+    return
+  }
+
+  remoteAssistState.value = {
+    ...remoteAssistState.value,
+    busy: true,
+    feedback: null,
+  }
+
+  try {
+    const result = await shellBridge.exportAgentPackage()
+    if (result?.canceled) {
+      remoteAssistState.value = {
+        ...remoteAssistState.value,
+        busy: false,
+      }
+      return
+    }
+
+    if (!result?.ok) {
+      throw new Error(result?.error || '远端 Agent 包导出失败')
+    }
+
+    remoteAssistState.value = {
+      busy: false,
+      exportedPath: result.targetDir || '',
+      feedback: {
+        tone: 'ok',
+        title: '远端 Agent 包已导出',
+        detail: `已导出到 ${result.targetDir}。导出位置：${result.destinationLabel || 'desktop'}。把整个 ${REMOTE_AGENT_EXPORT_DIRNAME} 文件夹复制到远端主机后，双击 ${result.scriptName || REMOTE_AGENT_START_SCRIPT} 即可。`,
+      },
+    }
+  } catch (error) {
+    remoteAssistState.value = {
+      ...remoteAssistState.value,
+      busy: false,
+      feedback: {
+        tone: 'critical',
+        title: '导出失败',
+        detail: error?.message || '远端 Agent 包导出失败。',
+      },
+    }
+  }
+}
+
+async function openExportedAgentFolder() {
+  const shellBridge = getDesktopShellBridge()
+  if (!remoteAssistState.value.exportedPath || !shellBridge?.openPath) {
+    return
+  }
+
+  try {
+    await shellBridge.openPath(remoteAssistState.value.exportedPath)
+  } catch (error) {
+    setRemoteAssistFeedback('warning', '无法打开目录', error?.message || '请手动打开导出目录。')
   }
 }
 
@@ -607,6 +1067,11 @@ async function quickBudgetAction() {
 onMounted(() => {
   loadConnectionConfig(true)
   loadGovernance()
+  runPlatformSelfCheck()
+  loadDesktopOpsState()
+  if (getDesktopShellBridge()?.onServiceState) {
+    removeDesktopServiceListener = getDesktopShellBridge().onServiceState(applyDesktopServiceState)
+  }
   refreshTimer = setInterval(loadGovernance, 8000)
 })
 
@@ -634,6 +1099,7 @@ watch(
 
 onUnmounted(() => {
   clearInterval(refreshTimer)
+  removeDesktopServiceListener?.()
 })
 </script>
 
@@ -799,6 +1265,30 @@ onUnmounted(() => {
               <div class="connection-guide__desc">{{ connectionGuide.desc }}</div>
             </div>
 
+            <div v-if="connectionForm.mode === 'remote'" class="connection-guide__toolbar">
+              <button
+                v-if="canExportRemoteAgent"
+                class="btn-tech btn-tech--primary"
+                :disabled="remoteAssistState.busy"
+                @click="exportRemoteAgentPackage"
+              >
+                {{ remoteAssistState.busy ? '导出中...' : '导出远端 Agent 包' }}
+              </button>
+              <button v-if="canCopyFromWorkbench" class="btn-tech" @click="copyGuideCommands">
+                复制启动说明
+              </button>
+              <button v-if="canCopyFromWorkbench" class="btn-tech" @click="copyRemoteHealthUrl">
+                复制健康检查地址
+              </button>
+              <button
+                v-if="remoteAssistState.exportedPath && canOpenLocalPath"
+                class="btn-tech"
+                @click="openExportedAgentFolder"
+              >
+                打开导出目录
+              </button>
+            </div>
+
             <div class="connection-guide__steps">
               <div v-for="(step, index) in connectionGuide.steps" :key="index" class="connection-guide__step">
                 <span class="connection-guide__idx">{{ index + 1 }}</span>
@@ -807,7 +1297,192 @@ onUnmounted(() => {
             </div>
 
             <pre class="connection-guide__code">{{ connectionGuide.commands.join('\n') }}</pre>
+            <div
+              v-if="remoteAssistState.exportedPath && connectionForm.mode === 'remote'"
+              class="connection-guide__exported"
+            >
+              最近导出目录：{{ remoteAssistState.exportedPath }}
+            </div>
+            <div
+              v-if="remoteAssistState.feedback && connectionForm.mode === 'remote'"
+              class="action-feedback"
+              :class="`action-feedback--${remoteAssistState.feedback.tone}`"
+            >
+              <div class="action-feedback__title">{{ remoteAssistState.feedback.title }}</div>
+              <div class="action-feedback__desc">{{ remoteAssistState.feedback.detail }}</div>
+            </div>
             <div class="connection-guide__extra">{{ connectionGuide.extra }}</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="self-check-panel tech-card">
+      <div class="self-check-panel__head">
+        <div>
+          <div class="section-title">平台自检</div>
+          <div class="workbench-card__sub">先确认平台主体链路正常，再去验证风险台与治理动作，不让第一次使用者在空页面里猜。</div>
+        </div>
+        <div class="connection-panel__badges">
+          <span class="status-badge" :class="selfCheckBadgeClass">{{ selfCheckBadgeLabel }}</span>
+          <span class="status-badge">{{ selfCheckLastTime }}</span>
+        </div>
+      </div>
+
+      <div class="self-check-layout">
+        <div class="self-check-card self-check-card--main">
+          <div class="self-check-card__label">主体结论</div>
+          <div class="self-check-card__headline">{{ selfCheckSummary.title }}</div>
+          <div class="self-check-card__desc">{{ selfCheckSummary.message }}</div>
+
+          <div class="self-check-facts">
+            <div class="self-check-facts__item">
+              <span class="self-check-facts__label">GPU</span>
+              <strong class="stat-value">{{ Number(selfCheckState.gpu_count || 0) }}</strong>
+            </div>
+            <div class="self-check-facts__item">
+              <span class="self-check-facts__label">进程</span>
+              <strong class="stat-value">{{ Number(selfCheckState.process_count || 0) }}</strong>
+            </div>
+            <div class="self-check-facts__item">
+              <span class="self-check-facts__label">实时连接</span>
+              <strong class="stat-value">{{ Number(selfCheckState.ws_connections || 0) }}</strong>
+            </div>
+            <div class="self-check-facts__item">
+              <span class="self-check-facts__label">AI 助手</span>
+              <strong class="stat-value">{{ selfCheckState.llm_available ? '开' : '关' }}</strong>
+            </div>
+          </div>
+
+          <div class="action-grid" style="margin-top: 16px">
+            <button class="btn-tech btn-tech--primary" :disabled="selfCheckBusy" @click="runPlatformSelfCheck">
+              {{ selfCheckBusy ? '自检中...' : '平台自检' }}
+            </button>
+            <button class="btn-tech" :disabled="demoAlertBusy" @click="generateDemoAlert">
+              {{ demoAlertBusy ? '写入中...' : '生成测试告警' }}
+            </button>
+            <button class="btn-tech" :disabled="!workspaceReady" @click="router.push('/alerts')">
+              打开风险台
+            </button>
+            <button class="btn-tech" :disabled="!workspaceReady" @click="router.push('/scheduler')">
+              打开治理台
+            </button>
+          </div>
+
+          <div class="workbench-card__hint">
+            建议顺序：先点“平台自检”，确认后端、Agent、GPU 与实时连接；再点“生成测试告警”，去风险台做一遍确认流程。
+          </div>
+
+          <div v-if="demoAlertFeedback" class="action-feedback" :class="`action-feedback--${demoAlertFeedback.tone}`">
+            <div class="action-feedback__title">{{ demoAlertFeedback.title }}</div>
+            <div class="action-feedback__desc">{{ demoAlertFeedback.detail }}</div>
+          </div>
+        </div>
+
+        <div class="self-check-card">
+          <div class="self-check-card__label">检查明细</div>
+          <div v-if="selfCheckState.checks?.length" class="self-check-list">
+            <div
+              v-for="item in selfCheckState.checks"
+              :key="item.key"
+              class="self-check-item"
+              :class="`self-check-item--${item.status}`"
+            >
+              <div class="self-check-item__top">
+                <span class="self-check-item__title">{{ item.label }}</span>
+                <span class="status-badge" :class="statusBadgeClass(item.status)">{{ statusLabel(item.status) }}</span>
+              </div>
+              <div class="self-check-item__desc">{{ item.detail }}</div>
+            </div>
+          </div>
+          <div v-else class="signal-card__empty">自检结果还没有返回，稍后再试。</div>
+        </div>
+      </div>
+    </section>
+
+    <section v-if="desktopOpsReady" class="desktop-ops-panel tech-card">
+      <div class="desktop-ops-panel__head">
+        <div>
+          <div class="section-title">桌面服务</div>
+          <div class="workbench-card__sub">这是桌面安装版自己维护的本机后端与本机 Agent 状态。出问题时先看这里，再决定要不要重拉本机服务。</div>
+        </div>
+        <div class="connection-panel__badges">
+          <span class="status-badge">{{ desktopRuntime.connectionMode === 'remote' ? '远程接入模式' : '本机接入模式' }}</span>
+          <span class="status-badge">{{ desktopRuntime.backendBaseUrl || '未识别后端地址' }}</span>
+        </div>
+      </div>
+
+      <div class="desktop-ops-layout">
+        <div class="desktop-ops-services">
+          <div
+            v-for="service in desktopServiceCards"
+            :key="service.key"
+            class="desktop-ops-item"
+            :class="`desktop-ops-item--${service.status}`"
+          >
+            <div class="desktop-ops-item__top">
+              <div>
+                <div class="desktop-ops-item__title">{{ service.label }}</div>
+                <div class="desktop-ops-item__meta">端口 {{ service.port || '—' }} · {{ service.managed ? '桌面壳托管' : '外部实例/未托管' }}</div>
+              </div>
+              <span class="status-badge" :class="statusBadgeClass(service.status === 'error' ? 'critical' : service.status === 'running' ? 'ok' : 'warning')">
+                {{ service.status === 'running' ? '运行中' : service.status === 'error' ? '异常' : service.status === 'idle' ? '未运行' : '处理中' }}
+              </span>
+            </div>
+            <div class="desktop-ops-item__desc">{{ service.detail || '暂无状态说明。' }}</div>
+          </div>
+        </div>
+
+        <div class="desktop-ops-card">
+          <div class="desktop-ops-card__label">本机目录</div>
+          <div class="desktop-ops-card__path">{{ desktopRuntime.logsRoot || '未识别日志目录' }}</div>
+          <div class="desktop-ops-card__sub">优先打开日志目录查看 backend-shell.log 和 agent-shell.log；如果目录没问题，再考虑重拉本机服务。</div>
+
+          <div class="action-grid" style="margin-top: 16px">
+            <button class="btn-tech" :disabled="desktopOpsBusy" @click="refreshDesktopOpsState">
+              {{ desktopOpsBusy ? '处理中...' : '刷新桌面状态' }}
+            </button>
+            <button class="btn-tech" :disabled="!desktopRuntime.logsRoot" @click="openDesktopPath(desktopRuntime.logsRoot, '日志目录')">
+              打开日志目录
+            </button>
+            <button class="btn-tech" :disabled="!desktopRuntime.runtimeRoot" @click="openDesktopPath(desktopRuntime.runtimeRoot, '运行目录')">
+              打开运行目录
+            </button>
+            <button class="btn-tech btn-tech--primary" :disabled="desktopOpsBusy || !canRestartDesktopServices" @click="restartDesktopServices">
+              重新拉起本机服务
+            </button>
+          </div>
+
+          <div v-if="desktopOpsFeedback" class="action-feedback" :class="`action-feedback--${desktopOpsFeedback.tone}`">
+            <div class="action-feedback__title">{{ desktopOpsFeedback.title }}</div>
+            <div class="action-feedback__desc">{{ desktopOpsFeedback.detail }}</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="journey-panel tech-card">
+      <div class="journey-panel__head">
+        <div>
+          <div class="section-title">下一步路线</div>
+          <div class="workbench-card__sub">接入之后不要自己猜。按下面这 4 步走，能更快把平台从“能打开”推进到“能演示”。</div>
+        </div>
+      </div>
+
+      <div class="journey-steps">
+        <div
+          v-for="step in journeySteps"
+          :key="step.key"
+          class="journey-step"
+          :class="{ 'journey-step--done': step.done, 'journey-step--active': step.active }"
+        >
+          <div class="journey-step__idx">{{ step.index }}</div>
+          <div class="journey-step__body">
+            <div class="journey-step__top">
+              <span class="journey-step__title">{{ step.title }}</span>
+              <span class="journey-step__action">{{ step.action }}</span>
+            </div>
+            <div class="journey-step__desc">{{ step.desc }}</div>
           </div>
         </div>
       </div>
@@ -1527,6 +2202,13 @@ onUnmounted(() => {
   gap: 8px;
 }
 
+.connection-guide__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
 .connection-guide__title {
   font-size: 0.9rem;
   color: var(--text-primary);
@@ -1581,6 +2263,316 @@ onUnmounted(() => {
   white-space: pre-wrap;
   word-break: break-word;
   font-family: 'JetBrains Mono', monospace;
+}
+
+.connection-guide__exported {
+  margin-top: 12px;
+  padding: 11px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(58,95,75,0.08);
+  background: rgba(255,255,255,0.52);
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  word-break: break-all;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.self-check-panel {
+  margin-bottom: 14px;
+  padding: 20px;
+  background:
+    radial-gradient(circle at top left, rgba(46,139,87,0.07), transparent 32%),
+    radial-gradient(circle at bottom right, rgba(212,175,55,0.08), transparent 34%),
+    linear-gradient(180deg, rgba(255,255,255,0.82), rgba(255,252,247,0.56));
+}
+
+.self-check-panel__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.self-check-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.self-check-card {
+  padding: 18px;
+  border-radius: 18px;
+  background: rgba(255,255,255,0.56);
+  border: 1px solid rgba(58,95,75,0.08);
+}
+
+.self-check-card--main {
+  background:
+    radial-gradient(circle at top right, rgba(46,139,87,0.08), transparent 30%),
+    linear-gradient(180deg, rgba(255,255,255,0.74), rgba(255,252,247,0.52));
+}
+
+.self-check-card__label {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  letter-spacing: 0.12em;
+}
+
+.self-check-card__headline {
+  margin-top: 14px;
+  font-family: var(--font-song);
+  font-size: 1.48rem;
+  line-height: 1.42;
+  color: var(--text-primary);
+}
+
+.self-check-card__desc {
+  margin-top: 10px;
+  font-size: 0.84rem;
+  line-height: 1.78;
+  color: var(--text-secondary);
+}
+
+.self-check-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.self-check-facts__item {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.62);
+  border: 1px solid rgba(58,95,75,0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.self-check-facts__label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+}
+
+.self-check-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.self-check-item {
+  padding: 14px 15px;
+  border-radius: 16px;
+  background: rgba(255,255,255,0.62);
+  border: 1px solid rgba(58,95,75,0.08);
+}
+
+.self-check-item--ok {
+  border-color: rgba(46,139,87,0.14);
+  background: rgba(46,139,87,0.05);
+}
+
+.self-check-item--warning {
+  border-color: rgba(184,134,11,0.14);
+  background: rgba(212,175,55,0.06);
+}
+
+.self-check-item--critical {
+  border-color: rgba(196,30,58,0.14);
+  background: rgba(196,30,58,0.06);
+}
+
+.self-check-item__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.self-check-item__title {
+  font-size: 0.88rem;
+  color: var(--text-primary);
+}
+
+.self-check-item__desc {
+  margin-top: 8px;
+  font-size: 0.8rem;
+  line-height: 1.72;
+  color: var(--text-secondary);
+}
+
+.desktop-ops-panel,
+.journey-panel {
+  margin-bottom: 14px;
+  padding: 20px;
+  background:
+    radial-gradient(circle at top right, rgba(58,95,75,0.08), transparent 34%),
+    linear-gradient(180deg, rgba(255,255,255,0.82), rgba(255,252,247,0.56));
+}
+
+.desktop-ops-panel__head,
+.journey-panel__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.desktop-ops-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.92fr);
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.desktop-ops-services {
+  display: grid;
+  gap: 10px;
+}
+
+.desktop-ops-item,
+.desktop-ops-card {
+  padding: 18px;
+  border-radius: 18px;
+  background: rgba(255,255,255,0.56);
+  border: 1px solid rgba(58,95,75,0.08);
+}
+
+.desktop-ops-item--running {
+  border-color: rgba(46,139,87,0.14);
+  background: rgba(46,139,87,0.05);
+}
+
+.desktop-ops-item--error {
+  border-color: rgba(196,30,58,0.14);
+  background: rgba(196,30,58,0.06);
+}
+
+.desktop-ops-item--starting,
+.desktop-ops-item--restarting,
+.desktop-ops-item--idle,
+.desktop-ops-item--external {
+  border-color: rgba(184,134,11,0.14);
+  background: rgba(212,175,55,0.05);
+}
+
+.desktop-ops-item__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.desktop-ops-item__title {
+  font-size: 0.92rem;
+  color: var(--text-primary);
+}
+
+.desktop-ops-item__meta {
+  margin-top: 6px;
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}
+
+.desktop-ops-item__desc,
+.desktop-ops-card__sub {
+  margin-top: 10px;
+  font-size: 0.8rem;
+  line-height: 1.72;
+  color: var(--text-secondary);
+}
+
+.desktop-ops-card__label {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  letter-spacing: 0.1em;
+}
+
+.desktop-ops-card__path {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.68);
+  border: 1px solid rgba(58,95,75,0.08);
+  font-size: 0.78rem;
+  line-height: 1.72;
+  color: var(--text-primary);
+  word-break: break-all;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.journey-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.journey-step {
+  display: flex;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(255,255,255,0.56);
+  border: 1px solid rgba(58,95,75,0.08);
+}
+
+.journey-step--done {
+  border-color: rgba(46,139,87,0.16);
+  background: rgba(46,139,87,0.05);
+}
+
+.journey-step--active {
+  border-color: rgba(196,30,58,0.16);
+  background: rgba(196,30,58,0.05);
+}
+
+.journey-step__idx {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(58,95,75,0.08);
+  color: var(--accent-secondary);
+  font-size: 0.8rem;
+}
+
+.journey-step__body {
+  min-width: 0;
+}
+
+.journey-step__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.journey-step__title {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+
+.journey-step__action {
+  font-size: 0.72rem;
+  color: var(--accent-secondary);
+}
+
+.journey-step__desc {
+  margin-top: 8px;
+  font-size: 0.78rem;
+  line-height: 1.72;
+  color: var(--text-secondary);
 }
 
 .unlock-stage {
@@ -2266,9 +3258,12 @@ onUnmounted(() => {
 }
 
 @media (max-width: 1400px) {
-  .connection-layout { grid-template-columns: 1fr; }
+  .connection-layout,
+  .self-check-layout { grid-template-columns: 1fr; }
+  .desktop-ops-layout { grid-template-columns: 1fr; }
   .workbench-grid { grid-template-columns: 1fr; }
   .stats-row { grid-template-columns: repeat(3, 1fr); }
+  .journey-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .signal-grid,
   .governance-grid { grid-template-columns: repeat(2, 1fr); }
   .gpu-grid { grid-template-columns: repeat(2, 1fr); }
@@ -2292,6 +3287,19 @@ onUnmounted(() => {
     justify-content: flex-start;
   }
 
+  .self-check-panel__head {
+    flex-direction: column;
+  }
+
+  .self-check-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .desktop-ops-panel__head,
+  .journey-panel__head {
+    flex-direction: column;
+  }
+
   .signal-grid,
   .stats-row { grid-template-columns: repeat(2, 1fr); }
   .governance-grid { grid-template-columns: 1fr; }
@@ -2302,6 +3310,8 @@ onUnmounted(() => {
   .action-grid,
   .connection-toggle,
   .connection-facts,
+  .self-check-facts,
+  .journey-steps,
   .signal-grid,
   .stats-row,
   .route-grid,

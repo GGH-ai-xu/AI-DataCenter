@@ -25,11 +25,13 @@ export const getSchedulerStatus = () => api.get('/scheduler/status')
 export const toggleAutoSchedule = (enabled) => api.post('/scheduler/auto', null, { params: { enabled } })
 export const setPowerBudget = (enabled, total_power_budget) => api.post('/scheduler/budget', { enabled, total_power_budget })
 export const setManualPowerLimit = (gpu_index, power_limit, options = {}) => api.post('/scheduler/power-limit', { gpu_index, power_limit, ...options })
-export const runScheduleOnce = (options = {}) => api.post('/scheduler/run-once', options)
+export const runScheduleOnce = (payload = {}) => api.post('/scheduler/run-once', payload)
 export const getScheduleReport = () => api.get('/scheduler/report')
 
 // AI对话
 export const aiChat = (message) => api.post('/ai/chat', { message })
+export const aiControlPlan = (message) => api.post('/ai/control/plan', { message })
+export const aiControlExecute = (payload) => api.post('/ai/control/execute', payload)
 
 // 告警
 export const getAlerts = (limit = 50, unack_only = false) => api.get('/alerts/', { params: { limit, unack_only } })
@@ -37,9 +39,16 @@ export const acknowledgeAlert = (id) => api.post(`/alerts/acknowledge/${id}`)
 
 // 健康检查
 export const healthCheck = () => api.get('/health')
+
+// 系统接入与自检
 export const getConnectionConfig = () => api.get('/system/connection')
 export const testConnectionConfig = (payload) => api.post('/system/connection/test', payload)
 export const updateConnectionConfig = (payload) => api.post('/system/connection', payload)
+export const getLlmConfig = () => api.get('/system/llm')
+export const testLlmConfig = (payload) => api.post('/system/llm/test', payload)
+export const updateLlmConfig = (payload) => api.post('/system/llm', payload)
+export const getSystemSelfCheck = () => api.get('/system/self-check')
+export const createDemoAlert = () => api.post('/system/demo-alert')
 
 // 监控观察
 export const getSystemDetail = () => api.get('/monitor/system-detail')
@@ -66,7 +75,6 @@ export const getEnergyReport = (hours = 24) => api.get('/energy/report', { param
 export const getOptimizationHistory = (hours = 72) => api.get('/energy/optimization-history', { params: { hours } })
 export const getScheduleHistory = (hours = 72) => api.get('/energy/schedule-history', { params: { hours } })
 export const getHistoryComparison = (hours = 72) => api.get('/energy/history-comparison', { params: { hours } })
-export const getStrategyBenchmark = () => api.get('/energy/strategy-benchmark')
 export const exportEnergyReport = (hours = 24, format = 'markdown') => api.get('/energy/export-report', { params: { hours, format }, responseType: 'blob' })
 
 export default api
