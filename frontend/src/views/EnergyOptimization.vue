@@ -280,6 +280,31 @@ function parseEvaluation(log) {
   if(log.action!=='ai_evaluate') return null
   try{const t=typeof log.target==='string'?JSON.parse(log.target):log.target;return t?.evaluation||null}catch{return null}
 }
+function actionLabel(log) {
+  if(log.action==='ai_evaluate') return '复盘'
+  if(log.action==='set_power_limit') return '调频'
+  if(log.action==='pause_task') return '暂停'
+  if(log.action==='resume_task') return '恢复'
+  if(log.action==='configure_budget') return '预算'
+  return log.action || '未知动作'
+}
+function historyTargetLabel(log) {
+  if(log.action==='ai_evaluate') return 'AI 调度复盘'
+  try {
+    const o = typeof log.target === 'string' ? JSON.parse(log.target) : log.target
+    if(o?.gpu_index!==undefined) return `GPU${o.gpu_index} → ${o.power_limit||'—'}W`
+    if(o?.pid!==undefined) return `PID ${o.pid}`
+    if(o?.total_power_budget!==undefined) return `总预算 ${o.total_power_budget}W`
+    return '—'
+  } catch { return '—' }
+}
+function historyResultLabel(log) {
+  if(log.action==='ai_evaluate') return '评估完成'
+  return log.result==='success' ? '成功' : '失败'
+}
+function historyResultFail(log) {
+  return log.action!=='ai_evaluate' && log.result==='failed'
+}
 
 function handleResize(){Object.values(charts).forEach(c=>c?.resize())}
 onMounted(()=>{loadData();timer=setInterval(loadData,30000);window.addEventListener('resize',handleResize)})
@@ -573,20 +598,21 @@ onUnmounted(()=>{clearInterval(timer);window.removeEventListener('resize',handle
       </div>
       <div v-else class="schedule-timeline">
         <div class="sched-stats">
-          <span>共 <b>{{ scheduleHistory.total }}</b> 次调度</span>
+          <span>动作 <b>{{ scheduleHistory.execution_total ?? scheduleHistory.total }}</b> 次</span>
           <span style="color:#2E8B57">成功 <b>{{ scheduleHistory.success_count }}</b></span>
-          <span style="color:#C41E3A">失败 <b>{{ scheduleHistory.total - scheduleHistory.success_count }}</b></span>
+          <span style="color:#C41E3A">失败 <b>{{ scheduleHistory.failure_count ?? ((scheduleHistory.execution_total ?? scheduleHistory.total) - scheduleHistory.success_count) }}</b></span>
+          <span style="color:#5B4B8C">AI复盘 <b>{{ scheduleHistory.evaluation_total || 0 }}</b></span>
         </div>
         <div class="timeline-list">
           <div v-for="log in scheduleHistory.logs" :key="log.id" class="timeline-item">
-            <div class="timeline-dot" :class="{'timeline-dot--fail':log.result==='failed'}"></div>
+            <div class="timeline-dot" :class="{'timeline-dot--fail':historyResultFail(log)}"></div>
             <div class="timeline-line"></div>
             <div class="timeline-card">
               <div class="timeline-card__top">
                 <span class="timeline-card__time">{{ formatTs(log.timestamp) }}</span>
-                <span class="timeline-card__action">{{ log.action==='set_power_limit'?'调频':log.action }}</span>
-                <span class="timeline-card__target">{{ parseTarget(log.target) }}</span>
-                <span class="timeline-card__result" :class="{'timeline-card__result--fail':log.result==='failed'}">{{ log.result==='success'?'成功':'失败' }}</span>
+                <span class="timeline-card__action" :class="{'timeline-card__action--ai':log.action==='ai_evaluate'}">{{ actionLabel(log) }}</span>
+                <span class="timeline-card__target">{{ historyTargetLabel(log) }}</span>
+                <span class="timeline-card__result" :class="{'timeline-card__result--fail':historyResultFail(log), 'timeline-card__result--neutral':log.action==='ai_evaluate'}">{{ historyResultLabel(log) }}</span>
               </div>
               <div class="timeline-card__reason">{{ log.reason }}</div>
               <!-- D4: AI调度评估 -->
@@ -1164,6 +1190,7 @@ onUnmounted(()=>{clearInterval(timer);window.removeEventListener('resize',handle
   padding: 1px 8px;
   border-radius: 3px;
 }
+.timeline-card__action--ai { color: #5B4B8C; background: rgba(91,75,140,0.08); }
 
 .timeline-card__target {
   font-size: 0.6875rem;
@@ -1181,6 +1208,7 @@ onUnmounted(()=>{clearInterval(timer);window.removeEventListener('resize',handle
   font-weight: 500;
 }
 .timeline-card__result--fail { color: #C41E3A; }
+.timeline-card__result--neutral { color: #5B4B8C; }
 
 .timeline-card__reason {
   font-size: 0.8125rem;

@@ -682,9 +682,12 @@ class EnergyAnalytics:
     async def get_schedule_history(self, hours: float = 72.0) -> dict:
         """获取调度历史"""
         logs = await self.store.get_schedule_history(hours, limit=50)
+        action_logs = [item for item in logs if item.get("action") != "ai_evaluate"]
+        evaluation_logs = [item for item in logs if item.get("action") == "ai_evaluate"]
 
         # 统计
-        success_count = sum(1 for l in logs if l.get("result") == "success")
+        success_count = sum(1 for l in action_logs if l.get("result") == "success")
+        failure_count = sum(1 for l in action_logs if l.get("result") == "failed")
         action_counts = {}
         for l in logs:
             a = l.get("action", "unknown")
@@ -694,6 +697,9 @@ class EnergyAnalytics:
             "logs": logs[:20],
             "total": len(logs),
             "success_count": success_count,
+            "failure_count": failure_count,
+            "execution_total": len(action_logs),
+            "evaluation_total": len(evaluation_logs),
             "action_counts": action_counts,
         }
 

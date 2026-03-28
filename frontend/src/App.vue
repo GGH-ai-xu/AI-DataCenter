@@ -26,6 +26,7 @@ let reconnectTimer = null
 let clockTimer = null
 let workspaceTimer = null
 let lockHintTimer = null
+let updateStateTimer = null
 let removeCloseListener = null
 
 const navItems = [
@@ -62,6 +63,31 @@ function setLockHint(message) {
   lockHintTimer = setTimeout(() => {
     lockHint.value = ''
   }, 3200)
+}
+
+function clearUpdateNotice() {
+  clearTimeout(updateStateTimer)
+  updateStateTimer = null
+  updateState.value = null
+}
+
+function applyUpdateNotice(nextState) {
+  clearTimeout(updateStateTimer)
+  updateStateTimer = null
+  updateState.value = nextState
+
+  if (!nextState) {
+    return
+  }
+
+  if (nextState.ok && nextState.available) {
+    return
+  }
+
+  updateStateTimer = setTimeout(() => {
+    updateState.value = null
+    updateStateTimer = null
+  }, nextState.ok ? 4200 : 6500)
 }
 
 function enforceRouteAccess(path = route.path) {
@@ -158,6 +184,8 @@ async function checkForUpdates() {
     return
   }
 
+  clearTimeout(updateStateTimer)
+  updateStateTimer = null
   updateBusy.value = true
   try {
     const result = await shellBridge.checkForUpdates()
@@ -167,24 +195,24 @@ async function checkForUpdates() {
         errorText.includes('还没有发布正式版本')
         || errorText.includes('未配置 GitHub Releases 发布源')
       ) {
-        updateState.value = {
+        applyUpdateNotice({
           ok: true,
           available: false,
           noReleaseYet: true,
-          currentVersion: appInfo.value.version || '1.0.5',
+          currentVersion: appInfo.value.version || '1.0.6',
           releasesUrl: appInfo.value.releasesUrl || result?.releasesUrl || '',
-        }
+        })
       } else {
-        updateState.value = result
+        applyUpdateNotice(result)
       }
       return
     }
-    updateState.value = result
+    applyUpdateNotice(result)
   } catch (error) {
-    updateState.value = {
+    applyUpdateNotice({
       ok: false,
       error: error instanceof Error ? error.message : String(error),
-    }
+    })
   } finally {
     updateBusy.value = false
   }
@@ -247,6 +275,7 @@ onUnmounted(() => {
   clearInterval(workspaceTimer)
   clearTimeout(reconnectTimer)
   clearTimeout(lockHintTimer)
+  clearTimeout(updateStateTimer)
   removeCloseListener?.()
   ws?.close()
 })
@@ -285,7 +314,7 @@ onUnmounted(() => {
 
       <div class="ink-header__right">
         <div v-if="isDesktop" class="desktop-meta">
-          <span class="desktop-meta__version">v{{ appInfo.version || '1.0.5' }}</span>
+          <span class="desktop-meta__version">v{{ appInfo.version || '1.0.6' }}</span>
           <button
             type="button"
             class="desktop-meta__action"
@@ -319,6 +348,9 @@ onUnmounted(() => {
           ? (updateState.available ? 'app-banner--ok' : 'app-banner--neutral')
           : 'app-banner--critical'"
       >
+        <button type="button" class="app-banner__close" @click="clearUpdateNotice">
+          关闭
+        </button>
         <template v-if="updateState.ok && updateState.available">
           检测到新版本 `v{{ updateState.latestVersion }}`，当前版本 `v{{ updateState.currentVersion }}`。
           <button type="button" class="app-banner__link" @click="openUpdateTarget(updateState.downloadUrl || updateState.releaseUrl)">
@@ -668,6 +700,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+  position: relative;
   padding: 12px 16px;
   border-radius: 14px;
   border: 1px solid rgba(26, 26, 26, 0.06);
@@ -711,6 +744,21 @@ onUnmounted(() => {
   font-weight: 600;
   text-decoration: underline;
   cursor: pointer;
+}
+
+.app-banner__close {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.app-banner__close:hover {
+  opacity: 1;
 }
 
 /* ===== 右侧竖排装饰 ===== */

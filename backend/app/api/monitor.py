@@ -6,6 +6,41 @@ from fastapi import APIRouter, Query
 
 router = APIRouter(prefix="/api/monitor", tags=["Monitor"])
 
+_LOW_SIGNAL_COMMAND_KEYWORDS = (
+    "--type=gpu-process",
+    "--type=utility",
+    "--utility-sub-type=",
+    "--gpu-preferences=",
+    "msedge.exe",
+    "chrome.exe",
+    "edgewebview",
+    "gpugovernanceworkbench",
+    "共享治理平台",
+)
+
+_LOW_SIGNAL_MEMORY_BYTES = 64 * 1024 * 1024
+
+
+def _is_low_signal_timeline_entry(entry: dict) -> bool:
+    """过滤桌面壳、浏览器 GPU helper 等低价值陪跑历史，避免污染观察页。"""
+    command = str(entry.get("command") or "").lower()
+    username = str(entry.get("username") or "").strip().lower()
+    try:
+        gpu_memory_used = int(entry.get("gpu_memory_used") or 0)
+    except (TypeError, ValueError):
+        gpu_memory_used = 0
+
+    if any(keyword in command for keyword in _LOW_SIGNAL_COMMAND_KEYWORDS):
+        return True
+
+    if gpu_memory_used > _LOW_SIGNAL_MEMORY_BYTES:
+        return False
+
+    if username in {"", "unknown"}:
+        return True
+
+    return False
+
 
 @router.get("/system-detail")
 async def get_system_detail():
@@ -86,6 +121,7 @@ async def get_task_history(hours: float = 24):
     """获取任务历史时间线"""
     from app.main import app_state
     timeline = await app_state.store.get_process_timeline(hours)
+    timeline = [item for item in timeline if not _is_low_signal_timeline_entry(item)]
     return {
         "timeline": app_state.privacy.sanitize_timeline(timeline),
         "hours": hours,

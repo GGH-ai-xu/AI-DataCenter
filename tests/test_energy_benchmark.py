@@ -41,6 +41,13 @@ class FakeStore:
     async def get_user_governance_rules(self):
         return {}
 
+    async def get_schedule_history(self, hours, limit=50):
+        return [
+            {"id": 1, "action": "ai_evaluate", "result": "success", "reason": "调度评估已完成", "timestamp": time.time()},
+            {"id": 2, "action": "set_power_limit", "result": "success", "reason": "已对 GPU0 限功率", "timestamp": time.time()},
+            {"id": 3, "action": "pause_task", "result": "failed", "reason": "PID 不存在", "timestamp": time.time()},
+        ]
+
 
 class FakeScheduler:
     budget_enabled = True
@@ -184,6 +191,15 @@ class EnergyBenchmarkTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(result["insufficient_data"])
         self.assertIn("真实 GPU", result["message"])
+
+    async def test_schedule_history_stats_exclude_ai_evaluate_from_success_rate(self):
+        result = await self.analytics.get_schedule_history(72)
+
+        self.assertEqual(result["total"], 3)
+        self.assertEqual(result["execution_total"], 2)
+        self.assertEqual(result["evaluation_total"], 1)
+        self.assertEqual(result["success_count"], 1)
+        self.assertEqual(result["failure_count"], 1)
 
 
 if __name__ == "__main__":
