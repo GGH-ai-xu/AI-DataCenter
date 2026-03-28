@@ -171,7 +171,7 @@ async function checkForUpdates() {
           ok: true,
           available: false,
           noReleaseYet: true,
-          currentVersion: appInfo.value.version || '1.0.3',
+          currentVersion: appInfo.value.version || '1.0.4',
           releasesUrl: appInfo.value.releasesUrl || result?.releasesUrl || '',
         }
       } else {
@@ -285,7 +285,7 @@ onUnmounted(() => {
 
       <div class="ink-header__right">
         <div v-if="isDesktop" class="desktop-meta">
-          <span class="desktop-meta__version">v{{ appInfo.version || '1.0.3' }}</span>
+          <span class="desktop-meta__version">v{{ appInfo.version || '1.0.4' }}</span>
           <button
             type="button"
             class="desktop-meta__action"
@@ -338,6 +338,14 @@ onUnmounted(() => {
         </template>
         <template v-else>
           更新检查失败：{{ updateState.error || '无法连接 GitHub Releases。' }}
+          <button
+            v-if="updateState.releasesUrl || appInfo.releasesUrl"
+            type="button"
+            class="app-banner__link"
+            @click="openUpdateTarget(updateState.releasesUrl || appInfo.releasesUrl)"
+          >
+            手动打开 Releases
+          </button>
         </template>
       </div>
     </div>

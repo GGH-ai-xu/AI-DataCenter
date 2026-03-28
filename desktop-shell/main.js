@@ -215,20 +215,58 @@ function releaseNotesPreview(body) {
     .slice(0, 240)
 }
 
+function normalizeReleaseFetchError(error) {
+  const message = String(error?.message || error || '').trim()
+  const upper = message.toUpperCase()
+
+  if (error?.name === 'AbortError') {
+    return '连接 GitHub Releases 超时，请检查网络后重试'
+  }
+  if (/fetch failed/i.test(message)) {
+    return '无法连接 GitHub Releases，目标机器可能无法访问 GitHub API，或被代理/防火墙拦截'
+  }
+  if (upper.includes('ENOTFOUND') || upper.includes('EAI_AGAIN')) {
+    return '无法解析 GitHub 域名，请检查当前网络或 DNS 设置'
+  }
+  if (
+    upper.includes('ECONNRESET')
+    || upper.includes('ETIMEDOUT')
+    || upper.includes('ECONNREFUSED')
+    || upper.includes('UND_ERR_CONNECT_TIMEOUT')
+  ) {
+    return '连接 GitHub Releases 失败，请检查网络连通性、代理或防火墙设置'
+  }
+  if (message) {
+    return `更新检查失败：${message}`
+  }
+  return '更新检查失败，无法连接 GitHub Releases'
+}
+
 async function fetchLatestRelease() {
   if (!releaseRepository) {
     throw new Error('未配置 GitHub Releases 发布源')
   }
 
-  const response = await fetch(
-    `https://api.github.com/repos/${releaseRepository.owner}/${releaseRepository.repo}/releases/latest`,
-    {
-      headers: {
-        Accept: 'application/vnd.github+json',
-        'User-Agent': `${APP_SLUG}/${currentAppVersion()}`,
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 8000)
+  let response
+
+  try {
+    response = await fetch(
+      `https://api.github.com/repos/${releaseRepository.owner}/${releaseRepository.repo}/releases/latest`,
+      {
+        headers: {
+          Accept: 'application/vnd.github+json',
+          'User-Agent': `${APP_SLUG}/${currentAppVersion()}`,
+        },
+        signal: controller.signal,
       },
-    },
-  )
+    )
+  } catch (error) {
+    throw new Error(normalizeReleaseFetchError(error))
+  } finally {
+    clearTimeout(timeout)
+  }
 
   if (!response.ok) {
     if (response.status === 404) {
