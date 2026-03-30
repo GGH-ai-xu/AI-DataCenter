@@ -24,9 +24,12 @@ export const setTaskPriority = (pid, priority) => api.post('/tasks/priority', { 
 export const getSchedulerStatus = () => api.get('/scheduler/status')
 export const toggleAutoSchedule = (enabled) => api.post('/scheduler/auto', null, { params: { enabled } })
 export const setPowerBudget = (enabled, total_power_budget) => api.post('/scheduler/budget', { enabled, total_power_budget })
+export const getCarbonBudget = () => api.get('/scheduler/carbon-budget')
+export const setCarbonBudget = (enabled, daily_budget_kg) => api.post('/scheduler/carbon-budget', { enabled, daily_budget_kg })
 export const setManualPowerLimit = (gpu_index, power_limit, options = {}) => api.post('/scheduler/power-limit', { gpu_index, power_limit, ...options })
 export const runScheduleOnce = (payload = {}) => api.post('/scheduler/run-once', payload)
 export const getScheduleReport = () => api.get('/scheduler/report')
+export const getScheduleEvaluation = () => api.get('/scheduler/evaluation')
 
 // AI对话
 export const aiChat = (message) => api.post('/ai/chat', { message })
@@ -76,5 +79,11 @@ export const getOptimizationHistory = (hours = 72) => api.get('/energy/optimizat
 export const getScheduleHistory = (hours = 72) => api.get('/energy/schedule-history', { params: { hours } })
 export const getHistoryComparison = (hours = 72) => api.get('/energy/history-comparison', { params: { hours } })
 export const exportEnergyReport = (hours = 24, format = 'markdown') => api.get('/energy/export-report', { params: { hours, format }, responseType: 'blob' })
+
+// 审计日志
+export const getAuditLogs = (limit = 100) => api.get('/scheduler/audit-log', { params: { limit } })
+
+// 综合治理报告
+export const exportFullGovernanceReport = (hours = 24) => api.get('/governance/full-report', { params: { hours }, responseType: 'blob' })
 
 export default api

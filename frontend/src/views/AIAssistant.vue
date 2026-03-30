@@ -115,6 +115,29 @@ const controlModeSummary = computed(() =>
     : '当前为演练模式，执行后只返回模拟结果，不会改动真实设备或任务。'
 )
 
+const riskScopeGpuCount = computed(() => {
+  const gpus = new Set()
+  for (const a of executableActions.value) {
+    if (a.target?.gpu_index !== undefined) gpus.add(a.target.gpu_index)
+  }
+  return gpus.size || (controlPlan.value?.context?.gpu_count || 0)
+})
+const riskScopeProcessCount = computed(() =>
+  executableActions.value.filter(a => a.target?.pid).length
+)
+const riskActionTypes = computed(() => {
+  const labels = { set_power_limit: '限功率', pause_task: '暂停', resume_task: '恢复', terminate_task: '终止', set_task_priority: '调级', configure_budget: '预算', run_schedule_once: '调度' }
+  const types = [...new Set(executableActions.value.map(a => labels[a.action] || a.action))]
+  return types.join(' · ') || '-'
+})
+const riskRollbackHint = computed(() => {
+  const actions = executableActions.value.map(a => a.action)
+  if (actions.includes('terminate_task')) return '终止操作不可回滚'
+  if (actions.includes('pause_task')) return '暂停可通过恢复操作撤回'
+  if (actions.includes('set_power_limit')) return '功耗限制可随时重新设置'
+  return '可通过反向操作撤回'
+})
+
 function plannerClass(planner) {
   return planner === 'llm' ? 'status-badge--ok' : 'status-badge--warning'
 }
@@ -544,6 +567,36 @@ onMounted(() => {
               </div>
             </div>
 
+            <!-- 操作风险画像 -->
+            <div v-if="executableActions.length" class="risk-profile">
+              <div class="risk-profile__head">
+                <span class="risk-profile__icon">鉴</span>
+                <span class="risk-profile__title">操作风险画像</span>
+              </div>
+              <div class="risk-profile__grid">
+                <div class="risk-profile__item">
+                  <div class="risk-profile__label">影响范围</div>
+                  <div class="risk-profile__value">
+                    {{ riskScopeGpuCount }} 张 GPU · {{ riskScopeProcessCount }} 个进程
+                  </div>
+                </div>
+                <div class="risk-profile__item">
+                  <div class="risk-profile__label">动作类型</div>
+                  <div class="risk-profile__value">{{ riskActionTypes }}</div>
+                </div>
+                <div class="risk-profile__item">
+                  <div class="risk-profile__label">风险等级</div>
+                  <div class="risk-profile__value" :style="{ color: controlPlan.risk_level === 'high' ? '#C41E3A' : controlPlan.risk_level === 'medium' ? '#B8860B' : '#2E8B57' }">
+                    {{ controlRiskLabel }}
+                  </div>
+                </div>
+                <div class="risk-profile__item">
+                  <div class="risk-profile__label">回滚方式</div>
+                  <div class="risk-profile__value">{{ riskRollbackHint }}</div>
+                </div>
+              </div>
+            </div>
+
             <div v-if="controlPlan.warnings?.length" class="control-plan__warnings">
               <div
                 v-for="(warning, index) in controlPlan.warnings"
@@ -623,7 +676,7 @@ onMounted(() => {
             >
               <div class="msg__avatar">{{ msg.role === 'user' ? '我' : '智' }}</div>
               <div class="msg__body">
-                <div class="msg__content" v-html="msg.content.replace(/\n/g, '<br>')"></div>
+                <div class="msg__content">{{ msg.content }}</div>
                 <div v-if="msg.suggestions?.length" class="msg__suggestions">
                   <button
                     v-for="(s, j) in msg.suggestions"
@@ -897,6 +950,68 @@ onMounted(() => {
   margin-top: 16px;
 }
 
+/* 操作风险画像 */
+.risk-profile {
+  margin-top: 12px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(196,30,58,0.03), rgba(184,134,11,0.04));
+  border: 1px solid rgba(184,134,11,0.12);
+}
+
+.risk-profile__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.risk-profile__icon {
+  width: 24px;
+  height: 24px;
+  border: 1.5px solid var(--ink-vermillion, #C41E3A);
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-seal);
+  font-size: 0.6rem;
+  color: var(--ink-vermillion, #C41E3A);
+  opacity: 0.7;
+  transform: rotate(-3deg);
+}
+
+.risk-profile__title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.risk-profile__grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.risk-profile__item {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.6);
+}
+
+.risk-profile__label {
+  font-size: 0.625rem;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+  letter-spacing: 0.08em;
+}
+
+.risk-profile__value {
+  font-size: 0.82rem;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
 .control-plan__title {
   font-size: 0.92rem;
   font-weight: 700;
@@ -1050,6 +1165,8 @@ onMounted(() => {
   font-size: 0.84rem;
   line-height: 1.85;
   color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .msg--bot .msg__content {

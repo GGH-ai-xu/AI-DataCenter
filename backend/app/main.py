@@ -273,6 +273,7 @@ from app.api.monitor import router as monitor_router
 from app.api.energy import router as energy_router
 from app.api.governance import router as governance_router
 from app.api.system import router as system_router
+from app.api.audit import router as audit_router
 
 app.include_router(gpu_router)
 app.include_router(tasks_router)
@@ -283,6 +284,7 @@ app.include_router(monitor_router)
 app.include_router(energy_router)
 app.include_router(governance_router)
 app.include_router(system_router)
+app.include_router(audit_router)
 
 
 @app.get("/api/health")

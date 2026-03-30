@@ -6,12 +6,16 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useAppStore } from '../stores/app'
 import {
+  getCarbonBudget,
   getSchedulerStatus,
   getScheduleReport,
+  getScheduleEvaluation,
   runScheduleOnce,
+  setCarbonBudget,
   setManualPowerLimit,
   setPowerBudget,
   toggleAutoSchedule,
+  getAuditLogs,
 } from '../services/api'
 
 const store = useAppStore()
@@ -39,7 +43,26 @@ const budgetForm = ref({
   enabled: false,
   total_power_budget: 1200,
 })
+const carbonBudget = ref({
+  enabled: false,
+  daily_budget_kg: 50,
+  accumulated_carbon_kg: 0,
+  accumulated_kwh: 0,
+  usage_pct: 0,
+  is_exceeded: false,
+  projected_daily_carbon_kg: 0,
+  current_power_w: 0,
+  hours_elapsed: 0,
+})
+const carbonForm = ref({
+  enabled: false,
+  daily_budget_kg: 50,
+})
 let refreshTimer = null
+
+const auditLogs = ref([])
+const auditLoading = ref(false)
+const evaluation = ref(null)
 
 const currentClusterPower = computed(() => {
   const backendValue = Number(budget.value.current_total_power || 0)
@@ -62,6 +85,14 @@ const executionSummary = computed(() =>
 const budgetFillStyle = computed(() => {
   const width = Math.min(100, Math.max(0, budget.value.usage_pct || 0))
   const background = budget.value.is_exceeded
+    ? 'linear-gradient(90deg, #C41E3A, #F97316)'
+    : 'linear-gradient(90deg, #2E8B57, #3A5F4B)'
+  return { width: `${width}%`, background }
+})
+
+const carbonFillStyle = computed(() => {
+  const width = Math.min(100, Math.max(0, carbonBudget.value.usage_pct || 0))
+  const background = carbonBudget.value.is_exceeded
     ? 'linear-gradient(90deg, #C41E3A, #F97316)'
     : 'linear-gradient(90deg, #2E8B57, #3A5F4B)'
   return { width: `${width}%`, background }
@@ -132,6 +163,32 @@ async function saveBudget() {
   } catch (e) {}
 }
 
+async function loadCarbonBudget() {
+  try {
+    const { data } = await getCarbonBudget()
+    carbonBudget.value = { ...carbonBudget.value, ...data }
+    carbonForm.value = {
+      enabled: data.enabled,
+      daily_budget_kg: data.daily_budget_kg,
+    }
+  } catch (e) {}
+}
+
+async function saveCarbonBudget() {
+  const kg = parseFloat(carbonForm.value.daily_budget_kg)
+  if (!kg || kg < 1 || kg > 9999) return
+  try {
+    const { data } = await setCarbonBudget(carbonForm.value.enabled, kg)
+    if (data.carbon_budget) {
+      carbonBudget.value = { ...carbonBudget.value, ...data.carbon_budget }
+      carbonForm.value = {
+        enabled: data.carbon_budget.enabled,
+        daily_budget_kg: data.carbon_budget.daily_budget_kg,
+      }
+    }
+  } catch (e) {}
+}
+
 async function setPower(gpuIndex) {
   const val = parseInt(powerInputs.value[gpuIndex])
   if (!val || val < 100 || val > 350) return
@@ -174,6 +231,7 @@ async function runOnce() {
         : '本次调度已对真实任务与功耗限制生效。',
     )
     await loadStatus()
+    await loadEvaluation()
   } catch (e) {
     scheduleResult.value = { error: '调度执行失败' }
     setActionNotice(
@@ -213,9 +271,73 @@ function formatActionLabel(action) {
   return action?.action || '调度动作'
 }
 
+/* ========== 审计日志相关 ========== */
+
+const auditActionMap = {
+  set_power_limit: '设置功耗上限',
+  pause_task: '暂停任务',
+  resume_task: '恢复任务',
+  terminate_task: '终止任务',
+  set_task_priority: '调整优先级',
+  configure_budget: '调整预算',
+  run_schedule_once: '综合调度',
+}
+
+const auditSourceMap = {
+  manual: '手动操作',
+  ai_control: 'AI控制台',
+  auto_schedule: '自动调度',
+}
+
+const auditRiskColorMap = {
+  low: '#3A5F4B',
+  medium: '#B8860B',
+  high: '#C41E3A',
+}
+
+const auditRiskLabelMap = {
+  low: '低',
+  medium: '中',
+  high: '高',
+}
+
+function formatAuditTime(ts) {
+  if (!ts) return '-'
+  const d = new Date(ts * 1000)
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
+async function loadAuditLogs() {
+  auditLoading.value = true
+  try {
+    const { data } = await getAuditLogs(100, 72)
+    auditLogs.value = data.logs || []
+  } catch (e) {
+    auditLogs.value = []
+  }
+  auditLoading.value = false
+}
+
+async function loadEvaluation() {
+  try {
+    const { data } = await getScheduleEvaluation()
+    evaluation.value = data
+  } catch (e) {
+    // 后端尚未提供评估端点时静默忽略
+    evaluation.value = null
+  }
+}
+
 onMounted(() => {
   loadStatus()
-  refreshTimer = setInterval(loadStatus, 8000)
+  loadCarbonBudget()
+  loadAuditLogs()
+  loadEvaluation()
+  refreshTimer = setInterval(() => {
+    loadStatus()
+    loadCarbonBudget()
+  }, 8000)
 })
 
 onUnmounted(() => {
@@ -322,6 +444,82 @@ onUnmounted(() => {
             </div>
             <div class="budget-action__reason">{{ action.reason }}</div>
           </div>
+        </div>
+      </div>
+
+      <!-- 碳预算治理 -->
+      <div class="tech-card" style="padding: 20px">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px">
+          <div>
+            <div class="carbon-eyebrow">碳排放预算 · 每日上限 · 绿色治理</div>
+            <div class="section-title">碳预算治理</div>
+          </div>
+          <span
+            class="status-badge"
+            :class="carbonBudget.is_exceeded ? 'status-badge--critical' : 'status-badge--ok'"
+          >
+            {{ carbonBudget.is_exceeded ? '碳超标' : '碳达标' }}
+          </span>
+        </div>
+
+        <div class="budget-hero">
+          <div>
+            <div class="budget-hero__label">当日累计碳排放</div>
+            <div class="budget-hero__value">
+              {{ carbonBudget.accumulated_carbon_kg }}<span>kgCO₂</span>
+            </div>
+            <div class="budget-hero__sub">每日上限 {{ carbonBudget.daily_budget_kg }} kgCO₂</div>
+          </div>
+          <div class="budget-hero__side">
+            <div class="budget-hero__usage">{{ carbonBudget.usage_pct }}%</div>
+            <div class="budget-hero__sub">预算占用</div>
+          </div>
+        </div>
+
+        <div class="budget-bar">
+          <div class="budget-bar__fill" :style="carbonFillStyle"></div>
+        </div>
+
+        <div class="budget-meta">
+          <span :style="{ color: carbonBudget.is_exceeded ? '#C41E3A' : '#2E8B57' }">
+            {{ carbonBudget.is_exceeded ? '已超出碳预算' : '碳预算充裕' }}
+          </span>
+          <span>已运行 {{ carbonBudget.hours_elapsed }} 小时</span>
+        </div>
+
+        <div class="carbon-stats">
+          <div class="carbon-stat-item">
+            <span class="carbon-stat-item__label">累计能耗</span>
+            <span class="carbon-stat-item__value">{{ carbonBudget.accumulated_kwh }} kWh</span>
+          </div>
+          <div class="carbon-stat-item">
+            <span class="carbon-stat-item__label">预估全天碳排放</span>
+            <span class="carbon-stat-item__value" :style="{ color: carbonBudget.projected_daily_carbon_kg > carbonBudget.daily_budget_kg ? '#C41E3A' : '#2E8B57' }">
+              {{ carbonBudget.projected_daily_carbon_kg }} kgCO₂
+            </span>
+          </div>
+          <div class="carbon-stat-item">
+            <span class="carbon-stat-item__label">当前总功率</span>
+            <span class="carbon-stat-item__value">{{ carbonBudget.current_power_w }} W</span>
+          </div>
+        </div>
+
+        <div class="budget-form">
+          <label class="budget-form__checkbox">
+            <input v-model="carbonForm.enabled" type="checkbox" />
+            启用碳预算
+          </label>
+          <input
+            v-model="carbonForm.daily_budget_kg"
+            type="number"
+            min="1"
+            max="9999"
+            step="0.1"
+            class="power-input"
+            style="width: 80px"
+          />
+          <span style="color: var(--text-muted); font-size: 0.75rem; white-space: nowrap">kgCO₂/日</span>
+          <button class="btn-tech btn-tech--primary" @click="saveCarbonBudget">保存碳预算</button>
         </div>
       </div>
 
@@ -437,6 +635,64 @@ onUnmounted(() => {
           </span>
         </div>
       </div>
+
+      <!-- 策略效果对比 -->
+      <section v-if="scheduleResult" class="tech-card strategy-compare sched-grid__wide">
+        <div class="strategy-compare__head">
+          <div class="strategy-compare__eyebrow">三策互补</div>
+          <div class="strategy-compare__title">策略效果对比</div>
+        </div>
+        <div class="strategy-compare__grid">
+          <div class="strategy-item">
+            <div class="strategy-item__icon">规</div>
+            <div class="strategy-item__name">规则引擎</div>
+            <div class="strategy-item__count">{{ scheduleResult.rule_results?.length || 0 }} 条动作</div>
+            <div class="strategy-item__desc">基于温度、功率阈值的确定性规则</div>
+          </div>
+          <div class="strategy-item">
+            <div class="strategy-item__icon">算</div>
+            <div class="strategy-item__name">预算引擎</div>
+            <div class="strategy-item__count">{{ scheduleResult.budget_results?.length || 0 }} 条动作</div>
+            <div class="strategy-item__desc">总功率预算联动单卡限制</div>
+          </div>
+          <div class="strategy-item">
+            <div class="strategy-item__icon">智</div>
+            <div class="strategy-item__name">AI 调度</div>
+            <div class="strategy-item__count">{{ scheduleResult.ai_results?.length || 0 }} 条动作</div>
+            <div class="strategy-item__desc">LLM 综合分析生成的智能策略</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- AI 调度效果评估（PDCA 闭环） -->
+      <section v-if="evaluation" class="tech-card eval-card sched-grid__wide">
+        <div class="eval-card__head">
+          <div>
+            <div class="eval-card__eyebrow">调度闭环 · PDCA</div>
+            <div class="eval-card__title">AI 调度效果评估</div>
+          </div>
+          <div class="ink-inline-meta">
+            <span class="status-badge" :class="evaluation.score >= 70 ? 'status-badge--ok' : evaluation.score >= 40 ? 'status-badge--warning' : 'status-badge--critical'">
+              {{ evaluation.score }}分
+            </span>
+          </div>
+        </div>
+        <div class="eval-card__verdict">{{ evaluation.verdict }}</div>
+        <div class="eval-card__details">
+          <div v-if="evaluation.effective_actions?.length" class="eval-detail">
+            <div class="eval-detail__label">有效动作</div>
+            <div v-for="(a, i) in evaluation.effective_actions" :key="'e'+i" class="eval-detail__item eval-detail__item--ok">{{ a }}</div>
+          </div>
+          <div v-if="evaluation.ineffective_actions?.length" class="eval-detail">
+            <div class="eval-detail__label">无效动作</div>
+            <div v-for="(a, i) in evaluation.ineffective_actions" :key="'ie'+i" class="eval-detail__item eval-detail__item--fail">{{ a }}</div>
+          </div>
+        </div>
+        <div v-if="evaluation.improvement" class="eval-card__improve">
+          <span class="eval-improve__icon">策</span>
+          {{ evaluation.improvement }}
+        </div>
+      </section>
 
       <!-- AI能耗报告 -->
       <div class="tech-card sched-grid__wide" style="padding: 20px">
@@ -676,6 +932,43 @@ onUnmounted(() => {
   max-height: 400px; overflow-y: auto;
 }
 
+.carbon-eyebrow {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  margin-bottom: 4px;
+}
+
+.carbon-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.carbon-stat-item {
+  flex: 1;
+  min-width: 120px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(58,95,75,0.04);
+  border: 1px solid rgba(58,95,75,0.08);
+}
+
+.carbon-stat-item__label {
+  display: block;
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.carbon-stat-item__value {
+  display: block;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
 @media (max-width: 980px) {
   .sched-grid { grid-template-columns: 1fr; }
   .sched-grid__wide { grid-column: auto; }
@@ -684,5 +977,180 @@ onUnmounted(() => {
   .execution-panel__switch {
     flex-wrap: wrap;
   }
+  .strategy-compare__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ========== 策略效果对比 ========== */
+.strategy-compare {
+  padding: 20px;
+}
+
+.strategy-compare__head {
+  margin-bottom: 16px;
+}
+
+.strategy-compare__eyebrow {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  margin-bottom: 4px;
+}
+
+.strategy-compare__title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.strategy-compare__grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.strategy-item {
+  padding: 16px;
+  border-radius: 10px;
+  background: rgba(58,95,75,0.04);
+  border: 1px solid rgba(58,95,75,0.08);
+  text-align: center;
+}
+
+.strategy-item__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(196,30,58,0.08);
+  color: #C41E3A;
+  font-size: 0.875rem;
+  font-weight: 700;
+  font-family: var(--font-seal, "KaiTi", "STKaiti", serif);
+  margin-bottom: 8px;
+}
+
+.strategy-item__name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.strategy-item__count {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--accent-primary);
+  margin-bottom: 4px;
+}
+
+.strategy-item__desc {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+/* ========== AI 调度效果评估 ========== */
+.eval-card {
+  padding: 20px;
+}
+
+.eval-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.eval-card__eyebrow {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  margin-bottom: 4px;
+}
+
+.eval-card__title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.eval-card__verdict {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(58,95,75,0.04);
+  border: 1px solid rgba(58,95,75,0.08);
+}
+
+.eval-card__details {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.eval-detail {
+  flex: 1;
+  min-width: 180px;
+}
+
+.eval-detail__label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.eval-detail__item {
+  font-size: 0.8125rem;
+  padding: 6px 10px;
+  border-radius: 6px;
+  margin-bottom: 4px;
+  line-height: 1.6;
+}
+
+.eval-detail__item--ok {
+  background: rgba(46,139,87,0.08);
+  color: #2E8B57;
+}
+
+.eval-detail__item--fail {
+  background: rgba(196,30,58,0.08);
+  color: #C41E3A;
+}
+
+.eval-card__improve {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.8125rem;
+  color: #B8860B;
+  line-height: 1.7;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(184,134,11,0.06);
+  border: 1px solid rgba(184,134,11,0.12);
+}
+
+.eval-improve__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(196,30,58,0.08);
+  color: #C41E3A;
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-family: var(--font-seal, "KaiTi", "STKaiti", serif);
+  flex-shrink: 0;
 }
 </style>

@@ -57,6 +57,11 @@ class SchedulerEngine:
         self._budget_enabled = budget_enabled
         self._budget_managed_limits: dict[int, int] = {}
         self._last_budget_actions: list[dict] = []
+        # 碳预算治理
+        self._carbon_budget_enabled = False
+        self._carbon_budget_daily_kg = 50.0   # 默认每日50kgCO2
+        self._carbon_accumulated_wh = 0.0     # 当日累计能耗(Wh)
+        self._carbon_day_start = time.time()
 
     @property
     def auto_enabled(self) -> bool:
@@ -82,6 +87,64 @@ class SchedulerEngine:
             "启用" if enabled else "禁用",
             self._budget_limit_watts,
         )
+
+    def configure_carbon_budget(self, enabled: bool, daily_kg: float):
+        """配置碳预算"""
+        self._carbon_budget_enabled = enabled
+        self._carbon_budget_daily_kg = max(1.0, float(daily_kg))
+        logger.info(
+            "碳预算已%s，每日上限=%skgCO2",
+            "启用" if enabled else "禁用",
+            self._carbon_budget_daily_kg,
+        )
+
+    def get_carbon_budget_status(self, gpus: list) -> dict:
+        """获取碳预算状态"""
+        now = time.time()
+        # 检查是否跨天重置
+        today_start = datetime.now().replace(
+            hour=0, minute=0, second=0, microsecond=0
+        ).timestamp()
+        if self._carbon_day_start < today_start:
+            self._carbon_accumulated_wh = 0.0
+            self._carbon_day_start = today_start
+
+        # 当前总功率
+        total_power_w = (
+            sum(g.get("power_usage", 0) or 0 for g in gpus) if gpus else 0
+        )
+
+        carbon_factor = 0.5703  # kgCO2/kWh
+        accumulated_kwh = self._carbon_accumulated_wh / 1000
+        accumulated_carbon_kg = accumulated_kwh * carbon_factor
+        budget_kg = self._carbon_budget_daily_kg
+        usage_pct = (
+            round(accumulated_carbon_kg / budget_kg * 100, 1)
+            if budget_kg > 0
+            else 0
+        )
+        is_exceeded = accumulated_carbon_kg >= budget_kg
+
+        # 预估今日剩余
+        hours_elapsed = (now - today_start) / 3600
+        if hours_elapsed > 0.1:
+            hourly_rate_kwh = accumulated_kwh / hours_elapsed
+            projected_daily_kwh = hourly_rate_kwh * 24
+            projected_daily_carbon = projected_daily_kwh * carbon_factor
+        else:
+            projected_daily_carbon = 0
+
+        return {
+            "enabled": self._carbon_budget_enabled,
+            "daily_budget_kg": round(budget_kg, 2),
+            "accumulated_carbon_kg": round(accumulated_carbon_kg, 3),
+            "accumulated_kwh": round(accumulated_kwh, 3),
+            "usage_pct": min(usage_pct, 999),
+            "is_exceeded": is_exceeded,
+            "projected_daily_carbon_kg": round(projected_daily_carbon, 2),
+            "current_power_w": round(total_power_w, 1),
+            "hours_elapsed": round(hours_elapsed, 1),
+        }
 
     def clear_managed_gpu(self, gpu_index: int):
         self._budget_managed_limits.pop(gpu_index, None)
@@ -306,6 +369,7 @@ class SchedulerEngine:
             "is_exceeded": current_total > self._budget_limit_watts,
             "managed_gpu_count": len(self._budget_managed_limits),
             "last_actions": self._last_budget_actions[:5],
+            "carbon": self.get_carbon_budget_status(gpus),
         }
 
     async def run_rules(self, gpus: list[dict], processes: list[dict]) -> list[dict]:
@@ -461,6 +525,12 @@ class SchedulerEngine:
     async def tick(self, gpus: list[dict], processes: list[dict]) -> dict:
         """定期调度tick - 被数据采集循环调用"""
         result = {"rule_actions": [], "budget_actions": [], "ai_actions": [], "executed": []}
+
+        # 碳预算累计：每次tick累加当前总功率对应的能耗(Wh)
+        if self._carbon_budget_enabled and gpus:
+            total_power = sum(g.get("power_usage", 0) or 0 for g in gpus)
+            # tick间隔约2秒，转换为Wh: P(W) * t(s) / 3600
+            self._carbon_accumulated_wh += total_power * (2.0 / 3600)
 
         # D4: 评估上次调度（在新调度前执行）
         if self._last_actions and self.llm:

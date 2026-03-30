@@ -491,6 +491,18 @@ async def execute_control_actions(
                 result["success"] = True
                 result["message"] = f"已生成{_action_label(act)}演练结果，未对真实设备或任务生效"
                 results.append(result)
+                try:
+                    await app_state.store.save_audit_log(
+                        action=act, target=str(target),
+                        reason=result.get("reason", ""),
+                        operator="ai_console", source="ai_control",
+                        dry_run=True, success=True,
+                        risk_level=result.get("risk_level", "low"),
+                        detail=str(result.get("target_label", "")),
+                    )
+                except Exception as audit_err:
+                    import logging
+                    logging.getLogger(__name__).warning("审计日志写入失败: %s", audit_err)
                 continue
 
             if act == "set_power_limit":
@@ -549,6 +561,24 @@ async def execute_control_actions(
             result["error"] = str(exc)
 
         results.append(result)
+
+        # 记录治理审计日志
+        try:
+            await app_state.store.save_audit_log(
+                action=result.get("action", ""),
+                target=str(result.get("target", {})),
+                reason=result.get("reason", ""),
+                operator="ai_console",
+                source="ai_control",
+                dry_run=dry_run,
+                success=result.get("success", False),
+                error_message=result.get("error", ""),
+                risk_level=result.get("risk_level", "low"),
+                detail=str(result.get("target_label", "")),
+            )
+        except Exception as audit_err:
+            import logging
+            logging.getLogger(__name__).warning("审计日志写入失败: %s", audit_err)
 
     success_count = sum(1 for item in results if item.get("success"))
     failure_count = len(results) - success_count

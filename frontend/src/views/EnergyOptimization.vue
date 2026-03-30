@@ -22,6 +22,7 @@ const exportFeedback = ref(null)
 
 // AI能力数据
 const hasLlm = ref(false), aiInsight = ref(null), aiAnomalies = ref(null)
+const aiAnomaliesLoading = ref(false), aiInsightLoading = ref(false)
 const sourceState = ref({ connected: false, simulated: false, gpu_count: 0 })
 const schedulerState = ref({ budget: { enabled: false, total_power_budget: 1200, usage_pct: 0, remaining_power: 1200, is_exceeded: false } })
 
@@ -104,8 +105,11 @@ async function loadData() {
     sourceState.value = { connected: false, simulated: false, gpu_count: 0 }
   }
   if (hasLlm.value) {
+    aiInsightLoading.value = true; aiAnomaliesLoading.value = true
     try { aiInsight.value = (await getAiInsight()).data } catch { aiInsight.value = null }
+    aiInsightLoading.value = false
     try { aiAnomalies.value = (await getAiAnomalies()).data } catch { aiAnomalies.value = null }
+    aiAnomaliesLoading.value = false
   }
   loading.value=false
   anim('power',metrics.value?.current_total_power||0)
@@ -143,6 +147,13 @@ async function doExport(fmt='markdown') {
     }
   }
   exporting.value=false
+}
+
+// AI 诊断刷新
+async function refreshAiAnomalies() {
+  aiAnomaliesLoading.value = true
+  try { aiAnomalies.value = (await getAiAnomalies()).data } catch { aiAnomalies.value = null }
+  aiAnomaliesLoading.value = false
 }
 
 // ========== 水墨图表配色 ==========
@@ -420,19 +431,30 @@ onUnmounted(()=>{clearInterval(timer);window.removeEventListener('resize',handle
     </div>
 
     <!-- ===== D2: AI 趋势洞察 ===== -->
-    <div v-if="hasLlm && aiInsight" class="ink-card ink-card--wide ink-card--ai si" style="--d:.12s">
+    <div v-if="hasLlm" class="ink-card ink-card--wide ink-card--ai si" style="--d:.12s">
       <div class="ink-card__hd">
-        <span class="ink-card__title">AI 洞察</span>
+        <div class="ink-card__title-group">
+          <span class="ink-card__eyebrow">趋势分析 · 风险研判</span>
+          <span class="ink-card__title">AI 趋势洞察</span>
+        </div>
         <span class="ink-stamp ink-stamp--ai">智</span>
-        <span class="ai-risk-badge" :class="'ai-risk-badge--'+aiInsight.risk_level">{{ {low:'低风险',medium:'中风险',high:'高风险'}[aiInsight.risk_level]||'—' }}</span>
+        <span v-if="aiInsight" class="ai-risk-badge" :class="'ai-risk-badge--'+aiInsight.risk_level">{{ {low:'低风险',medium:'中风险',high:'高风险'}[aiInsight.risk_level]||'--' }}</span>
       </div>
-      <div class="ai-insight-body">
+      <!-- 加载态 -->
+      <div v-if="aiInsightLoading" class="ai-loading-box">
+        <div class="ai-loading-box__brush"></div>
+        <span class="ai-loading-box__text">AI 正在分析趋势...</span>
+      </div>
+      <!-- 内容态 -->
+      <div v-else-if="aiInsight" class="ai-insight-body">
         <div class="ai-insight-summary">{{ aiInsight.summary }}</div>
         <div class="ai-insight-detail">{{ aiInsight.detail }}</div>
         <div v-if="aiInsight.suggestions?.length" class="ai-insight-suggestions">
           <span v-for="(s,i) in aiInsight.suggestions" :key="i" class="ai-insight-sug">{{ s }}</span>
         </div>
       </div>
+      <!-- 空态 -->
+      <div v-else class="ai-empty-hint">暂无趋势洞察数据，请稍后重试。</div>
     </div>
 
     <!-- ===== 三栏：节能仪表 / 碳排放 / 时段分布 ===== -->
@@ -497,14 +519,46 @@ onUnmounted(()=>{clearInterval(timer);window.removeEventListener('resize',handle
       </div>
     </div>
 
-    <!-- ===== D1: AI 异常检测 ===== -->
-    <div v-if="hasLlm && aiAnomalies && aiAnomalies.anomalies?.length" class="ink-card ink-card--wide ink-card--ai si" style="--d:.48s">
+    <!-- ===== D1: AI 深度诊断 ===== -->
+    <div class="ink-card ink-card--wide ink-card--ai si" style="--d:.48s">
       <div class="ink-card__hd">
-        <span class="ink-card__title">AI 异常检测</span>
-        <span class="ink-stamp ink-stamp--ai">警</span>
-        <span class="ai-risk-badge ai-risk-badge--high">发现 {{ aiAnomalies.anomalies.length }} 项异常</span>
+        <div class="ink-card__title-group">
+          <span class="ink-card__eyebrow">异常模式识别 · 超越阈值告警</span>
+          <span class="ink-card__title">AI 深度诊断</span>
+        </div>
+        <span class="ink-stamp ink-stamp--ai">诊</span>
+        <template v-if="hasLlm && aiAnomalies">
+          <span v-if="aiAnomalies.healthy && !aiAnomalies.anomalies?.length" class="ai-risk-badge ai-risk-badge--low">健康</span>
+          <span v-else-if="aiAnomalies.anomalies?.length" class="ai-risk-badge ai-risk-badge--high">发现 {{ aiAnomalies.anomalies.length }} 项异常</span>
+        </template>
+        <button v-if="hasLlm" class="seal-btn seal-btn--sm" :disabled="aiAnomaliesLoading" @click="refreshAiAnomalies" style="margin-left:auto">
+          <span class="seal-btn__stamp seal-btn__stamp--sm">{{ aiAnomaliesLoading ? '···' : '刷' }}</span>
+          <span class="seal-btn__text seal-btn__text--sm">{{ aiAnomaliesLoading ? '诊断中...' : '刷新诊断' }}</span>
+        </button>
       </div>
-      <div class="ai-anomaly-list">
+
+      <!-- LLM 未接入提示 -->
+      <div v-if="!hasLlm" class="ai-empty-hint ai-empty-hint--llm">
+        <div class="ai-empty-hint__icon">智</div>
+        <div class="ai-empty-hint__text">接入 LLM 后可获得深度异常诊断能力。</div>
+        <div class="ai-empty-hint__sub">当前仅使用基础阈值告警，配置大语言模型后可识别散热退化、周期性骤降、负载不均等隐患模式。</div>
+      </div>
+
+      <!-- 加载态 -->
+      <div v-else-if="aiAnomaliesLoading" class="ai-loading-box">
+        <div class="ai-loading-box__brush"></div>
+        <span class="ai-loading-box__text">AI 正在进行深度诊断...</span>
+      </div>
+
+      <!-- 健康状态 -->
+      <div v-else-if="aiAnomalies?.healthy && !aiAnomalies?.anomalies?.length" class="ai-healthy-box">
+        <div class="ai-healthy-box__icon">安</div>
+        <div class="ai-healthy-box__text">集群运行健康，未检测到隐患模式。</div>
+        <div class="ai-healthy-box__sub">AI 已完成散热趋势、功耗周期、负载均衡、效率衰减等多维度扫描，当前各项指标正常。</div>
+      </div>
+
+      <!-- 异常列表 -->
+      <div v-else-if="aiAnomalies?.anomalies?.length" class="ai-anomaly-list">
         <div v-for="(a,i) in aiAnomalies.anomalies" :key="i" class="ai-anomaly-item" :class="'ai-anomaly-item--'+a.severity">
           <div class="ai-anomaly-item__head">
             <span class="ai-anomaly-item__type">{{ a.type }}</span>
@@ -515,6 +569,9 @@ onUnmounted(()=>{clearInterval(timer);window.removeEventListener('resize',handle
           <div v-if="a.suggestion" class="ai-anomaly-item__sug">建议：{{ a.suggestion }}</div>
         </div>
       </div>
+
+      <!-- 无数据态 -->
+      <div v-else class="ai-empty-hint">暂无诊断数据，点击"刷新诊断"重新检测。</div>
     </div>
 
     <!-- ===== 一键优化 ===== -->
@@ -1370,6 +1427,115 @@ onUnmounted(()=>{clearInterval(timer);window.removeEventListener('resize',handle
 .ai-eval-inline__verdict {
   font-size: 0.75rem;
   color: #666;
+}
+
+/* ===== 卡片标题组（eyebrow + title） ===== */
+.ink-card__title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ink-card__eyebrow {
+  font-size: 0.625rem;
+  color: #999;
+  letter-spacing: 0.12em;
+  font-family: 'ZCOOL XiaoWei', serif;
+}
+
+/* ===== AI 加载态 ===== */
+.ai-loading-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 36px 20px;
+}
+.ai-loading-box__brush {
+  width: 36px; height: 3px;
+  background: linear-gradient(90deg, transparent, #5B4B8C, transparent);
+  border-radius: 2px;
+  animation: brush-stroke 1.5s ease-in-out infinite;
+}
+.ai-loading-box__text {
+  margin-top: 14px;
+  font-size: 0.8125rem;
+  color: #999;
+  letter-spacing: 0.15em;
+}
+
+/* ===== AI 健康态 ===== */
+.ai-healthy-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 32px 20px 28px;
+}
+.ai-healthy-box__icon {
+  width: 48px; height: 48px;
+  border: 2.5px solid #2E8B57;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'ZCOOL KuaiLe', cursive;
+  font-size: 1.25rem;
+  color: #2E8B57;
+  opacity: 0.7;
+  margin-bottom: 14px;
+}
+.ai-healthy-box__text {
+  font-family: 'Ma Shan Zheng', cursive;
+  font-size: 1.1rem;
+  color: #2E8B57;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+}
+.ai-healthy-box__sub {
+  font-size: 0.75rem;
+  color: #999;
+  text-align: center;
+  line-height: 1.7;
+  max-width: 480px;
+}
+
+/* ===== AI 空态/LLM未接入提示 ===== */
+.ai-empty-hint {
+  font-size: 0.8125rem;
+  color: #999;
+  padding: 20px 4px;
+  text-align: center;
+}
+.ai-empty-hint--llm {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 32px 20px 28px;
+}
+.ai-empty-hint__icon {
+  width: 48px; height: 48px;
+  border: 2.5px dashed rgba(91,75,140,0.35);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'ZCOOL KuaiLe', cursive;
+  font-size: 1.25rem;
+  color: #5B4B8C;
+  opacity: 0.5;
+  margin-bottom: 14px;
+}
+.ai-empty-hint__text {
+  font-family: 'Ma Shan Zheng', cursive;
+  font-size: 1.1rem;
+  color: #5B4B8C;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+}
+.ai-empty-hint__sub {
+  font-size: 0.75rem;
+  color: #999;
+  text-align: center;
+  line-height: 1.7;
+  max-width: 520px;
 }
 
 /* ===== 响应式 ===== */

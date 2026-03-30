@@ -30,6 +30,21 @@ async def _apply_task_action(req: TaskActionRequest, label: str, action_name: st
 
     _ensure_risk_acknowledged(req, label)
     if req.dry_run:
+        # 记录演练模式审计日志
+        try:
+            await app_state.store.save_audit_log(
+                action=action_name,
+                target=str(req.pid),
+                reason=f"手动{label}（演练）",
+                operator="user",
+                source="manual",
+                dry_run=True,
+                success=True,
+                risk_level="high" if action_name == "terminate_task" else "medium",
+                detail=f"PID {req.pid}",
+            )
+        except Exception:
+            pass
         return {
             "success": True,
             "dry_run": True,
@@ -45,7 +60,24 @@ async def _apply_task_action(req: TaskActionRequest, label: str, action_name: st
         "terminate_task": app_state.agent.terminate_task,
     }
     result = await action_map[action_name](req.pid)
-    if not result.get("success"):
+    success = bool(result.get("success"))
+    # 记录真实执行审计日志
+    try:
+        await app_state.store.save_audit_log(
+            action=action_name,
+            target=str(req.pid),
+            reason=f"手动{label}",
+            operator="user",
+            source="manual",
+            dry_run=False,
+            success=success,
+            error_message=result.get("error", "") if not success else "",
+            risk_level="high" if action_name == "terminate_task" else "medium",
+            detail=f"PID {req.pid}",
+        )
+    except Exception:
+        pass
+    if not success:
         raise HTTPException(status_code=400, detail=result.get("error", "操作失败"))
     result["dry_run"] = False
     result["applied"] = True
@@ -77,4 +109,19 @@ async def set_priority(req: TaskPriorityUpdate):
     """设置任务优先级"""
     from app.main import app_state
     await app_state.store.set_task_priority(req.pid, req.priority)
+    # 记录优先级调整审计日志
+    try:
+        await app_state.store.save_audit_log(
+            action="set_task_priority",
+            target=str(req.pid),
+            reason=f"手动调整优先级为 {req.priority}",
+            operator="user",
+            source="manual",
+            dry_run=False,
+            success=True,
+            risk_level="low",
+            detail=f"PID {req.pid} -> {req.priority}",
+        )
+    except Exception:
+        pass
     return {"success": True, "pid": req.pid, "priority": req.priority}

@@ -5,8 +5,9 @@
  */
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { createDemoAlert, getConnectionConfig, getFairnessGovernance, getSystemSelfCheck, healthCheck, getSchedulerStatus, runOptimize, runScheduleOnce, setPowerBudget, testConnectionConfig, updateConnectionConfig } from '../services/api'
+import { createDemoAlert, getConnectionConfig, getFairnessGovernance, getSystemSelfCheck, healthCheck, getSchedulerStatus, runOptimize, runScheduleOnce, setPowerBudget, testConnectionConfig, updateConnectionConfig, exportFullGovernanceReport } from '../services/api'
 import { useAppStore } from '../stores/app'
+import { exportTextFile } from '../services/desktopExport'
 import PowerTrendChart from '../components/charts/PowerTrendChart.vue'
 import UtilizationChart from '../components/charts/UtilizationChart.vue'
 
@@ -751,6 +752,21 @@ async function runPlatformSelfCheck() {
   }
 }
 
+const fullReportExporting = ref(false)
+async function doExportFullReport() {
+  fullReportExporting.value = true
+  try {
+    const res = await exportFullGovernanceReport(24)
+    await exportTextFile(res.data, {
+      filename: 'full-governance-report.md',
+      mime: 'text/markdown; charset=utf-8',
+    })
+  } catch (error) {
+    console.error('综合报告导出失败', error)
+  }
+  fullReportExporting.value = false
+}
+
 async function generateDemoAlert() {
   demoAlertBusy.value = true
   try {
@@ -1361,6 +1377,9 @@ onUnmounted(() => {
             <button class="btn-tech" :disabled="demoAlertBusy" @click="generateDemoAlert">
               {{ demoAlertBusy ? '写入中...' : '生成测试告警' }}
             </button>
+            <button class="btn-tech btn-tech--primary" :disabled="fullReportExporting || !workspaceReady" @click="doExportFullReport">
+              {{ fullReportExporting ? '生成中...' : '一键导出综合报告' }}
+            </button>
             <button class="btn-tech" :disabled="!workspaceReady" @click="router.push('/alerts')">
               打开风险台
             </button>
@@ -1816,6 +1835,11 @@ onUnmounted(() => {
 
     <div class="section-title" style="margin: 20px 0 12px">GPU 实时状态</div>
     <div class="gpu-grid">
+      <div class="gpu-grid__source-badge" v-if="store.gpus.length">
+        <span class="source-dot" :style="{ background: store.dataSourceLabel.color }"></span>
+        <span class="source-text" :style="{ color: store.dataSourceLabel.color }">{{ store.dataSourceLabel.text }}</span>
+        <span v-if="store.dataSourceStatus.gpu_count" class="source-count">{{ store.dataSourceStatus.gpu_count }} 卡</span>
+      </div>
       <div
         v-for="gpu in store.gpus"
         :key="gpu.index"
@@ -3103,6 +3127,37 @@ onUnmounted(() => {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 14px;
+  position: relative;
+}
+
+.gpu-grid__source-badge {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.6);
+  border: 1px solid rgba(0,0,0,0.04);
+  width: fit-content;
+  font-size: 0.75rem;
+}
+
+.source-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.source-text {
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.source-count {
+  color: var(--text-muted);
+  font-size: 0.6875rem;
 }
 
 .gpu-grid__empty {

@@ -94,6 +94,22 @@ CREATE TABLE IF NOT EXISTS user_governance_rules (
     note TEXT DEFAULT '',
     updated_at REAL NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS governance_audit_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    action TEXT NOT NULL,
+    target TEXT NOT NULL,
+    reason TEXT DEFAULT '',
+    operator TEXT DEFAULT 'user',
+    source TEXT DEFAULT 'manual',
+    dry_run INTEGER DEFAULT 0,
+    success INTEGER DEFAULT 1,
+    error_message TEXT DEFAULT '',
+    risk_level TEXT DEFAULT 'low',
+    detail TEXT DEFAULT '',
+    timestamp REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_audit_ts ON governance_audit_log(timestamp);
 """
 
 
@@ -318,6 +334,89 @@ class DataStore:
             (username,),
         )
         await self._db.commit()
+
+    # ========== 治理审计日志 ==========
+
+    async def save_audit_log(
+        self,
+        action: str,
+        target: str,
+        reason: str = '',
+        operator: str = 'user',
+        source: str = 'manual',
+        dry_run: bool = False,
+        success: bool = True,
+        error_message: str = '',
+        risk_level: str = 'low',
+        detail: str = '',
+    ):
+        """写入治理操作审计记录"""
+        if not self._db:
+            return
+        await self._db.execute(
+            """INSERT INTO governance_audit_log
+               (action, target, reason, operator, source, dry_run, success, error_message, risk_level, detail, timestamp)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                action, target, reason, operator, source,
+                1 if dry_run else 0,
+                1 if success else 0,
+                error_message, risk_level, detail, time.time(),
+            ),
+        )
+        await self._db.commit()
+
+    async def get_audit_logs(self, limit: int = 100, hours: float = 72) -> list[dict]:
+        """读取近N小时的治理审计日志，按时间倒序"""
+        since = time.time() - hours * 3600
+        cursor = await self._db.execute(
+            """SELECT * FROM governance_audit_log
+               WHERE timestamp >= ?
+               ORDER BY timestamp DESC LIMIT ?""",
+            (since, limit),
+        )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    async def save_governance_audit(self, action: str, target: str, reason: str, result: str, operator: str = "user", dry_run: bool = False):
+        """记录治理审计日志（写入 schedule_log 表）"""
+        if not self._db:
+            return
+        await self._db.execute(
+            "INSERT INTO schedule_log (action, target, reason, result, timestamp) VALUES (?, ?, ?, ?, ?)",
+            (action, target, reason, f"{'dry_run|' if dry_run else ''}{operator}|{result}", time.time()),
+        )
+        await self._db.commit()
+
+    async def get_governance_audit_log(self, limit: int = 100) -> list[dict]:
+        """获取治理审计日志（从 schedule_log 表解析）"""
+        if not self._db:
+            return []
+        cursor = await self._db.execute(
+            "SELECT id, action, target, reason, result, timestamp FROM schedule_log ORDER BY timestamp DESC LIMIT ?",
+            (limit,),
+        )
+        rows = await cursor.fetchall()
+        logs = []
+        for row in rows:
+            result_str = row["result"] or ""
+            parts = result_str.split("|")
+            is_dry_run = "dry_run" in parts
+            operator = "system"
+            status = parts[-1] if parts else "unknown"
+            if len(parts) >= 2:
+                operator = parts[-2] if not is_dry_run else (parts[1] if len(parts) >= 3 else "system")
+            logs.append({
+                "id": row["id"],
+                "action": row["action"],
+                "target": row["target"],
+                "reason": row["reason"],
+                "operator": operator,
+                "status": status,
+                "dry_run": is_dry_run,
+                "timestamp": row["timestamp"],
+            })
+        return logs
 
     # ========== 调度日志 ==========
 

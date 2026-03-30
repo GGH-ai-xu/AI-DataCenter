@@ -174,6 +174,7 @@ async def get_scheduler_status():
         "time_period": get_time_period(),
         "time_period_label": get_time_period_label(),
         "budget": app_state.scheduler.get_budget_status(gpus),
+        "carbon": app_state.scheduler.get_carbon_budget_status(gpus or []),
     }
 
 
@@ -194,6 +195,28 @@ async def configure_power_budget(req: PowerBudgetConfigRequest):
     return {
         "success": True,
         "budget": app_state.scheduler.get_budget_status(gpus),
+    }
+
+
+@router.get("/carbon-budget")
+async def get_carbon_budget():
+    """获取碳预算状态"""
+    from app.main import app_state
+    gpus = await app_state.agent.get_all_gpus()
+    return app_state.scheduler.get_carbon_budget_status(gpus or [])
+
+
+@router.post("/carbon-budget")
+async def set_carbon_budget(req: dict):
+    """配置碳预算"""
+    from app.main import app_state
+    enabled = bool(req.get("enabled", False))
+    daily_kg = float(req.get("daily_budget_kg", 50.0))
+    app_state.scheduler.configure_carbon_budget(enabled, daily_kg)
+    gpus = await app_state.agent.get_all_gpus()
+    return {
+        "success": True,
+        "carbon_budget": app_state.scheduler.get_carbon_budget_status(gpus or []),
     }
 
 
@@ -269,7 +292,16 @@ async def run_schedule_once(req: ScheduleRunRequest | None = Body(default=None))
         "ai_strategy": ai_strategy,
         "ai_results": ai_results,
         "budget": app_state.scheduler.get_budget_status(latest_gpus or gpus),
+        "carbon": app_state.scheduler.get_carbon_budget_status(latest_gpus or gpus),
     }
+
+
+@router.get("/audit-log")
+async def get_audit_log(limit: int = 100):
+    """获取治理操作审计日志"""
+    from app.main import app_state
+    logs = await app_state.store.get_audit_logs(limit)
+    return {"logs": logs, "total": len(logs)}
 
 
 @router.get("/report")

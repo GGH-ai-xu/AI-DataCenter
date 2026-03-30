@@ -13,6 +13,19 @@ export const useAppStore = defineStore('app', () => {
   const wsConnected = ref(false)
   const workspaceReady = ref(false)
 
+  // 数据源可信度状态
+  const dataSourceStatus = ref({ connected: false, simulated: false, gpu_count: 0 })
+
+  const dataSourceLabel = computed(() => {
+    if (!dataSourceStatus.value.connected) {
+      return { text: '数据源离线', level: 'offline', color: '#999' }
+    }
+    if (dataSourceStatus.value.simulated) {
+      return { text: '模拟演示', level: 'simulated', color: '#B8860B' }
+    }
+    return { text: '真实采集', level: 'real', color: '#2E8B57' }
+  })
+
   // 调度器状态
   const schedulerAuto = ref(false)
   const timePeriod = ref('normal')
@@ -41,7 +54,11 @@ export const useAppStore = defineStore('app', () => {
   })
 
   function updateFromWs(data) {
-    if (data.gpus) gpus.value = data.gpus
+    if (data.gpus) {
+      gpus.value = data.gpus
+      dataSourceStatus.value.connected = true
+      dataSourceStatus.value.gpu_count = data.gpus.length
+    }
     if (data.system) system.value = data.system
     if (data.processes) processes.value = data.processes
     if (data.alerts?.length) {
@@ -56,6 +73,7 @@ export const useAppStore = defineStore('app', () => {
   return {
     gpus, system, processes, alerts, wsConnected, workspaceReady,
     schedulerAuto, timePeriod,
+    dataSourceStatus, dataSourceLabel,
     totalPower, avgTemperature, totalMemoryUsed, totalMemoryTotal, avgUtilization,
     updateFromWs, setWorkspaceReady,
   }
