@@ -8,6 +8,50 @@ const api = axios.create({
   timeout: 15000,
 })
 
+// Token 认证：自动附加 Authorization 头
+const AUTH_TOKEN_KEY = 'gpu_gov_token'
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem(AUTH_TOKEN_KEY)
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+
+/**
+ * 注册全局错误拦截器（由 App.vue 在 onMounted 中调用）
+ * @param {(msg: string, type: string) => void} showToast
+ */
+export function setupInterceptor(showToast) {
+  api.interceptors.response.use(
+    (res) => res,
+    (err) => {
+      const status = err.response?.status
+      const detail = err.response?.data?.detail
+      if (status === 401) {
+        showToast(detail || '认证失败，请检查 Token', 'error')
+      } else if (status === 403) {
+        showToast(detail || '权限不足，需要管理员令牌', 'warning')
+      } else if (status >= 500) {
+        showToast(`服务器错误 (${status})`, 'error')
+      } else if (!err.response && err.message) {
+        // 网络错误 / 超时
+        showToast('网络连接异常，请检查后端服务', 'error')
+      }
+      return Promise.reject(err)
+    },
+  )
+}
+
+/** 设置认证令牌 */
+export function setAuthToken(token) {
+  if (token) {
+    localStorage.setItem(AUTH_TOKEN_KEY, token)
+  } else {
+    localStorage.removeItem(AUTH_TOKEN_KEY)
+  }
+}
+
 // GPU相关
 export const getRealtimeData = () => api.get('/gpu/realtime')
 export const getGpuHistory = (index, hours = 1) => api.get(`/gpu/history/${index}`, { params: { hours } })
@@ -81,7 +125,7 @@ export const getHistoryComparison = (hours = 72) => api.get('/energy/history-com
 export const exportEnergyReport = (hours = 24, format = 'markdown') => api.get('/energy/export-report', { params: { hours, format }, responseType: 'blob' })
 
 // 审计日志
-export const getAuditLogs = (limit = 100) => api.get('/scheduler/audit-log', { params: { limit } })
+export const getAuditLogs = (limit = 100, hours = 72) => api.get('/audit/logs', { params: { limit, hours } })
 
 // 综合治理报告
 export const exportFullGovernanceReport = (hours = 24) => api.get('/governance/full-report', { params: { hours }, responseType: 'blob' })

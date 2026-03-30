@@ -263,6 +263,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Token 认证中间件
+from app.middleware.auth import TokenAuthMiddleware
+app.add_middleware(TokenAuthMiddleware)
+
 # 注册API路由
 from app.api.gpu import router as gpu_router
 from app.api.tasks import router as tasks_router

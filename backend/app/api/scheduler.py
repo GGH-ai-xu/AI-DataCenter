@@ -304,6 +304,38 @@ async def get_audit_log(limit: int = 100):
     return {"logs": logs, "total": len(logs)}
 
 
+@router.get("/evaluation")
+async def get_schedule_evaluation():
+    """获取最近一次 AI 调度效果评估（D4 闭环反馈）"""
+    from app.main import app_state
+
+    # 优先返回缓存的评估结果
+    cached = app_state.scheduler._last_evaluation
+    if cached:
+        return {"evaluation": cached, "source": "cached"}
+
+    # 尝试实时评估
+    gpus = await app_state.agent.get_all_gpus()
+    if not gpus:
+        return {"evaluation": None, "message": "暂无 GPU 数据，无法评估"}
+
+    result = await app_state.scheduler.evaluate_last_schedule(gpus)
+    if result:
+        return {"evaluation": result, "source": "realtime"}
+
+    # 无上次调度记录时生成基础评估
+    return {
+        "evaluation": {
+            "score": 0,
+            "verdict": "暂无评估",
+            "effective_actions": [],
+            "ineffective_actions": [],
+            "suggestions": ["请先执行一次调度，系统将自动评估调度效果"],
+        },
+        "source": "none",
+    }
+
+
 @router.get("/report")
 async def generate_report():
     """生成AI能耗分析报告"""

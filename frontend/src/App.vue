@@ -3,6 +3,8 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { healthCheck } from './services/api'
 import { useAppStore } from './stores/app'
+import GlobalToast from './components/GlobalToast.vue'
+import { setupInterceptor } from './services/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -21,8 +23,10 @@ const updateState = ref(null)
 const updateBusy = ref(false)
 const closeDialog = ref(null)
 const closeBusy = ref(false)
+const toastRef = ref(null)
 let ws = null
 let reconnectTimer = null
+let wsRetryDelay = 1000  // WebSocket 指数退避初始延迟
 let clockTimer = null
 let workspaceTimer = null
 let lockHintTimer = null
@@ -120,6 +124,7 @@ function connectWs() {
   ws.onopen = () => {
     wsConnected.value = true
     store.wsConnected = true
+    wsRetryDelay = 1000  // 连接成功后重置退避
   }
   ws.onmessage = (event) => {
     try {
@@ -132,7 +137,9 @@ function connectWs() {
   ws.onclose = () => {
     wsConnected.value = false
     store.wsConnected = false
-    reconnectTimer = setTimeout(connectWs, 10000)
+    // 指数退避重连：1s → 2s → 4s → 8s → ... → 30s max
+    reconnectTimer = setTimeout(connectWs, wsRetryDelay)
+    wsRetryDelay = Math.min(wsRetryDelay * 2, 30000)
   }
   ws.onerror = () => ws?.close()
 }
@@ -263,6 +270,10 @@ onMounted(() => {
   updateClock()
   clockTimer = setInterval(updateClock, 1000)
   connectWs()
+  // 注册 axios 全局错误拦截器
+  setupInterceptor((msg, type) => {
+    toastRef.value?.show(msg, type)
+  })
   void refreshWorkspaceStatus()
   workspaceTimer = setInterval(() => {
     void refreshWorkspaceStatus()
@@ -414,6 +425,7 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
+    <GlobalToast ref="toastRef" />
   </div>
 </template>
 

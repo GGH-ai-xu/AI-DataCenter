@@ -103,10 +103,13 @@ async def export_full_governance_report(
 ):
     """一键导出综合治理报告（能耗+调度+公平治理+碳排放）"""
     import json
+    import logging
     import time
     from datetime import datetime
 
     from app.main import app_state
+
+    _logger = logging.getLogger(__name__)
 
     sections = []
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -115,13 +118,14 @@ async def export_full_governance_report(
 
     # 1. 能耗统计
     try:
-        energy_metrics = await app_state.energy.get_metrics(hours)
+        energy_metrics = await app_state.energy.get_energy_metrics(hours)
         sections.append("## 一、能耗统计\n")
         sections.append(f"- 实时总功耗：**{energy_metrics.get('current_total_power', 0):.0f} W**")
         sections.append(f"- 日能耗：**{energy_metrics.get('kwh', 0):.2f} kWh**")
         sections.append(f"- 效率评分：**{energy_metrics.get('efficiency_score', 0):.0f}** / 100")
         sections.append(f"- 节能比例：**{energy_metrics.get('saving_pct', 0):.1f}%**\n")
-    except Exception:
+    except Exception as e:
+        _logger.warning("综合报告-能耗统计生成失败: %s", e)
         sections.append("## 一、能耗统计\n\n数据暂不可用。\n")
 
     # 2. 碳排放
@@ -131,7 +135,8 @@ async def export_full_governance_report(
         sections.append(f"- 今日碳排放：**{carbon.get('co2_kg', 0):.3f} kgCO₂**")
         sections.append(f"- 等效树木：**{carbon.get('trees_equivalent', 0):.1f}** 棵/天")
         sections.append(f"- 碳因子：{carbon.get('carbon_factor', 0.5703)}\n")
-    except Exception:
+    except Exception as e:
+        _logger.warning("综合报告-碳排放生成失败: %s", e)
         sections.append("## 二、碳排放\n\n数据暂不可用。\n")
 
     # 3. 公平治理
@@ -151,7 +156,8 @@ async def export_full_governance_report(
         if yield_candidates:
             sections.append(f"- 建议让路任务：{len(yield_candidates)} 个")
         sections.append("")
-    except Exception:
+    except Exception as e:
+        _logger.warning("综合报告-公平治理生成失败: %s", e)
         sections.append("## 三、公平治理\n\n数据暂不可用。\n")
 
     # 4. 调度历史
@@ -167,7 +173,8 @@ async def export_full_governance_report(
         else:
             sections.append("暂无治理操作记录。")
         sections.append("")
-    except Exception:
+    except Exception as e:
+        _logger.warning("综合报告-调度历史生成失败: %s", e)
         sections.append("## 四、治理操作记录\n\n数据暂不可用。\n")
 
     # 5. AI 洞察
@@ -181,7 +188,8 @@ async def export_full_governance_report(
                 sections.append("## 五、AI 分析报告\n")
                 sections.append(ai_report or "AI 分析暂未生成。")
                 sections.append("")
-        except Exception:
+        except Exception as e:
+            _logger.warning("综合报告-AI分析生成失败: %s", e)
             sections.append("## 五、AI 分析报告\n\n数据暂不可用。\n")
 
     sections.append("---\n\n*由 GPU 共享治理平台自动生成*")

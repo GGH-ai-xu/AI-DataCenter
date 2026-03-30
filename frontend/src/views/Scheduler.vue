@@ -702,7 +702,7 @@ onUnmounted(() => {
             {{ reportLoading ? '生成中...' : '生成报告' }}
           </button>
         </div>
-        <div v-if="report" class="report-content" v-html="report.replace(/\n/g, '<br>')"></div>
+        <div v-if="report" class="report-content" style="white-space: pre-wrap">{{ report }}</div>
         <div v-else style="color: var(--text-muted); font-size: 0.8125rem; text-align: center; padding: 20px">
           点击"生成报告"获取AI能耗分析
         </div>
