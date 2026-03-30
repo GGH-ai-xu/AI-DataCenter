@@ -1,6 +1,6 @@
 {
   "name": "gpu-governance-workbench-desktop",
-  "version": "1.0.6",
+  "version": "1.1.0",
   "description": "GPU shared governance desktop shell",
   "main": "main.js",
   "author": "Open Source",
