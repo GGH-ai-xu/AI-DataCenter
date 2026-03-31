@@ -145,12 +145,12 @@ npm run build
 
 打包完成后会生成：
 
-- `dist/electron/GPUGovernanceWorkbench-Setup-1.0.6.exe`
+- `dist/electron/GPUGovernanceWorkbench-Setup-1.1.0.exe`
 - `dist/electron/win-unpacked/`
 
 说明：
 
-- `GPUGovernanceWorkbench-Setup-1.0.6.exe` 是正式安装器
+- `GPUGovernanceWorkbench-Setup-1.1.0.exe` 是正式安装器
 - `win-unpacked/` 是免安装测试目录，可直接运行
 
 桌面版形态：
