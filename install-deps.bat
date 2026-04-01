@@ -7,4 +7,7 @@ if errorlevel 1 exit /b %errorlevel%
 powershell -ExecutionPolicy Bypass -File "%~dp0scripts\setup-frontend.ps1"
 if errorlevel 1 exit /b %errorlevel%
 
+powershell -ExecutionPolicy Bypass -File "%~dp0scripts\setup-desktop-shell.ps1"
+if errorlevel 1 exit /b %errorlevel%
+
 echo Dependency installation complete.

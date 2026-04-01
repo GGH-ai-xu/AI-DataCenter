@@ -358,6 +358,71 @@ function agentPackageSourcePath() {
   return path.join(installRoot(), 'agent')
 }
 
+function readDesktopDevUrl(name) {
+  const raw = String(process.env[name] || '').trim()
+  if (!raw) {
+    return ''
+  }
+
+  let parsed
+  try {
+    parsed = new URL(raw)
+  } catch {
+    throw new Error(`${name} 配置无效: ${raw}`)
+  }
+
+  if (!/^https?:$/i.test(parsed.protocol)) {
+    throw new Error(`${name} 仅支持 http 或 https: ${raw}`)
+  }
+
+  return parsed.toString()
+}
+
+function desktopDevServerUrl() {
+  return readDesktopDevUrl('DESKTOP_DEV_SERVER_URL')
+}
+
+function desktopDevBackendUrl() {
+  return readDesktopDevUrl('DESKTOP_DEV_BACKEND_URL')
+}
+
+function desktopDevAgentUrl() {
+  return readDesktopDevUrl('DESKTOP_DEV_AGENT_URL')
+}
+
+function desktopDevModeEnabled() {
+  return Boolean(String(process.env.DESKTOP_DEV_SERVER_URL || '').trim())
+}
+
+function requiredDesktopDevUrl(name, value) {
+  if (!value) {
+    throw new Error(`缺少 ${name}，请使用 start-electron-dev.bat 启动 Electron 开发模式`)
+  }
+  return value
+}
+
+function portFromUrl(urlValue, envName) {
+  const port = Number.parseInt(new URL(urlValue).port, 10)
+  if (!port) {
+    throw new Error(`${envName} 必须显式包含端口: ${urlValue}`)
+  }
+  return port
+}
+
+function applyDesktopDevRuntime() {
+  if (!desktopDevModeEnabled()) {
+    return null
+  }
+
+  const serverUrl = requiredDesktopDevUrl('DESKTOP_DEV_SERVER_URL', desktopDevServerUrl())
+  const backendUrl = requiredDesktopDevUrl('DESKTOP_DEV_BACKEND_URL', desktopDevBackendUrl())
+  const agentUrl = requiredDesktopDevUrl('DESKTOP_DEV_AGENT_URL', desktopDevAgentUrl())
+  backendPort = portFromUrl(backendUrl, 'DESKTOP_DEV_BACKEND_URL')
+  agentPort = portFromUrl(agentUrl, 'DESKTOP_DEV_AGENT_URL')
+
+  return { serverUrl, backendUrl, agentUrl }
+}
+
 function backendBaseUrl(port = backendPort) {
   return `http://${LOCAL_HOST}:${port}`
 }
@@ -372,6 +437,13 @@ function agentHealthUrl() {
 
 function agentBaseUrl(port = agentPort) {
   return `http://${LOCAL_HOST}:${port}`
+}
+
+function workbenchBaseUrl() {
+  if (!desktopDevModeEnabled()) {
+    return backendBaseUrl()
+  }
+  return requiredDesktopDevUrl('DESKTOP_DEV_SERVER_URL', desktopDevServerUrl())
 }
 
 function buildExportedAgentStartScript() {
@@ -550,7 +622,7 @@ async function exportAgentPackage() {
 }
 
 function buildWorkbenchUrl() {
-  const url = new URL('/', backendBaseUrl())
+  const url = new URL('/', workbenchBaseUrl())
   url.searchParams.set('desktopVersion', currentAppVersion())
   url.searchParams.set('boot', String(Date.now()))
   return url.toString()
@@ -583,7 +655,7 @@ async function loadWorkbenchUrl(targetWindow, {
       }
 
       const currentUrl = String(targetWindow.webContents?.getURL?.() || '').trim()
-      if (currentUrl.startsWith(backendBaseUrl())) {
+      if (currentUrl.startsWith(workbenchBaseUrl())) {
         return
       }
 
@@ -632,7 +704,7 @@ async function findAvailablePort(startPort, {
 }
 
 function resolveWindowIcon() {
-  const iconPath = shellAssetPath('build', 'icon.ico')
+  const iconPath = shellAssetPath('build', 'icon.png')
   if (!fs.existsSync(iconPath)) {
     return undefined
   }
@@ -946,9 +1018,13 @@ ipcMain.handle('desktop-shell:restart-managed-services', async () => {
 
   try {
     await stopManagedProcesses()
-    backendPort = DEFAULT_BACKEND_PORT
-    agentPort = DEFAULT_AGENT_PORT
-    await ensureServices()
+    if (desktopDevModeEnabled()) {
+      await ensureDesktopDevServices()
+    } else {
+      backendPort = DEFAULT_BACKEND_PORT
+      agentPort = DEFAULT_AGENT_PORT
+      await ensureServices()
+    }
 
     if (mainWindow && !mainWindow.isDestroyed()) {
       await loadWorkbenchUrl(mainWindow)
@@ -1379,6 +1455,56 @@ async function ensureServices(onStatus = () => {}) {
   onStatus('正在载入桌面工作台', 94)
 }
 
+async function ensureDesktopDevServices(onStatus = () => {}) {
+  const runtime = applyDesktopDevRuntime()
+  if (!runtime) {
+    throw new Error('未配置 Electron 开发模式环境变量')
+  }
+
+  updateManagedServiceState('backend', {
+    status: 'starting',
+    detail: '正在连接 Electron 开发后端',
+    port: backendPort,
+    managed: false,
+    owned: false,
+    restartAttempts: 0,
+    launchSpec: null,
+    recoveryPending: false,
+  })
+  updateManagedServiceState('agent', {
+    status: 'starting',
+    detail: '正在连接 Electron 开发 Agent',
+    port: agentPort,
+    managed: false,
+    owned: false,
+    restartAttempts: 0,
+    launchSpec: null,
+    recoveryPending: false,
+  })
+
+  onStatus('正在校验 Electron 开发服务', 14)
+  const backendReady = await waitForHealth(backendHealthUrl(), 12000)
+  if (!backendReady) {
+    throw new Error(`Electron 开发后端不可用: ${runtime.backendUrl}`)
+  }
+
+  onStatus('Electron 开发后端已就绪', 38)
+  const agentReady = await waitForHealth(agentHealthUrl(), 12000)
+  if (!agentReady) {
+    throw new Error(`Electron 开发 Agent 不可用: ${runtime.agentUrl}`)
+  }
+
+  onStatus('Electron 开发 Agent 已就绪', 62)
+  const frontendReady = await waitForHealth(runtime.serverUrl, 12000)
+  if (!frontendReady) {
+    throw new Error(`Electron 开发前端不可用: ${runtime.serverUrl}`)
+  }
+
+  markManagedServiceExternal('backend', '治理后端', `Electron 开发模式已连接 ${runtime.backendUrl}`)
+  markManagedServiceExternal('agent', '本机采集代理', `Electron 开发模式已连接 ${runtime.agentUrl}`)
+  onStatus('Electron 开发工作台已就绪', 94)
+}
+
 function killProcessTree(child) {
   return new Promise((resolve) => {
     if (!child || !child.pid || child.killed || child.exitCode !== null) {
@@ -1560,7 +1686,11 @@ async function createMainWindow() {
 async function launchWorkbench() {
   await createSplashWindow()
   emitBootStatus('正在准备桌面环境', 8)
-  await ensureServices(emitBootStatus)
+  if (desktopDevModeEnabled()) {
+    await ensureDesktopDevServices(emitBootStatus)
+  } else {
+    await ensureServices(emitBootStatus)
+  }
   await createMainWindow()
 }
 

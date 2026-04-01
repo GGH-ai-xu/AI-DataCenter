@@ -68,6 +68,23 @@ class FrontendUIStructureTests(unittest.TestCase):
         package_json = (ROOT / "frontend/package.json").read_text(encoding="utf-8")
         self.assertIn('"build": "vite build"', package_json)
 
+    def test_frontend_brand_uses_repo_logo_asset(self):
+        app_text = (ROOT / "frontend/src/App.vue").read_text(encoding="utf-8")
+        favicon_text = (ROOT / "frontend/public/favicon.svg").read_text(encoding="utf-8")
+        source_logo = (ROOT / "docs/logo/logo.svg").read_text(encoding="utf-8")
+
+        self.assertIn('src="/logo.svg"', app_text)
+        self.assertEqual(favicon_text.strip(), source_logo.strip())
+
+    def test_desktop_shell_uses_updated_logo_assets(self):
+        splash_text = (ROOT / "desktop-shell/splash.html").read_text(encoding="utf-8")
+        package_text = (ROOT / "desktop-shell/package.json").read_text(encoding="utf-8")
+        main_text = (ROOT / "desktop-shell/main.js").read_text(encoding="utf-8")
+
+        self.assertIn("brand-logo", splash_text)
+        self.assertIn('"build/icon.png"', package_text)
+        self.assertIn("shellAssetPath('build', 'icon.png')", main_text)
+
     def test_dashboard_is_summary_only(self):
         text = (ROOT / "frontend/src/views/Dashboard.vue").read_text(encoding="utf-8")
 

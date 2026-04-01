@@ -296,7 +296,7 @@ onUnmounted(() => {
   <div class="app-layout">
     <header class="ink-header">
       <div class="ink-header__left">
-        <div class="logo-seal"><span>智</span><span>能</span></div>
+        <img class="logo-mark" src="/logo.svg" alt="AI-DataCenter logo" />
         <div class="logo-text">
           <h1 class="logo-title">{{ appInfo.name || 'GPU 共享治理平台' }}</h1>
           <p class="logo-sub">
@@ -479,28 +479,13 @@ onUnmounted(() => {
   gap: 14px;
 }
 
-/* 朱红印章 Logo */
-.logo-seal {
-  width: 36px; height: 36px;
-  border: 2.5px solid var(--ink-vermillion);
-  border-radius: 3px;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  align-items: center;
-  justify-items: center;
-  font-family: var(--font-seal);
-  font-size: 0.6rem;
-  color: var(--ink-vermillion);
-  transform: rotate(-4deg);
-  opacity: 0.7;
-  line-height: 1;
-  padding: 2px;
-  transition: all 0.3s;
-}
-
-.logo-seal:hover {
-  opacity: 1;
-  transform: rotate(0deg);
+.logo-mark {
+  width: 40px;
+  height: 40px;
+  display: block;
+  flex-shrink: 0;
+  border-radius: 12px;
+  filter: drop-shadow(0 8px 14px rgba(6, 91, 83, 0.12));
 }
 
 .logo-title {

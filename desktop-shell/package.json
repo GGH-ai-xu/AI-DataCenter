@@ -27,6 +27,8 @@
     },
     "files": [
       "build/icon.ico",
+      "build/icon.png",
+      "build/logo.svg",
       "main.js",
       "preload.js",
       "splash.html",
