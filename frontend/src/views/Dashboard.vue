@@ -5,9 +5,8 @@
  */
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { createDemoAlert, getConnectionConfig, getFairnessGovernance, getSystemSelfCheck, healthCheck, getSchedulerStatus, runOptimize, runScheduleOnce, setPowerBudget, testConnectionConfig, updateConnectionConfig, exportFullGovernanceReport } from '../services/api'
+import { createDemoAlert, getConnectionConfig, getFairnessGovernance, getSystemSelfCheck, healthCheck, getSchedulerStatus, testConnectionConfig, updateConnectionConfig } from '../services/api'
 import { useAppStore } from '../stores/app'
-import { exportTextFile } from '../services/desktopExport'
 import PowerTrendChart from '../components/charts/PowerTrendChart.vue'
 import UtilizationChart from '../components/charts/UtilizationChart.vue'
 import WorkspaceSummary from '../components/workspace/WorkspaceSummary.vue'
@@ -65,10 +64,6 @@ const fairnessState = ref({
   recommendations: [],
   yield_candidates: [],
 })
-const actionBusy = ref(false)
-const actionFeedback = ref(null)
-const optimizePreview = ref(null)
-const lastDispatch = ref(null)
 const connectionBusy = ref(false)
 const connectionDirty = ref(false)
 const connectionFeedback = ref(null)
@@ -155,10 +150,6 @@ const dashboardTabs = [
   { key: 'live', label: '实时态势', desc: 'GPU、图表、告警' },
 ]
 
-const totalPowerLimit = computed(() =>
-  store.gpus.reduce((sum, g) => sum + (g.power_limit || 350), 0)
-)
-
 const budget = computed(() => schedulerState.value.budget || {})
 const fairnessOverview = computed(() => fairnessState.value.overview || {})
 const activeUsers = computed(() => new Set(store.processes.map(p => p.username || 'unknown')).size)
@@ -168,8 +159,6 @@ const normalTasks = computed(() => store.processes.filter(p => (p.priority || 'n
 const criticalAlerts = computed(() => store.alerts.filter(alert => alert.severity === 'critical').slice(0, 4))
 const hotGpuCount = computed(() => store.gpus.filter(gpu => (gpu.temperature || 0) >= 80).length)
 const yieldQueue = computed(() => (fairnessState.value.yield_candidates || []).slice(0, 4))
-const topRiskUsers = computed(() => (fairnessState.value.users || []).slice(0, 4))
-const budgetActions = computed(() => (budget.value.last_actions || []).slice(0, 4))
 const memoryUsagePct = computed(() => {
   if (!store.totalMemoryTotal) return 0
   return Math.round((store.totalMemoryUsed / store.totalMemoryTotal) * 100)
@@ -432,9 +421,10 @@ const desktopServiceCards = computed(() =>
 const hasDemoAlert = computed(() =>
   store.alerts.some((alert) => alert?.alert_type === 'self_check' && !alert?.acknowledged),
 )
+const hasGovernanceHistory = computed(() => (budget.value.last_actions || []).length > 0)
 const journeySteps = computed(() => {
   const selfCheckOk = selfCheckSummary.value.status === 'ok'
-  const hasDispatch = Boolean(lastDispatch.value)
+  const hasDispatch = hasGovernanceHistory.value
 
   return [
     {
@@ -760,21 +750,6 @@ async function runPlatformSelfCheck() {
   }
 }
 
-const fullReportExporting = ref(false)
-async function doExportFullReport() {
-  fullReportExporting.value = true
-  try {
-    const res = await exportFullGovernanceReport(24)
-    await exportTextFile(res.data, {
-      filename: 'full-governance-report.md',
-      mime: 'text/markdown; charset=utf-8',
-    })
-  } catch (error) {
-    console.error('综合报告导出失败', error)
-  }
-  fullReportExporting.value = false
-}
-
 async function generateDemoAlert() {
   demoAlertBusy.value = true
   try {
@@ -990,101 +965,6 @@ async function loadGovernance() {
       recommendations: [],
       yield_candidates: [],
     }
-  }
-}
-
-function formatActionLabel(action = '') {
-  return {
-    set_power_limit: '限功率',
-    pause_task: '暂停任务',
-    resume_task: '恢复任务',
-  }[action] || action
-}
-
-function setFeedback(tone, title, detail) {
-  actionFeedback.value = { tone, title, detail, timestamp: Date.now() }
-}
-
-function formatFeedbackDetail(payload) {
-  const ruleCount = (payload.rule_results || []).filter(item => item.success).length
-  const budgetCount = (payload.budget_results || []).filter(item => item.success).length
-  const aiCount = (payload.ai_results || []).filter(item => item.success).length
-  const total = ruleCount + budgetCount + aiCount
-  if (!total) return '本次未执行实际治理动作，系统判断当前状态可继续观察。'
-  return `已执行 ${total} 条动作，其中规则 ${ruleCount} 条、预算 ${budgetCount} 条、AI ${aiCount} 条。`
-}
-
-async function executeDispatch() {
-  if (!store.gpus.length) {
-    setFeedback('warning', '当前没有可治理 GPU', '请等待真实 GPU 数据接入后再执行治理动作。')
-    return
-  }
-  if (!window.confirm('这会对真实任务和真实功耗上限执行治理动作，是否继续？')) return
-
-  actionBusy.value = true
-  try {
-    const { data } = await runScheduleOnce({ dry_run: false, acknowledge_risk: true })
-    lastDispatch.value = data
-    setFeedback('ok', '治理动作已执行', formatFeedbackDetail(data))
-    await loadGovernance()
-  } catch (error) {
-    const detail = error?.response?.data?.detail || error?.message || '执行治理动作失败'
-    setFeedback('critical', '治理执行失败', detail)
-  } finally {
-    actionBusy.value = false
-  }
-}
-
-async function measureOptimization() {
-  if (!store.gpus.length) {
-    setFeedback('warning', '当前没有可分析 GPU', '请等待真实 GPU 数据接入后再做能耗测算。')
-    return
-  }
-
-  actionBusy.value = true
-  try {
-    const { data } = await runOptimize()
-    optimizePreview.value = data
-    if (data.insufficient_data) {
-      setFeedback('warning', '真实数据不足', data.message || '当前历史样本不足，暂不生成优化结论。')
-    } else if (data.low_load) {
-      setFeedback('warning', '当前仅生成观察结论', '设备功耗很低，平台不会给出夸张节能值，建议继续观察真实负载窗口。')
-    } else {
-      setFeedback('ok', '已生成理论节能测算', `理论节省 ${Number(data.estimated_saving_w || 0).toFixed(0)}W。`)
-    }
-    await loadGovernance()
-  } catch (error) {
-    const detail = error?.response?.data?.detail || error?.message || '能耗测算失败'
-    setFeedback('critical', '测算失败', detail)
-  } finally {
-    actionBusy.value = false
-  }
-}
-
-async function quickBudgetAction() {
-  if (!store.gpus.length) {
-    setFeedback('warning', '当前没有可治理 GPU', '请等待真实 GPU 数据接入后再调整预算治理。')
-    return
-  }
-
-  if (budget.value.enabled) {
-    router.push('/scheduler')
-    return
-  }
-
-  const targetBudget = Math.max(400, Number(budget.value.total_power_budget || totalPowerLimit.value || 1200))
-  if (!window.confirm(`将以 ${targetBudget}W 启用总功率预算治理，是否继续？`)) return
-
-  actionBusy.value = true
-  try {
-    await setPowerBudget(true, targetBudget)
-    setFeedback('ok', '预算治理已启用', `当前预算上限为 ${targetBudget}W，可继续前往治理台做精细调整。`)
-    await loadGovernance()
-  } catch (error) {
-    const detail = error?.response?.data?.detail || error?.message || '预算治理启用失败'
-    setFeedback('critical', '预算治理启用失败', detail)
-  } finally {
-    actionBusy.value = false
   }
 }
 
@@ -1392,9 +1272,6 @@ onUnmounted(() => {
             <button class="btn-tech" :disabled="demoAlertBusy" @click="generateDemoAlert">
               {{ demoAlertBusy ? '写入中...' : '生成测试告警' }}
             </button>
-            <button class="btn-tech btn-tech--primary" :disabled="fullReportExporting || !workspaceReady" @click="doExportFullReport">
-              {{ fullReportExporting ? '生成中...' : '一键导出综合报告' }}
-            </button>
             <button class="btn-tech" :disabled="!workspaceReady" @click="router.push('/alerts')">
               打开风险台
             </button>
@@ -1578,35 +1455,20 @@ onUnmounted(() => {
         </div>
 
         <div class="action-grid">
-          <button class="btn-tech btn-tech--primary" :disabled="actionBusy || !store.gpus.length" @click="executeDispatch">
-            {{ actionBusy ? '执行中...' : '执行一次真实治理' }}
-          </button>
-          <button class="btn-tech" :disabled="actionBusy" @click="quickBudgetAction">
-            {{ budget.enabled ? '前往预算治理' : '一键启用预算治理' }}
-          </button>
-          <button class="btn-tech" :disabled="actionBusy || !store.gpus.length" @click="measureOptimization">
-            先做节能测算
+          <button class="btn-tech btn-tech--primary" @click="router.push('/scheduler')">
+            打开治理台
           </button>
           <button class="btn-tech" @click="router.push('/tasks')">
             打开任务处置
           </button>
+          <button class="btn-tech" @click="router.push('/alerts')">
+            打开风险台
+          </button>
+          <button class="btn-tech" @click="router.push('/energy')">
+            打开复盘台
+          </button>
         </div>
-        <div class="workbench-card__hint">“执行一次真实治理”会对真实任务和真实功耗上限生效；“节能测算”只输出理论分析。</div>
-
-        <div v-if="actionFeedback" class="action-feedback" :class="`action-feedback--${actionFeedback.tone}`">
-          <div class="action-feedback__title">{{ actionFeedback.title }}</div>
-          <div class="action-feedback__desc">{{ actionFeedback.detail }}</div>
-        </div>
-
-        <div v-if="optimizePreview && !optimizePreview.insufficient_data" class="action-preview">
-          <div class="action-preview__label">{{ optimizePreview.low_load ? '测算结论' : '理论节能预览' }}</div>
-          <div class="action-preview__value stat-value">
-            {{ optimizePreview.low_load ? '继续观察' : `${optimizePreview.optimized_power?.toFixed(0) || '—'}W` }}
-          </div>
-          <div class="action-preview__desc">
-            {{ optimizePreview.low_load ? '当前整机功耗较低，平台不会给出夸张节能值。' : `理论节省 ${optimizePreview.estimated_saving_w?.toFixed(0) || '0'}W，首条策略：${optimizePreview.suggestions?.[0]?.reason || '继续前往复盘台查看详情。'}` }}
-          </div>
-        </div>
+        <div class="workbench-card__hint">首页只保留判断与跳转。真实治理、节能测算和历史复盘分别进入对应专题页完成。</div>
       </div>
 
       <div class="workbench-card tech-card">
@@ -1635,78 +1497,8 @@ onUnmounted(() => {
     <section class="signal-grid">
       <div class="signal-card tech-card">
         <div class="signal-card__head">
-          <div class="section-title">候选让路</div>
-          <button class="signal-card__link" @click="router.push('/tasks')">去处置台</button>
-        </div>
-        <div v-if="yieldQueue.length" class="signal-card__body">
-          <div v-for="item in yieldQueue" :key="item.pid" class="queue-item">
-            <div class="queue-item__top">
-              <span class="queue-item__user">{{ shortUser(item.username) }}</span>
-              <span class="queue-item__tag">PID {{ item.pid }}</span>
-              <span class="queue-item__tag queue-item__tag--accent">{{ item.priority }}</span>
-            </div>
-            <div class="queue-item__desc">{{ item.yield_reason }}</div>
-            <div class="queue-item__meta">让路分 {{ item.yield_score }}</div>
-          </div>
-        </div>
-        <div v-else class="signal-card__empty">当前没有建议优先让路的任务。</div>
-      </div>
-
-      <div class="signal-card tech-card">
-        <div class="signal-card__head">
-          <div class="section-title">重点用户</div>
-          <button class="signal-card__link" @click="router.push('/monitor')">看画像</button>
-        </div>
-        <div v-if="topRiskUsers.length" class="signal-card__body">
-          <div v-for="user in topRiskUsers" :key="user.username" class="user-item">
-            <div class="user-item__top">
-              <span class="user-item__name">{{ shortUser(user.username) }}</span>
-              <span class="user-item__score stat-value" :style="{ color: user.fairness_score < 60 ? '#C41E3A' : user.fairness_score < 80 ? '#B8860B' : '#2E8B57' }">
-                {{ Number(user.fairness_score || 0).toFixed(0) }}
-              </span>
-            </div>
-            <div class="user-item__meta">
-              <span>占用 {{ user.effective_share_pct }}%</span>
-              <span>违规 {{ user.violation_count }}</span>
-              <span>任务 {{ user.task_count }}</span>
-            </div>
-            <div class="user-item__desc">{{ user.recommended_action }}</div>
-          </div>
-        </div>
-        <div v-else class="signal-card__empty">当前没有重点用户需要单独干预。</div>
-      </div>
-
-      <div class="signal-card tech-card">
-        <div class="signal-card__head">
-          <div class="section-title">最近动作</div>
-          <button class="signal-card__link" @click="router.push('/energy')">去复盘台</button>
-        </div>
-        <div v-if="budgetActions.length" class="signal-card__body">
-          <div v-for="(item, index) in budgetActions" :key="index" class="action-item">
-            <div class="action-item__top">
-              <span class="action-item__label">{{ formatActionLabel(item.action) }}</span>
-              <span v-if="item.target?.gpu_index !== undefined" class="action-item__tag">GPU {{ item.target.gpu_index }}</span>
-              <span v-if="item.target?.pid" class="action-item__tag">PID {{ item.target.pid }}</span>
-            </div>
-            <div class="action-item__desc">{{ item.reason }}</div>
-          </div>
-        </div>
-        <div v-else-if="criticalAlerts.length" class="signal-card__body">
-          <div v-for="(alert, index) in criticalAlerts" :key="index" class="action-item action-item--risk">
-            <div class="action-item__top">
-              <span class="action-item__label">严重告警</span>
-              <span class="action-item__tag">GPU {{ alert.gpu_index }}</span>
-            </div>
-            <div class="action-item__desc">{{ alert.message }}</div>
-          </div>
-        </div>
-        <div v-else class="signal-card__empty">最近没有新的治理动作，适合先触发一次治理或查看复盘。</div>
-      </div>
-
-      <div class="signal-card tech-card">
-        <div class="signal-card__head">
           <div class="section-title">工作入口</div>
-          <div class="signal-card__note">把执行、观察、复盘连起来</div>
+          <div class="signal-card__note">按职责进入专题页，避免首页继续堆明细卡</div>
         </div>
         <div class="route-grid">
           <button v-for="entry in quickRoutes" :key="entry.path" class="route-entry" @click="router.push(entry.path)">
@@ -1954,21 +1746,6 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <div class="alerts-strip" v-if="store.alerts.length">
-      <div class="section-title" style="margin-bottom: 8px">最近告警</div>
-      <div class="alerts-list">
-        <div
-          v-for="(alert, i) in store.alerts.slice(0, 5)"
-          :key="i"
-          class="alert-item"
-          :class="alert.severity === 'critical' ? 'alert-item--critical' : 'alert-item--warning'"
-        >
-          <span class="alert-item__icon">{{ alert.severity === 'critical' ? '⚠' : '△' }}</span>
-          <span class="alert-item__text">{{ alert.message }}</span>
-          <span class="alert-item__time">{{ new Date(alert.timestamp * 1000).toLocaleTimeString('zh-CN') }}</span>
-        </div>
-      </div>
-    </div>
     </template>
   </div>
 </template>

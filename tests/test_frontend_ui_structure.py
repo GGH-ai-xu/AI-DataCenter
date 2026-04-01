@@ -38,6 +38,34 @@ class FrontendUIStructureTests(unittest.TestCase):
         package_json = (ROOT / "frontend/package.json").read_text(encoding="utf-8")
         self.assertIn('"build": "vite build"', package_json)
 
+    def test_dashboard_is_summary_only(self):
+        text = (ROOT / "frontend/src/views/Dashboard.vue").read_text(encoding="utf-8")
+
+        self.assertNotIn("执行一次真实治理", text)
+        self.assertNotIn("先做节能测算", text)
+        self.assertNotIn("一键导出综合报告", text)
+        self.assertNotIn("executeDispatch", text)
+        self.assertNotIn("measureOptimization", text)
+
+    def test_scheduler_no_longer_hosts_energy_report(self):
+        text = (ROOT / "frontend/src/views/Scheduler.vue").read_text(encoding="utf-8")
+
+        self.assertNotIn("AI 能耗分析报告", text)
+        self.assertNotIn("getScheduleReport", text)
+
+    def test_monitor_center_no_longer_hosts_replay_tab(self):
+        text = (ROOT / "frontend/src/views/MonitorCenter.vue").read_text(encoding="utf-8")
+
+        self.assertNotIn("{ key: 'replay'", text)
+        self.assertNotIn("activeTab === 'replay'", text)
+
+    def test_ai_assistant_no_longer_allows_real_execution(self):
+        text = (ROOT / "frontend/src/views/AIAssistant.vue").read_text(encoding="utf-8")
+
+        self.assertNotIn("执行真实动作", text)
+        self.assertNotIn("controlMode === 'real'", text)
+        self.assertNotIn("将执行真实治理动作", text)
+
 
 if __name__ == "__main__":
     unittest.main()

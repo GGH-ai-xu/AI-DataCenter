@@ -11,7 +11,7 @@ import {
 import WorkspaceSummary from '../components/workspace/WorkspaceSummary.vue'
 import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
 
-const DEFAULT_INTRO = '你好，我是 AI 治理助手。我可以解释当前 GPU 状态，也可以在上方“AI 执行控制台”里把自然语言指令转换成可审核、可演练、可执行的治理动作。'
+const DEFAULT_INTRO = '你好，我是 AI 治理助手。我可以解释当前 GPU 状态，也可以在上方“AI 执行控制台”里把自然语言指令转换成可审核、可演练的治理动作。'
 const BLOCKED_INTRO = 'AI 对话助手当前未启用。你可以继续使用上方的“AI 执行控制台”第一版，它支持规则解析；如果想获得更强的自然语言规划能力，请先在左侧接入 LLM。'
 const QUICK_CONTROLS = [
   '把 GPU 0 的功耗上限调到 220W',
@@ -23,7 +23,7 @@ const QUICK_CONTROLS = [
 ]
 const activeTab = ref('control')
 const assistantTabs = [
-  { key: 'control', label: '执行控制', desc: '规划、演练、执行' },
+  { key: 'control', label: '执行控制', desc: '规划、演练' },
   { key: 'chat', label: '对话解释', desc: '问答与说明' },
   { key: 'model', label: '模型配置', desc: 'LLM 接入与测试' },
 ]
@@ -60,8 +60,6 @@ const controlPlanning = ref(false)
 const controlExecuting = ref(false)
 const controlPlan = ref(null)
 const controlResult = ref(null)
-const controlMode = ref('dry_run')
-const controlRiskAcknowledged = ref(false)
 
 const llmSourceLabel = computed(() => {
   const source = llmConfig.value.source
@@ -101,11 +99,7 @@ const executableActions = computed(() =>
 const hasInvalidActions = computed(() =>
   (controlPlan.value?.actions || []).some((item) => item.valid === false)
 )
-const canExecuteControl = computed(() => {
-  if (!executableActions.value.length || controlExecuting.value) return false
-  if (controlMode.value === 'real' && !controlRiskAcknowledged.value) return false
-  return true
-})
+const canExecuteControl = computed(() => executableActions.value.length > 0 && !controlExecuting.value)
 const controlPlannerLabel = computed(() =>
   controlPlan.value?.planner === 'llm' ? 'LLM 规划' : '规则解析'
 )
@@ -115,13 +109,7 @@ const controlRiskLabel = computed(() => {
   if (level === 'medium') return '中风险'
   return '低风险'
 })
-const controlModeSummary = computed(() =>
-  controlMode.value === 'real'
-    ? (controlRiskAcknowledged.value
-      ? '当前为真实执行模式，点击执行后会直接作用于真实主机或 Agent。'
-      : '当前为真实执行模式，但尚未确认风险，执行按钮会保持禁用。')
-    : '当前为演练模式，执行后只返回模拟结果，不会改动真实设备或任务。'
-)
+const controlModeSummary = '当前为演练模式，执行后只返回模拟结果，不会改动真实设备或任务。'
 
 const riskScopeGpuCount = computed(() => {
   const gpus = new Set()
@@ -299,10 +287,6 @@ async function generateControlPlan() {
 async function executeControlPlan() {
   if (!canExecuteControl.value) return
 
-  if (controlMode.value === 'real' && !window.confirm('将执行真实治理动作，是否继续？')) {
-    return
-  }
-
   controlExecuting.value = true
   try {
     const { data } = await aiControlExecute({
@@ -312,8 +296,8 @@ async function executeControlPlan() {
         target: item.target,
         reason: item.reason,
       })),
-      dry_run: controlMode.value !== 'real',
-      acknowledge_risk: controlMode.value === 'real' && controlRiskAcknowledged.value,
+      dry_run: true,
+      acknowledge_risk: false,
     })
     controlResult.value = data
   } catch (error) {
@@ -384,7 +368,7 @@ onMounted(() => {
     <WorkspaceSummary
       eyebrow="自然语言规划 · 演练执行 · 风险确认"
       title="AI 执行控制台第一版"
-      description="这不是直接放权给 AI 自动乱动，而是把自然语言先转成结构化动作计划，再由你选择演练或真实执行。当前版本支持任务暂停/恢复/终止、优先级调整、单卡限功率、总功率预算和一次综合调度。"
+      description="这不是直接放权给 AI 自动乱动，而是把自然语言先转成结构化动作计划，再由你先做演练。当前版本支持任务暂停/恢复/终止、优先级调整、单卡限功率、总功率预算和一次综合调度。"
     >
       <template #meta>
         <div class="ink-inline-meta">
@@ -492,7 +476,7 @@ onMounted(() => {
           <div class="control-console__head">
             <div>
               <div class="control-console__eyebrow">AI 执行控制台</div>
-              <div class="control-console__title">自然语言 -> 动作计划 -> 演练 / 执行</div>
+              <div class="control-console__title">自然语言 -> 动作计划 -> 演练</div>
             </div>
             <div class="ink-inline-meta">
               <span class="status-badge" :class="plannerClass(controlPlan?.planner)">
@@ -525,26 +509,6 @@ onMounted(() => {
           </div>
 
           <div class="control-console__mode">
-            <div class="control-console__switch">
-              <button
-                class="btn-tech"
-                :class="{ 'btn-tech--primary': controlMode === 'dry_run' }"
-                @click="controlMode = 'dry_run'"
-              >
-                演练模式
-              </button>
-              <button
-                class="btn-tech"
-                :class="{ 'btn-tech--primary': controlMode === 'real' }"
-                @click="controlMode = 'real'"
-              >
-                真实执行
-              </button>
-            </div>
-            <label v-if="controlMode === 'real'" class="ai-check">
-              <input v-model="controlRiskAcknowledged" type="checkbox" />
-              <span>我已确认这会直接作用于真实设备或任务</span>
-            </label>
             <div class="control-console__hint">{{ controlModeSummary }}</div>
           </div>
 
@@ -557,7 +521,7 @@ onMounted(() => {
               :disabled="!canExecuteControl"
               @click="executeControlPlan"
             >
-              {{ controlExecuting ? '执行中...' : (controlMode === 'real' ? '执行真实动作' : '执行演练') }}
+              {{ controlExecuting ? '执行中...' : '执行演练' }}
             </button>
           </div>
 
@@ -639,7 +603,7 @@ onMounted(() => {
             <div class="control-result__head">
               <div class="control-plan__title">执行结果</div>
               <span class="status-badge" :class="riskClass(controlResult.risk_level || 'low')">
-                {{ controlResult.dry_run ? '演练结果' : '真实结果' }}
+                {{ controlResult.dry_run ? '演练结果' : '执行结果' }}
               </span>
             </div>
             <div class="control-result__summary">{{ controlResult.summary }}</div>

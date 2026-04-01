@@ -5,7 +5,7 @@
  */
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useAppStore } from '../stores/app'
-import { getMonitorReplay, getSystemDetail, getTrainingProgress, getUserStats, getTaskHistory } from '../services/api'
+import { getSystemDetail, getTrainingProgress, getUserStats, getTaskHistory } from '../services/api'
 import VChart from 'vue-echarts'
 import WorkspacePaneLayout from '../components/workspace/WorkspacePaneLayout.vue'
 import WorkspaceSummary from '../components/workspace/WorkspaceSummary.vue'
@@ -25,7 +25,6 @@ const monitorTabs = [
   { key: 'training', label: '训练进度', desc: '训练曲线与日志' },
   { key: 'users', label: '用户统计', desc: '占用结构与画像' },
   { key: 'timeline', label: '任务时间线', desc: '生命周期与回放' },
-  { key: 'replay', label: '治理回放', desc: '动作与趋势复盘' },
 ]
 
 // 数据状态
@@ -33,11 +32,7 @@ const systemDetail = ref(null)
 const trainingData = ref([])
 const userStats = ref([])
 const taskTimeline = ref([])
-const replayFrames = ref([])
 const timelineHours = ref(24)
-const replayHours = ref(24)
-const replayBucketMinutes = ref(10)
-const selectedReplayIndex = ref(0)
 const prevNetwork = ref(null)
 const networkSpeed = ref({ sent: 0, recv: 0 })
 
@@ -75,7 +70,6 @@ async function loadAll() {
     tasks.push(loadTraining())
     tasks.push(loadUsers())
     tasks.push(loadTimeline())
-    tasks.push(loadReplay())
     await Promise.allSettled(tasks)
   } finally {
     loading.value = false
@@ -118,14 +112,6 @@ async function loadTimeline() {
   try {
     const { data } = await getTaskHistory(timelineHours.value)
     taskTimeline.value = data.timeline || []
-  } catch (e) { /* 静默 */ }
-}
-
-async function loadReplay() {
-  try {
-    const { data } = await getMonitorReplay(replayHours.value, replayBucketMinutes.value)
-    replayFrames.value = data.frames || []
-    selectedReplayIndex.value = replayFrames.value.length ? replayFrames.value.length - 1 : 0
   } catch (e) { /* 静默 */ }
 }
 
@@ -234,90 +220,9 @@ const timelineOption = computed(() => {
   }
 })
 
-const selectedReplayFrame = computed(() => {
-  if (!replayFrames.value.length) return null
-  return replayFrames.value[selectedReplayIndex.value] || replayFrames.value[replayFrames.value.length - 1]
-})
-
 const activeTabLabel = computed(() =>
   monitorTabs.find((tab) => tab.key === activeTab.value)?.label || '系统全貌'
 )
-
-const replayOption = computed(() => {
-  if (!replayFrames.value.length) return null
-  return {
-    tooltip: {
-      trigger: 'axis',
-      backgroundColor: 'rgba(248, 245, 240, 0.97)',
-      borderColor: '#3A5F4B',
-      textStyle: { color: '#2C2C2C' },
-    },
-    legend: { textStyle: { color: '#666666' }, top: 4 },
-    grid: { top: 44, right: 20, bottom: 48, left: 56 },
-    xAxis: {
-      type: 'category',
-      data: replayFrames.value.map((frame) =>
-        new Date(frame.bucket_ts * 1000).toLocaleTimeString('zh-CN', {
-          hour: '2-digit',
-          minute: '2-digit',
-        }),
-      ),
-      axisLabel: { color: '#999999' },
-      axisLine: { lineStyle: { color: '#1e293b' } },
-    },
-    yAxis: [
-      {
-        type: 'value',
-        name: '功率',
-        axisLabel: { color: '#999999', formatter: '{value}W' },
-        splitLine: { lineStyle: { color: '#1e293b' } },
-      },
-      {
-        type: 'value',
-        name: '事件',
-        axisLabel: { color: '#999999' },
-        splitLine: { show: false },
-      },
-    ],
-    series: [
-      {
-        name: '平均功率',
-        type: 'line',
-        smooth: true,
-        data: replayFrames.value.map((frame) => frame.avg_power),
-        lineStyle: { color: '#3A5F4B', width: 2 },
-        itemStyle: { color: '#3A5F4B' },
-        symbol: 'none',
-      },
-      {
-        name: '活跃任务',
-        type: 'bar',
-        yAxisIndex: 1,
-        data: replayFrames.value.map((frame) => frame.active_task_count),
-        itemStyle: { color: 'rgba(46,139,87,0.55)' },
-        barMaxWidth: 16,
-      },
-      {
-        name: '告警',
-        type: 'bar',
-        yAxisIndex: 1,
-        data: replayFrames.value.map((frame) => frame.alert_count),
-        itemStyle: { color: 'rgba(196,30,58,0.55)' },
-        barMaxWidth: 16,
-      },
-      {
-        name: '调度动作',
-        type: 'line',
-        yAxisIndex: 1,
-        data: replayFrames.value.map((frame) => frame.schedule_action_count),
-        lineStyle: { color: '#B8860B', width: 2 },
-        itemStyle: { color: '#B8860B' },
-        symbol: 'circle',
-        symbolSize: 5,
-      },
-    ],
-  }
-})
 
 // 系统概览的 uptime
 const uptime = computed(() => {
@@ -363,9 +268,9 @@ onUnmounted(() => {
           <div class="monitor-summary-card__hint">已采集的任务生命周期样本数量。</div>
         </div>
         <div class="monitor-summary-card">
-          <div class="monitor-summary-card__label">治理回放桶</div>
-          <div class="monitor-summary-card__value">{{ replayFrames.length }}</div>
-          <div class="monitor-summary-card__hint">用于复盘动作与风险的时间桶数量。</div>
+          <div class="monitor-summary-card__label">活跃用户画像</div>
+          <div class="monitor-summary-card__value">{{ userStats.length }}</div>
+          <div class="monitor-summary-card__hint">当前已聚合的用户占用与画像样本数量。</div>
         </div>
       </div>
     </WorkspaceSummary>
@@ -570,105 +475,6 @@ onUnmounted(() => {
       </WorkspacePaneLayout>
     </div>
 
-    <div v-if="activeTab === 'replay'" class="tab-content">
-      <div v-if="replayFrames.length">
-        <WorkspacePaneLayout>
-          <template #main>
-            <div class="timeline-controls">
-              <span style="color: var(--text-secondary)">回放窗口:</span>
-              <button
-                v-for="h in [6, 24, 72]"
-                :key="`replay-${h}`"
-                class="btn-tech btn-sm"
-                :class="{ 'btn-tech--active': replayHours === h }"
-                @click="replayHours = h; loadReplay()"
-              >
-                {{ h >= 24 ? (h / 24) + '天' : h + '小时' }}
-              </button>
-              <span style="color: var(--text-secondary); margin-left: 8px">粒度:</span>
-              <button
-                v-for="bucket in [5, 10, 15]"
-                :key="`bucket-${bucket}`"
-                class="btn-tech btn-sm"
-                :class="{ 'btn-tech--active': replayBucketMinutes === bucket }"
-                @click="replayBucketMinutes = bucket; loadReplay()"
-              >
-                {{ bucket }} 分钟
-              </button>
-            </div>
-
-            <div class="tech-card">
-              <div class="card-title">回放趋势</div>
-              <v-chart :option="replayOption" style="height: 340px" autoresize />
-            </div>
-
-            <div class="tech-card replay-actions" v-if="selectedReplayFrame?.schedule_actions?.length">
-              <div class="card-title">当前时间桶的调度动作</div>
-              <div class="replay-action-list">
-                <div
-                  v-for="(item, index) in selectedReplayFrame.schedule_actions"
-                  :key="`${selectedReplayFrame.bucket_ts}-${index}`"
-                  class="replay-action-item"
-                >
-                  <div class="replay-action-item__top">
-                    <span>{{ item.action }}</span>
-                    <span>{{ item.result || 'unknown' }}</span>
-                  </div>
-                  <div class="replay-action-item__reason">{{ item.reason }}</div>
-                </div>
-              </div>
-            </div>
-          </template>
-
-          <template #side>
-            <div class="tech-card replay-card">
-              <div class="card-title">治理回放轴</div>
-              <input
-                v-model.number="selectedReplayIndex"
-                type="range"
-                min="0"
-                :max="Math.max(replayFrames.length - 1, 0)"
-                class="replay-slider"
-              />
-              <div class="replay-meta" v-if="selectedReplayFrame">
-                <span>时间 {{ fmtTime(selectedReplayFrame.bucket_ts) }}</span>
-                <span>活跃任务 {{ selectedReplayFrame.active_task_count }}</span>
-                <span>告警 {{ selectedReplayFrame.alert_count }}</span>
-                <span>动作 {{ selectedReplayFrame.schedule_action_count }}</span>
-              </div>
-            </div>
-
-            <div class="replay-grid replay-grid--stacked">
-              <div class="tech-card replay-stat">
-                <div class="replay-stat__label">平均功率</div>
-                <div class="replay-stat__value stat-value">{{ selectedReplayFrame?.avg_power?.toFixed(1) || '0.0' }}W</div>
-                <div class="replay-stat__hint">用于复盘该时间桶的整体负载强度</div>
-              </div>
-              <div class="tech-card replay-stat">
-                <div class="replay-stat__label">最高温度</div>
-                <div class="replay-stat__value stat-value">{{ selectedReplayFrame?.max_temp || 0 }}°C</div>
-                <div class="replay-stat__hint">帮助定位热风险是否伴随动作触发</div>
-              </div>
-              <div class="tech-card replay-stat">
-                <div class="replay-stat__label">活跃用户</div>
-                <div class="replay-stat__value stat-value">{{ selectedReplayFrame?.active_user_count || 0 }}</div>
-                <div class="replay-stat__hint">观察资源竞争是否集中到少数用户</div>
-              </div>
-              <div class="tech-card replay-stat">
-                <div class="replay-stat__label">关键告警</div>
-                <div class="replay-stat__value stat-value">{{ selectedReplayFrame?.critical_alert_count || 0 }}</div>
-                <div class="replay-stat__hint">衡量该窗口是否进入高风险区</div>
-              </div>
-            </div>
-          </template>
-        </WorkspacePaneLayout>
-      </div>
-      <div v-else class="empty-state">
-        <div class="empty-icon">回</div>
-        <div>暂无可回放治理数据</div>
-        <div class="text-sm" style="color: var(--text-muted)">等待真实功耗、告警与调度日志继续累积</div>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -772,80 +578,6 @@ onUnmounted(() => {
 .btn-sm { padding: 4px 12px; font-size: 0.75rem; }
 .btn-tech--active { background: rgba(58, 95, 75, 0.15); color: var(--accent-primary); border-color: var(--accent-primary); }
 
-.replay-card {
-  margin-bottom: 16px;
-}
-
-.replay-slider {
-  width: 100%;
-  margin: 14px 0 10px;
-  accent-color: var(--accent-primary);
-}
-
-.replay-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  font-size: 0.75rem;
-  color: var(--text-muted);
-}
-
-.replay-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 14px;
-  margin-bottom: 16px;
-}
-
-.replay-grid--stacked {
-  grid-template-columns: 1fr;
-  margin-bottom: 0;
-}
-
-.replay-stat {
-  padding: 16px;
-}
-
-.replay-stat__label,
-.replay-stat__hint,
-.replay-action-item__reason {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  line-height: 1.6;
-}
-
-.replay-stat__value {
-  font-size: 1.8rem;
-  margin: 8px 0 6px;
-}
-
-.replay-actions {
-  margin-top: 16px;
-}
-
-.replay-action-list {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
-}
-
-.replay-action-item {
-  padding: 12px 14px;
-  border-radius: 10px;
-  background: rgba(58, 95, 75, 0.04);
-  border: 1px solid rgba(58, 95, 75, 0.08);
-}
-
-.replay-action-item__top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 8px;
-  color: var(--text-primary);
-  font-size: 0.8125rem;
-}
-
 .table-wrap { overflow-x: auto; }
 .data-table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
 .data-table th { text-align: left; padding: 8px 12px; color: var(--text-muted); font-weight: 500; border-bottom: 1px solid var(--border-color); }
@@ -860,11 +592,6 @@ onUnmounted(() => {
 
 @media (max-width: 980px) {
   .monitor-summary-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .replay-grid,
-  .replay-action-list {
     grid-template-columns: 1fr;
   }
 }

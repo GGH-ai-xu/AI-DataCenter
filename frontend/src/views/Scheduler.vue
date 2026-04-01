@@ -8,7 +8,6 @@ import { useAppStore } from '../stores/app'
 import {
   getCarbonBudget,
   getSchedulerStatus,
-  getScheduleReport,
   getScheduleEvaluation,
   runScheduleOnce,
   setCarbonBudget,
@@ -17,7 +16,6 @@ import {
   toggleAutoSchedule,
   getAuditLogs,
 } from '../services/api'
-import WorkspacePaneLayout from '../components/workspace/WorkspacePaneLayout.vue'
 import WorkspaceSummary from '../components/workspace/WorkspaceSummary.vue'
 import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
 
@@ -27,8 +25,6 @@ const autoEnabled = ref(false)
 const timePeriod = ref('')
 const powerInputs = ref({})
 const scheduleResult = ref(null)
-const report = ref('')
-const reportLoading = ref(false)
 const scheduleLoading = ref(false)
 const executionMode = ref('dry_run')
 const riskAcknowledged = ref(false)
@@ -70,7 +66,7 @@ const evaluation = ref(null)
 const schedulerTabs = [
   { key: 'control', label: '治理控制', desc: '预算与限功率' },
   { key: 'results', label: '执行结果', desc: '动作结果与评估' },
-  { key: 'audit', label: '审计与报告', desc: '日志与复盘文本' },
+  { key: 'audit', label: '审计台账', desc: '日志与治理记录' },
 ]
 
 const currentClusterPower = computed(() => {
@@ -250,17 +246,6 @@ async function runOnce() {
     )
   }
   scheduleLoading.value = false
-}
-
-async function loadReport() {
-  reportLoading.value = true
-  try {
-    const { data } = await getScheduleReport()
-    report.value = data.report
-  } catch (e) {
-    report.value = '报告生成失败'
-  }
-  reportLoading.value = false
 }
 
 function formatActionTarget(action) {
@@ -726,47 +711,33 @@ onUnmounted(() => {
       </section>
     </div>
 
-    <WorkspacePaneLayout v-else>
-      <template #main>
-        <div class="tech-card" style="padding: 20px">
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px">
-            <div class="section-title">AI 能耗分析报告</div>
-            <button class="btn-tech" @click="loadReport" :disabled="reportLoading">
-              {{ reportLoading ? '生成中...' : '生成报告' }}
-            </button>
-          </div>
-          <div v-if="report" class="report-content" style="white-space: pre-wrap">{{ report }}</div>
-          <div v-else class="sched-empty">
-            点击“生成报告”获取 AI 能耗分析文本。
-          </div>
-        </div>
-      </template>
-
-      <template #side>
-        <div class="tech-card" style="padding: 20px">
-          <div class="audit-head">
+    <div v-else class="sched-grid">
+      <div class="tech-card sched-grid__wide" style="padding: 20px">
+        <div class="audit-head">
+          <div>
             <div class="section-title">审计日志</div>
-            <span class="status-badge">{{ auditLoading ? '加载中' : `${auditLogs.length} 条` }}</span>
+            <div class="sched-empty">治理台只保留真实动作台账，详细复盘统一到复盘页面查看。</div>
           </div>
-          <div v-if="auditLogs.length" class="audit-list panel-scroll">
-            <div v-for="log in auditLogs" :key="log.id" class="audit-item">
-              <div class="audit-item__top">
-                <span class="audit-item__action">{{ auditActionMap[log.action] || log.action || '未知动作' }}</span>
-                <span class="audit-item__risk" :style="{ color: auditRiskColorMap[log.risk_level || 'low'] || '#3A5F4B' }">
-                  {{ auditRiskLabelMap[log.risk_level || 'low'] || '低' }}风险
-                </span>
-              </div>
-              <div class="audit-item__meta">
-                <span>{{ auditSourceMap[log.source] || log.source || '未知来源' }}</span>
-                <span>{{ formatAuditTime(log.timestamp) }}</span>
-              </div>
-              <div class="audit-item__reason">{{ log.reason || '未记录原因。' }}</div>
-            </div>
-          </div>
-          <div v-else class="sched-empty">最近 72 小时还没有调度审计记录。</div>
+          <span class="status-badge">{{ auditLoading ? '加载中' : `${auditLogs.length} 条` }}</span>
         </div>
-      </template>
-    </WorkspacePaneLayout>
+        <div v-if="auditLogs.length" class="audit-list panel-scroll">
+          <div v-for="log in auditLogs" :key="log.id" class="audit-item">
+            <div class="audit-item__top">
+              <span class="audit-item__action">{{ auditActionMap[log.action] || log.action || '未知动作' }}</span>
+              <span class="audit-item__risk" :style="{ color: auditRiskColorMap[log.risk_level || 'low'] || '#3A5F4B' }">
+                {{ auditRiskLabelMap[log.risk_level || 'low'] || '低' }}风险
+              </span>
+            </div>
+            <div class="audit-item__meta">
+              <span>{{ auditSourceMap[log.source] || log.source || '未知来源' }}</span>
+              <span>{{ formatAuditTime(log.timestamp) }}</span>
+            </div>
+            <div class="audit-item__reason">{{ log.reason || '未记录原因。' }}</div>
+          </div>
+        </div>
+        <div v-else class="sched-empty">最近 72 小时还没有调度审计记录。</div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -1014,11 +985,6 @@ onUnmounted(() => {
   color: var(--text-muted);
   line-height: 1.6;
   max-width: 420px;
-}
-
-.report-content {
-  font-size: 0.8125rem; color: var(--text-secondary); line-height: 1.7;
-  max-height: 400px; overflow-y: auto;
 }
 
 .audit-head {
