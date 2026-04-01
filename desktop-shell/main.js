@@ -394,6 +394,10 @@ function desktopDevModeEnabled() {
   return Boolean(String(process.env.DESKTOP_DEV_SERVER_URL || '').trim())
 }
 
+function currentAppUserModelId() {
+  return desktopDevModeEnabled() ? `${APP_ID}.dev` : APP_ID
+}
+
 function requiredDesktopDevUrl(name, value) {
   if (!value) {
     throw new Error(`缺少 ${name}，请使用 start-electron-dev.bat 启动 Electron 开发模式`)
@@ -703,10 +707,23 @@ async function findAvailablePort(startPort, {
   throw new Error(`未找到可用端口，起始端口 ${startPort}`)
 }
 
+function resolveWindowIconFilename() {
+  return process.platform === 'win32' ? 'icon.ico' : 'icon.png'
+}
+
+function resolveWindowIconPath() {
+  const iconPath = shellAssetPath('build', resolveWindowIconFilename())
+  return fs.existsSync(iconPath) ? iconPath : ''
+}
+
 function resolveWindowIcon() {
-  const iconPath = shellAssetPath('build', 'icon.png')
-  if (!fs.existsSync(iconPath)) {
+  const iconPath = resolveWindowIconPath()
+  if (!iconPath) {
     return undefined
+  }
+
+  if (process.platform === 'win32') {
+    return iconPath
   }
 
   const image = nativeImage.createFromPath(iconPath)
@@ -1730,7 +1747,7 @@ async function launchWorkbenchWithRecovery() {
 }
 
 async function bootstrap() {
-  app.setAppUserModelId(APP_ID)
+  app.setAppUserModelId(currentAppUserModelId())
   app.setName(APP_TITLE)
 
   const lock = app.requestSingleInstanceLock()

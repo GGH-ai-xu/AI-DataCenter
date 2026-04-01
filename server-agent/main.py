@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 
 from collectors.gpu_monitor import gpu_monitor
 from collectors.system_monitor import get_system_info, get_system_detail
-from collectors.task_monitor import get_all_gpu_processes
+from collectors.task_monitor import get_cached_gpu_processes
 from collectors.training_monitor import get_training_logs
 from controllers.power_control import set_power_limit
 from controllers.task_control import pause_task, resume_task, terminate_task
@@ -103,14 +103,20 @@ def get_system_full():
 @app.get("/api/processes")
 def get_processes():
     """获取所有GPU上的进程列表"""
-    procs = get_all_gpu_processes(gpu_monitor.device_count, simulate=gpu_monitor.is_simulated)
+    procs = get_cached_gpu_processes(
+        gpu_monitor.device_count,
+        simulate=gpu_monitor.is_simulated,
+    )
     return {"processes": procs}
 
 
 @app.get("/api/training/logs")
 def get_training():
     """获取GPU训练进程的日志和指标"""
-    procs = get_all_gpu_processes(gpu_monitor.device_count, simulate=gpu_monitor.is_simulated)
+    procs = get_cached_gpu_processes(
+        gpu_monitor.device_count,
+        simulate=gpu_monitor.is_simulated,
+    )
     logs = get_training_logs(procs)
     return {"training": logs}
 

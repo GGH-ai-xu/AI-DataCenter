@@ -1,5 +1,6 @@
 """WebSocket实时推送 - 向前端推送GPU实时数据和告警"""
 
+import asyncio
 import json
 import logging
 from typing import Set
@@ -29,13 +30,16 @@ class ConnectionManager:
         if not self._connections:
             return
         message = json.dumps(data, ensure_ascii=False)
-        dead = set()
-        # 遍历快照，避免并发修改导致RuntimeError
-        for ws in list(self._connections):
-            try:
-                await ws.send_text(message)
-            except Exception:
-                dead.add(ws)
+        sockets = list(self._connections)
+        results = await asyncio.gather(
+            *(ws.send_text(message) for ws in sockets),
+            return_exceptions=True,
+        )
+        dead = {
+            ws
+            for ws, result in zip(sockets, results)
+            if isinstance(result, Exception)
+        }
         # 清理断开的连接
         self._connections -= dead
 

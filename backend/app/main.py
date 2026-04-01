@@ -28,6 +28,10 @@ from app.services.scheduler import SchedulerEngine
 from app.services.energy_analytics import EnergyAnalytics
 from app.services.governance import GovernanceService
 from app.services.privacy import PrivacyService
+from app.services.collection_pipeline import (
+    apply_task_priorities,
+    collect_agent_snapshot,
+)
 from app.services.connection_settings import ConnectionSettingsService
 from app.services.llm_settings import LLMSettingsService
 from app.ws.realtime import ws_manager
@@ -109,46 +113,36 @@ async def collect_loop():
 
     while True:
         try:
-            # 从Agent获取实时数据
-            gpus = await app_state.agent.get_all_gpus()
-            system = await app_state.agent.get_system_info()
-            processes = await app_state.agent.get_processes()
+            snapshot, priorities = await asyncio.gather(
+                collect_agent_snapshot(app_state.agent),
+                app_state.store.get_all_task_priorities(),
+            )
+            gpus = snapshot["gpus"]
+            system = snapshot["system"]
+            processes = snapshot["processes"]
 
             if gpus:
                 app_state._agent_fail_count = 0
-                priorities = await app_state.store.get_all_task_priorities()
-                enriched_processes = []
-                for proc in processes:
-                    cloned = dict(proc)
-                    cloned["priority"] = priorities.get(
-                        cloned.get("pid"),
-                        cloned.get("priority", "normal"),
-                    )
-                    enriched_processes.append(cloned)
-
-                # 存储历史数据
-                await app_state.store.save_gpu_snapshot(gpus)
-
-                # 追踪进程生命周期
-                await app_state.store.track_processes(enriched_processes)
-
-                # 告警检测
+                enriched_processes = apply_task_priorities(processes, priorities)
                 alerts = app_state.alert_engine.check_all_gpus(gpus)
-                for alert in alerts:
-                    await app_state.store.save_alert(alert)
 
-                # 调度引擎tick
-                await app_state.scheduler.tick(gpus, enriched_processes)
+                await app_state.store.save_collection_cycle(
+                    gpus,
+                    enriched_processes,
+                    alerts,
+                )
 
-                # WebSocket推送
                 public_processes = app_state.privacy.sanitize_processes(enriched_processes)
-                await ws_manager.broadcast({
-                    "type": "realtime",
-                    "gpus": gpus,
-                    "system": system,
-                    "processes": public_processes,
-                    "alerts": alerts,
-                })
+                await asyncio.gather(
+                    app_state.scheduler.tick(gpus, enriched_processes),
+                    ws_manager.broadcast({
+                        "type": "realtime",
+                        "gpus": gpus,
+                        "system": system,
+                        "processes": public_processes,
+                        "alerts": alerts,
+                    }),
+                )
             else:
                 app_state._agent_fail_count += 1
                 if app_state._agent_fail_count == 10:
@@ -157,7 +151,7 @@ async def collect_loop():
                     logger.critical(f"Agent持续不可用，已连续{app_state._agent_fail_count}次失败")
 
         except Exception as e:
-            logger.error(f"数据采集异常: {e}")
+            logger.exception(f"数据采集异常: {e}")
 
         await asyncio.sleep(interval)
 

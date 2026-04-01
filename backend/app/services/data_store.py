@@ -6,6 +6,17 @@ import logging
 from typing import Optional
 
 import aiosqlite
+from app.services.process_history_sync import (
+    build_process_batches,
+    normalize_processes,
+)
+from app.services.replay_frames import (
+    apply_alert_rows,
+    apply_gpu_rows,
+    apply_process_rows,
+    apply_schedule_rows,
+    build_frame_index,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +146,7 @@ class DataStore:
 
     # ========== GPU历史数据 ==========
 
-    async def save_gpu_snapshot(self, gpus: list[dict]):
+    async def save_gpu_snapshot(self, gpus: list[dict], commit: bool = True):
         """批量保存GPU快照"""
         if not self._db or not gpus:
             return
@@ -155,7 +166,8 @@ class DataStore:
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             rows,
         )
-        await self._db.commit()
+        if commit:
+            await self._db.commit()
 
     async def get_gpu_history(
         self, gpu_index: int, hours: float = 1.0, limit: int = 3600
@@ -227,6 +239,31 @@ class DataStore:
         )
         await self._db.commit()
         return cursor.lastrowid
+
+    async def save_alerts(self, alerts: list[dict], commit: bool = True):
+        """批量保存告警记录"""
+        if not self._db or not alerts:
+            return
+        rows = [
+            (
+                alert["gpu_index"],
+                alert["alert_type"],
+                alert["severity"],
+                alert["message"],
+                alert["value"],
+                alert["threshold"],
+                alert["timestamp"],
+            )
+            for alert in alerts
+        ]
+        await self._db.executemany(
+            """INSERT INTO alerts
+               (gpu_index, alert_type, severity, message, value, threshold, timestamp)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            rows,
+        )
+        if commit:
+            await self._db.commit()
 
     async def get_alerts(self, limit: int = 100, unack_only: bool = False) -> list[dict]:
         """获取告警列表"""
@@ -430,56 +467,80 @@ class DataStore:
 
     # ========== 进程历史 ==========
 
-    async def track_processes(self, processes: list[dict]):
+    async def track_processes(
+        self,
+        processes: list[dict],
+        timestamp: float | None = None,
+        commit: bool = True,
+    ):
         """追踪进程生命周期：新进程记录first_seen，已有进程更新last_seen，消失进程标为inactive"""
-        now = time.time()
-        if not self._db or not processes:
-            # 没有进程数据时，标记所有活跃进程为inactive
-            await self._db.execute(
-                "UPDATE process_history SET is_active = 0 WHERE is_active = 1"
-            )
-            await self._db.commit()
+        if not self._db:
             return
 
-        current_pids = set()
-        for proc in processes:
-            pid = proc.get("pid", 0)
-            gpu_index = proc.get("gpu_index", -1)
-            if pid <= 0:
-                continue
-            current_pids.add(pid)
-
-            # 检查是否已有记录
-            cursor = await self._db.execute(
-                "SELECT id FROM process_history WHERE pid = ? AND is_active = 1",
-                (pid,),
-            )
-            row = await cursor.fetchone()
-
-            if row:
-                # 更新last_seen和显存
-                await self._db.execute(
-                    "UPDATE process_history SET last_seen = ?, gpu_memory_used = ? WHERE id = ?",
-                    (now, proc.get("gpu_memory_used", 0), dict(row)["id"]),
-                )
-            else:
-                # 新进程
-                await self._db.execute(
-                    """INSERT INTO process_history
-                       (pid, gpu_index, username, command, gpu_memory_used, first_seen, last_seen, is_active)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, 1)""",
-                    (pid, gpu_index, proc.get("username", "unknown"),
-                     proc.get("command", ""), proc.get("gpu_memory_used", 0), now, now),
-                )
-
-        # 标记消失的进程为inactive
-        if current_pids:
-            placeholders = ",".join("?" * len(current_pids))
+        now = time.time() if timestamp is None else timestamp
+        normalized_processes = normalize_processes(processes)
+        if not normalized_processes:
             await self._db.execute(
-                f"UPDATE process_history SET is_active = 0, last_seen = ? WHERE is_active = 1 AND pid NOT IN ({placeholders})",
-                (now, *current_pids),
+                "UPDATE process_history SET is_active = 0, last_seen = ? WHERE is_active = 1",
+                (now,),
+            )
+            if commit:
+                await self._db.commit()
+            return
+
+        cursor = await self._db.execute(
+            "SELECT id, pid FROM process_history WHERE is_active = 1"
+        )
+        active_rows = {
+            int(row["pid"]): int(row["id"])
+            for row in await cursor.fetchall()
+        }
+        updates, inserts, stale_ids = build_process_batches(
+            normalized_processes,
+            active_rows,
+            now,
+        )
+
+        if updates:
+            await self._db.executemany(
+                """UPDATE process_history
+                   SET last_seen = ?, gpu_index = ?, username = ?, command = ?, gpu_memory_used = ?
+                   WHERE id = ?""",
+                updates,
+            )
+        if inserts:
+            await self._db.executemany(
+                """INSERT INTO process_history
+                   (pid, gpu_index, username, command, gpu_memory_used, first_seen, last_seen, is_active)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 1)""",
+                inserts,
+            )
+        if stale_ids:
+            placeholders = ",".join("?" for _ in stale_ids)
+            await self._db.execute(
+                f"UPDATE process_history SET is_active = 0, last_seen = ? WHERE id IN ({placeholders})",
+                (now, *stale_ids),
             )
 
+        if commit:
+            await self._db.commit()
+
+    async def save_collection_cycle(
+        self,
+        gpus: list[dict],
+        processes: list[dict],
+        alerts: list[dict],
+    ):
+        """以单事务写入一轮采集结果，避免热路径频繁提交。"""
+        if not self._db:
+            return
+        try:
+            await self.save_gpu_snapshot(gpus, commit=False)
+            await self.track_processes(processes, commit=False)
+            await self.save_alerts(alerts, commit=False)
+        except Exception:
+            await self._db.rollback()
+            raise
         await self._db.commit()
 
     async def get_process_timeline(self, hours: float = 24.0) -> list[dict]:
@@ -631,37 +692,13 @@ class DataStore:
             return []
 
         bucket_seconds = max(60, int(bucket_minutes) * 60)
-        since = time.time() - hours * 3600
+        now = time.time()
+        since = now - hours * 3600
         start_bucket = int(since // bucket_seconds) * bucket_seconds
-        end_bucket = int(time.time() // bucket_seconds) * bucket_seconds
+        end_bucket = int(now // bucket_seconds) * bucket_seconds
+        frames = build_frame_index(start_bucket, end_bucket, bucket_seconds)
 
-        def build_frame(bucket_ts: int) -> dict:
-            return {
-                "bucket_ts": bucket_ts,
-                "avg_power": 0.0,
-                "avg_util": 0.0,
-                "avg_memory_util": 0.0,
-                "avg_power_limit": 0.0,
-                "max_temp": 0,
-                "gpu_count": 0,
-                "alert_count": 0,
-                "critical_alert_count": 0,
-                "schedule_action_count": 0,
-                "schedule_actions": [],
-                "active_task_count": 0,
-                "active_user_count": 0,
-            }
-
-        frames = {
-            bucket_ts: build_frame(bucket_ts)
-            for bucket_ts in range(start_bucket, end_bucket + bucket_seconds, bucket_seconds)
-        }
-        frame_users: dict[int, set[str]] = {
-            bucket_ts: set()
-            for bucket_ts in frames
-        }
-
-        cursor = await self._db.execute(
+        gpu_rows = await self._fetch_rows(
             """SELECT CAST(timestamp / ? AS INTEGER) * ? AS bucket_ts,
                       AVG(power_usage) AS avg_power,
                       AVG(gpu_utilization) AS avg_util,
@@ -675,17 +712,9 @@ class DataStore:
                ORDER BY bucket_ts""",
             (bucket_seconds, bucket_seconds, since),
         )
-        for row in await cursor.fetchall():
-            item = dict(row)
-            frame = frames.setdefault(item["bucket_ts"], build_frame(item["bucket_ts"]))
-            frame["avg_power"] = round(item.get("avg_power") or 0, 1)
-            frame["avg_util"] = round(item.get("avg_util") or 0, 1)
-            frame["avg_memory_util"] = round(item.get("avg_memory_util") or 0, 1)
-            frame["avg_power_limit"] = round(item.get("avg_power_limit") or 0, 1)
-            frame["max_temp"] = int(item.get("max_temp") or 0)
-            frame["gpu_count"] = int(item.get("gpu_count") or 0)
+        apply_gpu_rows(frames, gpu_rows)
 
-        cursor = await self._db.execute(
+        alert_rows = await self._fetch_rows(
             """SELECT CAST(timestamp / ? AS INTEGER) * ? AS bucket_ts,
                       COUNT(*) AS alert_count,
                       SUM(CASE WHEN severity = 'critical' THEN 1 ELSE 0 END) AS critical_alert_count
@@ -695,51 +724,34 @@ class DataStore:
                ORDER BY bucket_ts""",
             (bucket_seconds, bucket_seconds, since),
         )
-        for row in await cursor.fetchall():
-            item = dict(row)
-            frame = frames.setdefault(item["bucket_ts"], build_frame(item["bucket_ts"]))
-            frame["alert_count"] = int(item.get("alert_count") or 0)
-            frame["critical_alert_count"] = int(item.get("critical_alert_count") or 0)
+        apply_alert_rows(frames, alert_rows)
 
-        cursor = await self._db.execute(
+        schedule_rows = await self._fetch_rows(
             """SELECT action, reason, result, timestamp
                FROM schedule_log
                WHERE timestamp >= ?
                ORDER BY timestamp ASC""",
             (since,),
         )
-        for row in await cursor.fetchall():
-            item = dict(row)
-            bucket_ts = int((item.get("timestamp") or since) // bucket_seconds) * bucket_seconds
-            frame = frames.setdefault(bucket_ts, build_frame(bucket_ts))
-            frame["schedule_action_count"] += 1
-            if len(frame["schedule_actions"]) < 4:
-                frame["schedule_actions"].append({
-                    "action": item.get("action"),
-                    "reason": item.get("reason"),
-                    "result": item.get("result"),
-                })
+        apply_schedule_rows(frames, schedule_rows, bucket_seconds, start_bucket)
 
-        cursor = await self._db.execute(
+        process_rows = await self._fetch_rows(
             """SELECT username, first_seen, last_seen
                FROM process_history
                WHERE last_seen >= ?
                ORDER BY first_seen ASC""",
             (since,),
         )
-        for row in await cursor.fetchall():
-            item = dict(row)
-            start_ts = max(since, float(item.get("first_seen") or since))
-            end_ts = max(start_ts, float(item.get("last_seen") or start_ts))
-            bucket_ts = int(start_ts // bucket_seconds) * bucket_seconds
-            final_bucket = int(end_ts // bucket_seconds) * bucket_seconds
-            while bucket_ts <= final_bucket:
-                frame = frames.setdefault(bucket_ts, build_frame(bucket_ts))
-                frame["active_task_count"] += 1
-                frame_users.setdefault(bucket_ts, set()).add(item.get("username") or "unknown")
-                bucket_ts += bucket_seconds
-
-        for bucket_ts, users in frame_users.items():
-            frames[bucket_ts]["active_user_count"] = len(users)
-
+        apply_process_rows(
+            frames,
+            process_rows,
+            start_bucket,
+            end_bucket,
+            bucket_seconds,
+        )
         return [frames[bucket_ts] for bucket_ts in sorted(frames)]
+
+    async def _fetch_rows(self, query: str, params: tuple) -> list[dict]:
+        cursor = await self._db.execute(query, params)
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]

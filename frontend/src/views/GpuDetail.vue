@@ -44,13 +44,21 @@ async function loadHistory(hours) {
   loading.value = false
 }
 
+const processedHistory = computed(() => ({
+  times: history.value.map((point) => new Date(point.timestamp * 1000)),
+  temperatures: history.value.map((point) => point.temperature),
+  powerUsage: history.value.map((point) => point.power_usage),
+  gpuUtilization: history.value.map((point) => point.gpu_utilization),
+  memoryUtilization: history.value.map((point) => point.memory_utilization),
+}))
+
 const chartOption = computed(() => {
-  const times = history.value.map(d => new Date(d.timestamp * 1000))
   const makeStyle = (color) => ({
     type: 'line', smooth: true, symbol: 'none',
     lineStyle: { width: 1.5, color },
     areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: color + '25' }, { offset: 1, color: color + '05' }] } },
   })
+  const processed = processedHistory.value
 
   return {
     backgroundColor: 'transparent',
@@ -67,13 +75,13 @@ const chartOption = computed(() => {
     },
     grid: { left: 50, right: 20, top: 36, bottom: 60 },
     dataZoom: [{ type: 'inside' }, { type: 'slider', height: 20, bottom: 8, borderColor: 'transparent', backgroundColor: 'rgba(255,255,255,0.04)', fillerColor: 'rgba(58,95,75,0.1)', handleStyle: { color: '#3A5F4B' }, textStyle: { color: '#999999' } }],
-    xAxis: { type: 'category', data: times, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } }, axisTick: { show: false }, axisLabel: { color: '#999999', fontSize: 10, formatter: (v) => new Date(v).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) } },
+    xAxis: { type: 'category', data: processed.times, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } }, axisTick: { show: false }, axisLabel: { color: '#999999', fontSize: 10, formatter: (v) => new Date(v).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) } },
     yAxis: { type: 'value', axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: '#999999', fontSize: 10 }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } } },
     series: [
-      { name: '温度', data: history.value.map(d => d.temperature), ...makeStyle('#B8860B') },
-      { name: '功耗', data: history.value.map(d => d.power_usage), ...makeStyle('#3A5F4B') },
-      { name: 'GPU利用率', data: history.value.map(d => d.gpu_utilization), ...makeStyle('#5B4B8C') },
-      { name: '显存利用率', data: history.value.map(d => d.memory_utilization), ...makeStyle('#2E8B57') },
+      { name: '温度', data: processed.temperatures, ...makeStyle('#B8860B') },
+      { name: '功耗', data: processed.powerUsage, ...makeStyle('#3A5F4B') },
+      { name: 'GPU利用率', data: processed.gpuUtilization, ...makeStyle('#5B4B8C') },
+      { name: '显存利用率', data: processed.memoryUtilization, ...makeStyle('#2E8B57') },
     ],
     animation: false,
   }

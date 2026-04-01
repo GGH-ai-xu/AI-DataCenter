@@ -6,9 +6,21 @@ from typing import List
 import psutil
 
 
+_CPU_SAMPLER_READY = False
+
+
+def _sample_cpu_percent(percpu: bool = False):
+    global _CPU_SAMPLER_READY
+    if not _CPU_SAMPLER_READY:
+        psutil.cpu_percent(interval=None)
+        psutil.cpu_percent(interval=None, percpu=True)
+        _CPU_SAMPLER_READY = True
+    return psutil.cpu_percent(interval=None, percpu=percpu)
+
+
 def get_system_info() -> dict:
     """获取系统级资源信息（基础版，兼容原有接口）"""
-    cpu_percent = psutil.cpu_percent(interval=0.1)
+    cpu_percent = _sample_cpu_percent()
     mem = psutil.virtual_memory()
     return {
         "cpu_percent": cpu_percent,
@@ -22,8 +34,8 @@ def get_system_info() -> dict:
 
 def get_system_detail() -> dict:
     """获取完整系统资源信息（含磁盘、网络、每核CPU）"""
-    cpu_percent = psutil.cpu_percent(interval=0.1)
-    cpu_per_core = psutil.cpu_percent(interval=0, percpu=True)
+    cpu_percent = _sample_cpu_percent()
+    cpu_per_core = _sample_cpu_percent(percpu=True)
     mem = psutil.virtual_memory()
 
     # 磁盘信息

@@ -120,21 +120,69 @@ function setActionNotice(tone, title, detail) {
   actionNotice.value = { tone, title, detail }
 }
 
+const normalizedProcesses = computed(() =>
+  sortProcesses((store.processes || []).map((proc) => {
+    const priority = proc.priority || 'normal'
+    const manageable = proc.manageable !== false
+    const username = proc.username || 'unknown'
+    return {
+      ...proc,
+      priority,
+      manageable,
+      username,
+      gpu_memory_used: Number(proc.gpu_memory_used || 0),
+      haystack: `${proc.pid} ${proc.name || ''} ${username} ${proc.command || ''}`.toLowerCase(),
+    }
+  }))
+)
+
+const processSummary = computed(() => {
+  const stats = {
+    manageableCount: 0,
+    backgroundCount: 0,
+    usernames: new Set(),
+    urgentCount: 0,
+    deferrableCount: 0,
+    totalGpuMemory: 0,
+  }
+  for (const proc of normalizedProcesses.value) {
+    if (!proc.manageable) {
+      stats.backgroundCount += 1
+      continue
+    }
+    stats.manageableCount += 1
+    stats.usernames.add(proc.username)
+    stats.totalGpuMemory += proc.gpu_memory_used
+    if (proc.priority === 'urgent') {
+      stats.urgentCount += 1
+    }
+    if (proc.priority === 'deferrable') {
+      stats.deferrableCount += 1
+    }
+  }
+  return {
+    manageableCount: stats.manageableCount,
+    backgroundCount: stats.backgroundCount,
+    userCount: stats.usernames.size,
+    urgentCount: stats.urgentCount,
+    deferrableCount: stats.deferrableCount,
+    totalGpuMemory: stats.totalGpuMemory,
+  }
+})
+
 const manageableProcesses = computed(() =>
-  sortProcesses(store.processes.filter((proc) => proc.manageable !== false))
+  normalizedProcesses.value.filter((proc) => proc.manageable)
 )
 
 const visibleProcesses = computed(() =>
-  showAllProcesses.value ? sortProcesses(store.processes) : manageableProcesses.value
+  showAllProcesses.value ? normalizedProcesses.value : manageableProcesses.value
 )
 
 const filteredProcesses = computed(() => {
   const term = keyword.value.trim().toLowerCase()
   return visibleProcesses.value.filter((proc) => {
-    const priority = proc.priority || 'normal'
-    const haystack = `${proc.pid} ${proc.name || ''} ${proc.username || ''} ${proc.command || ''}`.toLowerCase()
-    const matchPriority = selectedPriority.value === 'all' || selectedPriority.value === priority
-    const matchKeyword = !term || haystack.includes(term)
+    const matchPriority = selectedPriority.value === 'all' || selectedPriority.value === proc.priority
+    const matchKeyword = !term || proc.haystack.includes(term)
     return matchPriority && matchKeyword
   })
 })
@@ -159,22 +207,12 @@ const fairnessLevelLabel = computed(() => {
   const level = fairnessOverview.value.level || 'balanced'
   return { balanced: '均衡', moderate: '轻度倾斜', skewed: '显著倾斜', critical: '严重不均' }[level] || level
 })
-const manageableProcessCount = computed(() => manageableProcesses.value.length)
-const backgroundProcessCount = computed(() =>
-  store.processes.filter((proc) => proc.manageable === false).length
-)
-const userCount = computed(() =>
-  new Set(manageableProcesses.value.map((proc) => proc.username || 'unknown')).size
-)
-const urgentCount = computed(() =>
-  manageableProcesses.value.filter((proc) => (proc.priority || 'normal') === 'urgent').length
-)
-const deferrableCount = computed(() =>
-  manageableProcesses.value.filter((proc) => (proc.priority || 'normal') === 'deferrable').length
-)
-const totalGpuMemory = computed(() =>
-  manageableProcesses.value.reduce((sum, proc) => sum + (proc.gpu_memory_used || 0), 0)
-)
+const manageableProcessCount = computed(() => processSummary.value.manageableCount)
+const backgroundProcessCount = computed(() => processSummary.value.backgroundCount)
+const userCount = computed(() => processSummary.value.userCount)
+const urgentCount = computed(() => processSummary.value.urgentCount)
+const deferrableCount = computed(() => processSummary.value.deferrableCount)
+const totalGpuMemory = computed(() => processSummary.value.totalGpuMemory)
 const executionSummary = computed(() =>
   executionMode.value === 'real'
     ? (riskAcknowledged.value

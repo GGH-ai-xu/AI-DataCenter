@@ -3,8 +3,7 @@
  * MonitorCenter.vue - 观察中心
  * 四大功能：训练进度、用户统计、任务时间线、系统全貌
  */
-import { ref, onMounted, onUnmounted, computed } from 'vue'
-import { useAppStore } from '../stores/app'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { getSystemDetail, getTrainingProgress, getUserStats, getTaskHistory } from '../services/api'
 import VChart from 'vue-echarts'
 import WorkspacePaneLayout from '../components/workspace/WorkspacePaneLayout.vue'
@@ -17,7 +16,6 @@ import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, Ti
 
 use([CanvasRenderer, LineChart, BarChart, CustomChart, GaugeChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, TitleComponent])
 
-const store = useAppStore()
 const activeTab = ref('system')
 const loading = ref(false)
 const monitorTabs = [
@@ -37,6 +35,12 @@ const prevNetwork = ref(null)
 const networkSpeed = ref({ sent: 0, recv: 0 })
 
 let refreshTimer = null
+const tabLoaders = Object.freeze({
+  system: loadSystemDetail,
+  training: loadTraining,
+  users: loadUsers,
+  timeline: loadTimeline,
+})
 
 // ===== 格式化工具 =====
 const fmtBytes = (b) => {
@@ -62,15 +66,13 @@ const fmtTime = (ts) => {
 }
 
 // ===== 数据加载 =====
-async function loadAll() {
+async function refreshActiveTab() {
   loading.value = true
   try {
-    const tasks = []
-    tasks.push(loadSystemDetail())
-    tasks.push(loadTraining())
-    tasks.push(loadUsers())
-    tasks.push(loadTimeline())
-    await Promise.allSettled(tasks)
+    const loader = tabLoaders[activeTab.value]
+    if (loader) {
+      await loader()
+    }
   } finally {
     loading.value = false
   }
@@ -91,28 +93,36 @@ async function loadSystemDetail() {
     }
     if (data.network) prevNetwork.value = { ...data.network }
     systemDetail.value = data
-  } catch (e) { /* 静默 */ }
+  } catch (e) {
+    console.error(e)
+  }
 }
 
 async function loadTraining() {
   try {
     const { data } = await getTrainingProgress()
     trainingData.value = data.training || []
-  } catch (e) { /* 静默 */ }
+  } catch (e) {
+    console.error(e)
+  }
 }
 
 async function loadUsers() {
   try {
     const { data } = await getUserStats()
     userStats.value = data.users || []
-  } catch (e) { /* 静默 */ }
+  } catch (e) {
+    console.error(e)
+  }
 }
 
 async function loadTimeline() {
   try {
     const { data } = await getTaskHistory(timelineHours.value)
     taskTimeline.value = data.timeline || []
-  } catch (e) { /* 静默 */ }
+  } catch (e) {
+    console.error(e)
+  }
 }
 
 // ===== 图表配置 =====
@@ -231,12 +241,16 @@ const uptime = computed(() => {
 })
 
 onMounted(() => {
-  loadAll()
-  refreshTimer = setInterval(loadAll, 10000)
+  refreshActiveTab()
+  refreshTimer = setInterval(refreshActiveTab, 10000)
 })
 
 onUnmounted(() => {
   clearInterval(refreshTimer)
+})
+
+watch(activeTab, () => {
+  refreshActiveTab()
 })
 </script>
 

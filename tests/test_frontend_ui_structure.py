@@ -80,10 +80,15 @@ class FrontendUIStructureTests(unittest.TestCase):
         splash_text = (ROOT / "desktop-shell/splash.html").read_text(encoding="utf-8")
         package_text = (ROOT / "desktop-shell/package.json").read_text(encoding="utf-8")
         main_text = (ROOT / "desktop-shell/main.js").read_text(encoding="utf-8")
+        icon_bytes = (ROOT / "desktop-shell/build/icon.ico").read_bytes()
 
         self.assertIn("brand-logo", splash_text)
         self.assertIn('"build/icon.png"', package_text)
-        self.assertIn("shellAssetPath('build', 'icon.png')", main_text)
+        self.assertIn('"build/icon.ico"', package_text)
+        self.assertIn("process.platform === 'win32'", main_text)
+        self.assertIn("icon.ico", main_text)
+        self.assertIn("icon.png", main_text)
+        self.assertGreater(int.from_bytes(icon_bytes[4:6], "little"), 1)
 
     def test_dashboard_is_summary_only(self):
         text = (ROOT / "frontend/src/views/Dashboard.vue").read_text(encoding="utf-8")

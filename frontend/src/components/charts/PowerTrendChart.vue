@@ -2,7 +2,7 @@
 /**
  * 功耗趋势图 - 实时滚动的多GPU功耗折线图
  */
-import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { ref, watch } from 'vue'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart } from 'echarts/charts'
@@ -18,19 +18,63 @@ const MAX_POINTS = 60
 
 // 历史数据缓存（每张GPU保留60个点）
 const history = ref({})
+const option = ref({
+  backgroundColor: 'transparent',
+  tooltip: {
+    trigger: 'axis',
+    backgroundColor: 'rgba(248, 245, 240, 0.97)',
+    borderColor: 'rgba(58, 95, 75, 0.2)',
+    textStyle: { color: '#2C2C2C', fontSize: 12 },
+    formatter: (params) => {
+      if (!params.length) return ''
+      let output = `<div style="font-size:11px;color:#999999;margin-bottom:4px">${new Date(params[0].value[0]).toLocaleTimeString('zh-CN')}</div>`
+      params.forEach((item) => {
+        output += `<div style="display:flex;align-items:center;gap:6px;margin:2px 0">
+          <span style="width:8px;height:8px;border-radius:50%;background:${item.color}"></span>
+          ${item.seriesName}: <b>${item.value[1].toFixed(1)}W</b></div>`
+      })
+      return output
+    },
+  },
+  legend: {
+    data: [],
+    textStyle: { color: '#666666', fontSize: 11 },
+    top: 0,
+    right: 0,
+    itemWidth: 12,
+    itemHeight: 3,
+  },
+  grid: { left: 45, right: 12, top: 28, bottom: 24 },
+  xAxis: {
+    type: 'time',
+    axisLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } },
+    axisTick: { show: false },
+    axisLabel: { color: '#999999', fontSize: 10 },
+    splitLine: { show: false },
+  },
+  yAxis: {
+    type: 'value',
+    name: 'W',
+    nameTextStyle: { color: '#999999', fontSize: 10 },
+    axisLine: { show: false },
+    axisTick: { show: false },
+    axisLabel: { color: '#999999', fontSize: 10 },
+    splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } },
+  },
+  series: [],
+  animation: false,
+})
 
-watch(() => props.gpus, (gpus) => {
-  gpus.forEach(gpu => {
+function appendHistory(gpus) {
+  gpus.forEach((gpu) => {
     if (!history.value[gpu.index]) history.value[gpu.index] = []
-    const arr = history.value[gpu.index]
-    arr.push({ time: new Date(), value: gpu.power_usage })
-    if (arr.length > MAX_POINTS) arr.shift()
+    const points = history.value[gpu.index]
+    points.push({ time: new Date(), value: gpu.power_usage })
+    if (points.length > MAX_POINTS) points.shift()
   })
-}, { deep: true })
+}
 
-const option = ref({})
-
-function updateChart() {
+function updateChartOption() {
   const series = []
   const legend = []
 
@@ -57,55 +101,23 @@ function updateChart() {
   })
 
   option.value = {
-    backgroundColor: 'transparent',
-    tooltip: {
-      trigger: 'axis',
-      backgroundColor: 'rgba(248, 245, 240, 0.97)',
-      borderColor: 'rgba(58, 95, 75, 0.2)',
-      textStyle: { color: '#2C2C2C', fontSize: 12 },
-      formatter: (params) => {
-        let s = `<div style="font-size:11px;color:#999999;margin-bottom:4px">${new Date(params[0].value[0]).toLocaleTimeString('zh-CN')}</div>`
-        params.forEach(p => {
-          s += `<div style="display:flex;align-items:center;gap:6px;margin:2px 0">
-            <span style="width:8px;height:8px;border-radius:50%;background:${p.color}"></span>
-            ${p.seriesName}: <b>${p.value[1].toFixed(1)}W</b></div>`
-        })
-        return s
-      },
-    },
+    ...option.value,
     legend: {
+      ...option.value.legend,
       data: legend,
-      textStyle: { color: '#666666', fontSize: 11 },
-      top: 0,
-      right: 0,
-      itemWidth: 12,
-      itemHeight: 3,
-    },
-    grid: { left: 45, right: 12, top: 28, bottom: 24 },
-    xAxis: {
-      type: 'time',
-      axisLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } },
-      axisTick: { show: false },
-      axisLabel: { color: '#999999', fontSize: 10 },
-      splitLine: { show: false },
-    },
-    yAxis: {
-      type: 'value',
-      name: 'W',
-      nameTextStyle: { color: '#999999', fontSize: 10 },
-      axisLine: { show: false },
-      axisTick: { show: false },
-      axisLabel: { color: '#999999', fontSize: 10 },
-      splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } },
     },
     series,
-    animation: false,
   }
 }
 
-let timer
-onMounted(() => { timer = setInterval(updateChart, 1000) })
-onUnmounted(() => clearInterval(timer))
+watch(
+  () => props.gpus,
+  (gpus) => {
+    appendHistory(gpus || [])
+    updateChartOption()
+  },
+  { immediate: true },
+)
 </script>
 
 <template>

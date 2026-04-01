@@ -34,6 +34,17 @@ _SIM_PROCESSES = [
      "cpu_percent": 3.4, "priority": "deferrable"},
 ]
 
+CACHE_TTL_SECONDS = 2.0
+_PROCESS_CACHE = {
+    "expires_at": 0.0,
+    "cache_key": None,
+    "processes": [],
+}
+
+
+def _clone_processes(processes: List[dict]) -> List[dict]:
+    return [dict(proc) for proc in processes]
+
 
 def get_gpu_processes(gpu_index: int) -> List[dict]:
     """获取指定GPU上运行的进程列表"""
@@ -83,3 +94,23 @@ def get_all_gpu_processes(device_count: int, simulate: bool = False) -> List[dic
     for i in range(device_count):
         all_procs.extend(get_gpu_processes(i))
     return all_procs
+
+
+def get_cached_gpu_processes(
+    device_count: int,
+    simulate: bool = False,
+) -> List[dict]:
+    """复用短时间窗口内的进程扫描结果，减少重复 NVML / psutil 调用。"""
+    cache_key = (device_count, simulate)
+    now = time.time()
+    if (
+        _PROCESS_CACHE["cache_key"] == cache_key
+        and now < _PROCESS_CACHE["expires_at"]
+    ):
+        return _clone_processes(_PROCESS_CACHE["processes"])
+
+    processes = get_all_gpu_processes(device_count, simulate=simulate)
+    _PROCESS_CACHE["cache_key"] = cache_key
+    _PROCESS_CACHE["expires_at"] = now + CACHE_TTL_SECONDS
+    _PROCESS_CACHE["processes"] = _clone_processes(processes)
+    return _clone_processes(processes)
