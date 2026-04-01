@@ -10,9 +10,12 @@ import { useAppStore } from '../stores/app'
 import { exportTextFile } from '../services/desktopExport'
 import PowerTrendChart from '../components/charts/PowerTrendChart.vue'
 import UtilizationChart from '../components/charts/UtilizationChart.vue'
+import WorkspaceSummary from '../components/workspace/WorkspaceSummary.vue'
+import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
 
 const router = useRouter()
 const store = useAppStore()
+const activeTab = ref('overview')
 const schedulerState = ref({
   time_period_label: '平峰时段',
   budget: {
@@ -145,6 +148,11 @@ const quickRoutes = [
   { label: '进入处置台', desc: '暂停、恢复、终止真实任务', path: '/tasks', stamp: '令' },
   { label: '进入风险台', desc: '处理高温、异常与告警', path: '/alerts', stamp: '警' },
   { label: '进入复盘台', desc: '查看节能测算与回放', path: '/energy', stamp: '证' },
+]
+const dashboardTabs = [
+  { key: 'overview', label: '概览', desc: '判断与入口' },
+  { key: 'access', label: '接入与自检', desc: '接入、自检、桌面服务' },
+  { key: 'live', label: '实时态势', desc: 'GPU、图表、告警' },
 ]
 
 const totalPowerLimit = computed(() =>
@@ -1113,6 +1121,16 @@ watch(
   },
 )
 
+watch(
+  workspaceReady,
+  (ready) => {
+    if (!ready && activeTab.value !== 'access') {
+      activeTab.value = 'access'
+    }
+  },
+  { immediate: true },
+)
+
 onUnmounted(() => {
   clearInterval(refreshTimer)
   removeDesktopServiceListener?.()
@@ -1121,40 +1139,37 @@ onUnmounted(() => {
 
 <template>
   <div class="dashboard ink-page-shell">
-    <section v-if="!workspaceReady" class="governance-hero tech-card">
-      <div class="governance-hero__main">
-        <div class="governance-hero__eyebrow">接入中心 · 先接通，再解锁治理页面</div>
-        <h2 class="governance-hero__title">当前先完成 Agent 接入，接通后再开放治理、处置、风险与复盘功能</h2>
-        <p class="governance-hero__desc">
-          现在首页先不展示后续治理模块，避免未接入时出现空数据和错误动作。你先完成本机或远程 Agent 接入，再进入完整工作台。
-        </p>
-      </div>
-      <div class="governance-hero__side">
-        <span class="status-badge" :class="sourceBadge.cls">{{ sourceBadge.label }}</span>
-        <span class="status-badge">{{ connectionState.mode_label }}</span>
-        <span class="status-badge status-badge--warning">仅开放接入中心</span>
-        <div class="governance-hero__meta">{{ connectionState.target_hint || '接通 Agent 后，其余页面会自动解锁。' }}</div>
-      </div>
-    </section>
+    <WorkspaceSummary
+      :eyebrow="workspaceReady ? '治理工作台 · 第一屏先给判断与动作' : '接入中心 · 先接通，再解锁治理页面'"
+      :title="workspaceReady ? '不是只看 GPU，而是先知道现在该不该动、该动谁、动完如何回放' : '当前先完成 Agent 接入，接通后再开放治理、处置、风险与复盘功能'"
+      :description="workspaceReady ? governanceTip : '现在首页先不展示后续治理模块，避免未接入时出现空数据和错误动作。你先完成本机或远程 Agent 接入，再进入完整工作台。'"
+    >
+      <template #meta>
+        <div class="governance-hero__side">
+          <span class="status-badge" :class="sourceBadge.cls">{{ sourceBadge.label }}</span>
+          <span class="status-badge">{{ connectionState.mode_label }}</span>
+          <span
+            v-if="workspaceReady"
+            class="status-badge"
+            :style="{ background: timePeriodInfo.bg, color: timePeriodInfo.color, border: '1px solid ' + timePeriodInfo.color + '33' }"
+          >
+            {{ timePeriodInfo.label }}
+          </span>
+          <span
+            v-if="workspaceReady"
+            class="status-badge"
+            :style="{ background: fairnessTone.bg, color: fairnessTone.color, border: '1px solid ' + fairnessTone.color + '33' }"
+          >
+            {{ fairnessTone.label }}
+          </span>
+          <span v-else class="status-badge status-badge--warning">仅开放接入中心</span>
+        </div>
+      </template>
+    </WorkspaceSummary>
 
-    <section v-else class="governance-hero tech-card">
-      <div class="governance-hero__main">
-        <div class="governance-hero__eyebrow">治理工作台 · 第一屏先给判断与动作</div>
-        <h2 class="governance-hero__title">不是只看 GPU，而是先知道现在该不该动、该动谁、动完如何回放</h2>
-        <p class="governance-hero__desc">{{ governanceTip }}</p>
-      </div>
-      <div class="governance-hero__side">
-        <span class="status-badge" :class="sourceBadge.cls">{{ sourceBadge.label }}</span>
-        <span class="status-badge" :style="{ background: timePeriodInfo.bg, color: timePeriodInfo.color, border: '1px solid ' + timePeriodInfo.color + '33' }">
-          {{ timePeriodInfo.label }}
-        </span>
-        <span class="status-badge" :style="{ background: fairnessTone.bg, color: fairnessTone.color, border: '1px solid ' + fairnessTone.color + '33' }">
-          {{ fairnessTone.label }}
-        </span>
-        <div class="governance-hero__meta">{{ sourceBadge.detail }}</div>
-      </div>
-    </section>
+    <WorkspaceTabs v-model="activeTab" :items="dashboardTabs" />
 
+    <template v-if="activeTab === 'access'">
     <section class="connection-panel tech-card">
       <div class="connection-panel__head">
         <div>
@@ -1532,8 +1547,9 @@ onUnmounted(() => {
           : `远程模式将连接 ${remoteAddressState.normalized || '请先填写远端 Agent 地址'}。` }}
       </div>
     </section>
+    </template>
 
-    <template v-if="workspaceReady">
+    <template v-if="workspaceReady && activeTab === 'overview'">
     <section class="workbench-grid">
       <div class="workbench-card workbench-card--main tech-card">
         <div class="workbench-card__head">
@@ -1703,7 +1719,9 @@ onUnmounted(() => {
         </div>
       </div>
     </section>
+    </template>
 
+    <template v-if="workspaceReady && activeTab === 'live'">
     <div class="section-title" style="margin: 8px 0 4px">运行底盘</div>
 
     <div class="stats-row">

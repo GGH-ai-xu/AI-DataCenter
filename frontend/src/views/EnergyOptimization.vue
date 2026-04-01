@@ -12,8 +12,10 @@ import { ref, computed, reactive, onMounted, onUnmounted, nextTick } from 'vue'
 import * as echarts from 'echarts'
 import { getEnergyMetrics, getTimeBreakdown, getGpuEfficiency, getPowerPrediction, getCarbonData, runOptimize, getScheduleHistory, getHistoryComparison, exportEnergyReport, getAiInsight, getAiAnomalies, getSchedulerStatus, healthCheck } from '../services/api'
 import { exportTextFile } from '../services/desktopExport'
+import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
 
 // ========== 数据 ==========
+const activeTab = ref('overview')
 const metrics = ref(null), breakdown = ref(null), efficiency = ref(null)
 const prediction = ref(null), carbon = ref(null)
 const scheduleHistory = ref(null), historyComparison = ref(null)
@@ -25,6 +27,11 @@ const hasLlm = ref(false), aiInsight = ref(null), aiAnomalies = ref(null)
 const aiAnomaliesLoading = ref(false), aiInsightLoading = ref(false)
 const sourceState = ref({ connected: false, simulated: false, gpu_count: 0 })
 const schedulerState = ref({ budget: { enabled: false, total_power_budget: 1200, usage_pct: 0, remaining_power: 1200, is_exceeded: false } })
+const energyTabs = [
+  { key: 'overview', label: '总览', desc: '指标与优化入口' },
+  { key: 'prediction', label: '预测与对比', desc: '预测、回放、效果对比' },
+  { key: 'ai', label: 'AI 洞察', desc: '趋势解读与异常诊断' },
+]
 
 // 动画数字
 const an = reactive({power:0, kwh:0, cost:0, co2:0, saving:0, score:0})
@@ -395,8 +402,10 @@ onUnmounted(()=>{clearInterval(timer);window.removeEventListener('resize',handle
       {{ exportFeedback.text }}
     </section>
 
+    <WorkspaceTabs v-model="activeTab" :items="energyTabs" />
+
     <!-- ===== KPI 六宫格 ===== -->
-    <div class="kpi-grid si" style="--d:.1s">
+    <div v-if="activeTab === 'overview'" class="kpi-grid si" style="--d:.1s">
       <div class="kpi-ink kpi-ink--hero">
         <div class="kpi-ink__brush"></div>
         <div class="kpi-ink__label">实时总功耗</div>
@@ -431,7 +440,7 @@ onUnmounted(()=>{clearInterval(timer);window.removeEventListener('resize',handle
     </div>
 
     <!-- ===== D2: AI 趋势洞察 ===== -->
-    <div v-if="hasLlm" class="ink-card ink-card--wide ink-card--ai si" style="--d:.12s">
+    <div v-if="activeTab === 'ai' && hasLlm" class="ink-card ink-card--wide ink-card--ai si" style="--d:.12s">
       <div class="ink-card__hd">
         <div class="ink-card__title-group">
           <span class="ink-card__eyebrow">趋势分析 · 风险研判</span>
@@ -458,7 +467,7 @@ onUnmounted(()=>{clearInterval(timer);window.removeEventListener('resize',handle
     </div>
 
     <!-- ===== 三栏：节能仪表 / 碳排放 / 时段分布 ===== -->
-    <div class="tri-grid si" style="--d:.2s">
+    <div v-if="activeTab === 'overview'" class="tri-grid si" style="--d:.2s">
       <div class="ink-card">
         <div class="ink-card__hd"><span class="ink-card__title">节能仪表</span><span class="ink-stamp ink-stamp--green">节</span></div>
         <div ref="gaugeRef" style="height:190px;margin:-10px 0"></div>
@@ -490,7 +499,7 @@ onUnmounted(()=>{clearInterval(timer);window.removeEventListener('resize',handle
     </div>
 
     <!-- ===== 功耗趋势（全宽） ===== -->
-    <div class="ink-card ink-card--wide si" style="--d:.3s">
+    <div v-if="activeTab === 'overview'" class="ink-card ink-card--wide si" style="--d:.3s">
       <div class="ink-card__hd">
         <span class="ink-card__title">廿四时功耗</span>
         <div class="trend-legend">
@@ -503,7 +512,7 @@ onUnmounted(()=>{clearInterval(timer);window.removeEventListener('resize',handle
     </div>
 
     <!-- ===== 预测 + 效率 ===== -->
-    <div class="duo-grid si" style="--d:.4s">
+    <div v-if="activeTab === 'prediction'" class="duo-grid si" style="--d:.4s">
       <div class="ink-card">
         <div class="ink-card__hd"><span class="ink-card__title">未来廿四时预测</span><span class="ink-stamp ink-stamp--purple">测</span></div>
         <div ref="predRef" style="height:280px"></div>
@@ -520,7 +529,7 @@ onUnmounted(()=>{clearInterval(timer);window.removeEventListener('resize',handle
     </div>
 
     <!-- ===== D1: AI 深度诊断 ===== -->
-    <div class="ink-card ink-card--wide ink-card--ai si" style="--d:.48s">
+    <div v-if="activeTab === 'ai'" class="ink-card ink-card--wide ink-card--ai si" style="--d:.48s">
       <div class="ink-card__hd">
         <div class="ink-card__title-group">
           <span class="ink-card__eyebrow">异常模式识别 · 超越阈值告警</span>
@@ -575,7 +584,7 @@ onUnmounted(()=>{clearInterval(timer);window.removeEventListener('resize',handle
     </div>
 
     <!-- ===== 一键优化 ===== -->
-    <div class="ink-card ink-card--wide si" style="--d:.5s">
+    <div v-if="activeTab === 'overview'" class="ink-card ink-card--wide si" style="--d:.5s">
       <div class="ink-card__hd">
         <span class="ink-card__title">智能优化</span>
         <button class="seal-btn" :disabled="optimizing" @click="doOptimize">
@@ -630,7 +639,7 @@ onUnmounted(()=>{clearInterval(timer);window.removeEventListener('resize',handle
     </div>
 
     <!-- ===== F2: 优化效果对比（全宽） ===== -->
-    <div class="ink-card ink-card--wide si" style="--d:.6s">
+    <div v-if="activeTab === 'prediction'" class="ink-card ink-card--wide si" style="--d:.6s">
       <div class="ink-card__hd">
         <span class="ink-card__title">优化效果对比</span>
         <div class="trend-legend">
@@ -644,7 +653,7 @@ onUnmounted(()=>{clearInterval(timer);window.removeEventListener('resize',handle
     </div>
 
     <!-- ===== F4: 调度历史回放 ===== -->
-    <div class="ink-card ink-card--wide si" style="--d:.7s">
+    <div v-if="activeTab === 'prediction'" class="ink-card ink-card--wide si" style="--d:.7s">
       <div class="ink-card__hd">
         <span class="ink-card__title">调度历史</span>
         <span class="ink-stamp ink-stamp--green">调</span>

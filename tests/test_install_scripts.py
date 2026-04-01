@@ -1,4 +1,5 @@
 import unittest
+import json
 from pathlib import Path
 
 
@@ -25,7 +26,27 @@ class InstallScriptTests(unittest.TestCase):
         script = (ROOT / "scripts" / "setup-frontend.ps1").read_text(encoding="utf-8")
 
         self.assertIn('Join-Path $root "frontend"', script)
-        self.assertIn('@("npm", "ci")', script)
+        self.assertIn('@("npm", "ci", "--include=optional")', script)
+
+    def test_setup_frontend_includes_optional_dependencies(self):
+        script = (ROOT / "scripts" / "setup-frontend.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("--include=optional", script)
+
+    def test_frontend_declares_rolldown_native_bindings(self):
+        package_json = json.loads((ROOT / "frontend" / "package.json").read_text(encoding="utf-8"))
+
+        optional_dependencies = package_json.get("optionalDependencies", {})
+        self.assertIn("@rolldown/binding-win32-x64-msvc", optional_dependencies)
+        self.assertIn("@rolldown/binding-linux-x64-gnu", optional_dependencies)
+
+    def test_setup_frontend_repairs_rolldown_native_binding(self):
+        script = (ROOT / "scripts" / "setup-frontend.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("Get-RolldownBindingPackage", script)
+        self.assertIn("@rolldown/binding-win32-x64-msvc@1.0.0-rc.11", script)
+        self.assertIn("@rolldown/binding-linux-x64-gnu@1.0.0-rc.11", script)
+        self.assertIn('@("npm", "install", "--no-save"', script)
 
 
 if __name__ == "__main__":

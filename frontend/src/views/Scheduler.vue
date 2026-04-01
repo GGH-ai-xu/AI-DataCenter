@@ -17,8 +17,12 @@ import {
   toggleAutoSchedule,
   getAuditLogs,
 } from '../services/api'
+import WorkspacePaneLayout from '../components/workspace/WorkspacePaneLayout.vue'
+import WorkspaceSummary from '../components/workspace/WorkspaceSummary.vue'
+import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
 
 const store = useAppStore()
+const activeTab = ref('control')
 const autoEnabled = ref(false)
 const timePeriod = ref('')
 const powerInputs = ref({})
@@ -63,6 +67,11 @@ let refreshTimer = null
 const auditLogs = ref([])
 const auditLoading = ref(false)
 const evaluation = ref(null)
+const schedulerTabs = [
+  { key: 'control', label: '治理控制', desc: '预算与限功率' },
+  { key: 'results', label: '执行结果', desc: '动作结果与评估' },
+  { key: 'audit', label: '审计与报告', desc: '日志与复盘文本' },
+]
 
 const currentClusterPower = computed(() => {
   const backendValue = Number(budget.value.current_total_power || 0)
@@ -347,17 +356,12 @@ onUnmounted(() => {
 
 <template>
   <div class="scheduler-page ink-page-shell">
-    <section class="ink-page-head tech-card">
-      <div class="ink-page-head__body">
-        <div class="ink-page-head__eyebrow">预算治理 · 自动调度 · 单卡功耗控制</div>
-        <h2 class="ink-page-head__title">在峰谷之间，为每一瓦功率安排合适的落点</h2>
-        <p class="ink-page-head__desc">
-          当前时段 {{ timePeriod || '待获取' }}，{{ budget.is_exceeded ? '总预算已有压力，需要更积极的治理动作。' : '整体预算仍有余量，可继续维持监测与轻干预。' }}
-          本页负责总预算开关、自动策略、单卡限功与调度回放，是整个治理平台的控制中枢。
-        </p>
-      </div>
-      <div class="ink-page-head__side">
-        <div class="ink-page-head__quote">“先定势，再落笔。”</div>
+    <WorkspaceSummary
+      eyebrow="预算治理 · 自动调度 · 单卡功耗控制"
+      title="在峰谷之间，为每一瓦功率安排合适的落点"
+      :description="`当前时段 ${timePeriod || '待获取'}，${budget.is_exceeded ? '总预算已有压力，需要更积极的治理动作。' : '整体预算仍有余量，可继续维持监测与轻干预。'} 本页负责总预算、自动策略、单卡限功与复盘。`"
+    >
+      <template #meta>
         <div class="ink-inline-meta">
           <span class="status-badge" :class="autoEnabled ? 'status-badge--ok' : 'status-badge--warning'">
             {{ autoEnabled ? '自动治理中' : '手动观测' }}
@@ -365,9 +369,31 @@ onUnmounted(() => {
           <span class="status-badge" :class="budget.is_exceeded ? 'status-badge--critical' : 'status-badge--ok'">
             {{ budget.is_exceeded ? '预算紧张' : '预算平稳' }}
           </span>
+          <span class="status-badge" :class="executionMode === 'real' ? 'status-badge--warning' : 'status-badge--ok'">
+            {{ executionMode === 'real' ? '真实执行' : '演练模式' }}
+          </span>
+        </div>
+      </template>
+      <div class="scheduler-summary-grid">
+        <div class="scheduler-summary-card">
+          <div class="scheduler-summary-card__label">总预算占用</div>
+          <div class="scheduler-summary-card__value">{{ budget.usage_pct }}%</div>
+          <div class="scheduler-summary-card__hint">剩余 {{ Number(budget.remaining_power || 0).toFixed(1) }}W</div>
+        </div>
+        <div class="scheduler-summary-card">
+          <div class="scheduler-summary-card__label">碳预算占用</div>
+          <div class="scheduler-summary-card__value">{{ carbonBudget.usage_pct || 0 }}%</div>
+          <div class="scheduler-summary-card__hint">累计 {{ carbonBudget.accumulated_carbon_kg || 0 }} kgCO₂</div>
+        </div>
+        <div class="scheduler-summary-card">
+          <div class="scheduler-summary-card__label">审计日志</div>
+          <div class="scheduler-summary-card__value">{{ auditLogs.length }}</div>
+          <div class="scheduler-summary-card__hint">最近 72 小时治理动作记录</div>
         </div>
       </div>
-    </section>
+    </WorkspaceSummary>
+
+    <WorkspaceTabs v-model="activeTab" :items="schedulerTabs" />
 
     <div
       v-if="actionNotice"
@@ -378,7 +404,7 @@ onUnmounted(() => {
       <div class="sched-notice__desc">{{ actionNotice.detail }}</div>
     </div>
 
-    <div class="sched-grid">
+    <div v-if="activeTab === 'control'" class="sched-grid">
       <!-- 总功率预算 -->
       <div class="tech-card" style="padding: 20px">
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px">
@@ -601,9 +627,10 @@ onUnmounted(() => {
         </div>
         <div v-if="!store.gpus.length" style="color: var(--text-muted); font-size: 0.8125rem; padding: 20px; text-align: center">等待GPU数据...</div>
       </div>
+    </div>
 
-      <!-- 调度结果 -->
-      <div class="tech-card" style="padding: 20px" v-if="scheduleResult">
+    <div v-else-if="activeTab === 'results'" class="sched-grid">
+      <div v-if="scheduleResult" class="tech-card" style="padding: 20px">
         <div class="section-title" style="margin-bottom: 14px">
           {{ scheduleResult.dry_run ? '调度预演结果' : '调度执行结果' }}
         </div>
@@ -634,6 +661,10 @@ onUnmounted(() => {
             {{ r.dry_run ? '预演' : r.success ? '成功' : '失败' }}
           </span>
         </div>
+      </div>
+      <div v-else class="tech-card" style="padding: 20px">
+        <div class="section-title" style="margin-bottom: 14px">执行结果</div>
+        <div class="sched-empty">先在“治理控制”页执行一次调度或演练，这里才会沉淀动作结果。</div>
       </div>
 
       <!-- 策略效果对比 -->
@@ -693,21 +724,49 @@ onUnmounted(() => {
           {{ evaluation.improvement }}
         </div>
       </section>
-
-      <!-- AI能耗报告 -->
-      <div class="tech-card sched-grid__wide" style="padding: 20px">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px">
-          <div class="section-title">AI 能耗分析报告</div>
-          <button class="btn-tech" @click="loadReport" :disabled="reportLoading">
-            {{ reportLoading ? '生成中...' : '生成报告' }}
-          </button>
-        </div>
-        <div v-if="report" class="report-content" style="white-space: pre-wrap">{{ report }}</div>
-        <div v-else style="color: var(--text-muted); font-size: 0.8125rem; text-align: center; padding: 20px">
-          点击"生成报告"获取AI能耗分析
-        </div>
-      </div>
     </div>
+
+    <WorkspacePaneLayout v-else>
+      <template #main>
+        <div class="tech-card" style="padding: 20px">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px">
+            <div class="section-title">AI 能耗分析报告</div>
+            <button class="btn-tech" @click="loadReport" :disabled="reportLoading">
+              {{ reportLoading ? '生成中...' : '生成报告' }}
+            </button>
+          </div>
+          <div v-if="report" class="report-content" style="white-space: pre-wrap">{{ report }}</div>
+          <div v-else class="sched-empty">
+            点击“生成报告”获取 AI 能耗分析文本。
+          </div>
+        </div>
+      </template>
+
+      <template #side>
+        <div class="tech-card" style="padding: 20px">
+          <div class="audit-head">
+            <div class="section-title">审计日志</div>
+            <span class="status-badge">{{ auditLoading ? '加载中' : `${auditLogs.length} 条` }}</span>
+          </div>
+          <div v-if="auditLogs.length" class="audit-list panel-scroll">
+            <div v-for="log in auditLogs" :key="log.id" class="audit-item">
+              <div class="audit-item__top">
+                <span class="audit-item__action">{{ auditActionMap[log.action] || log.action || '未知动作' }}</span>
+                <span class="audit-item__risk" :style="{ color: auditRiskColorMap[log.risk_level || 'low'] || '#3A5F4B' }">
+                  {{ auditRiskLabelMap[log.risk_level || 'low'] || '低' }}风险
+                </span>
+              </div>
+              <div class="audit-item__meta">
+                <span>{{ auditSourceMap[log.source] || log.source || '未知来源' }}</span>
+                <span>{{ formatAuditTime(log.timestamp) }}</span>
+              </div>
+              <div class="audit-item__reason">{{ log.reason || '未记录原因。' }}</div>
+            </div>
+          </div>
+          <div v-else class="sched-empty">最近 72 小时还没有调度审计记录。</div>
+        </div>
+      </template>
+    </WorkspacePaneLayout>
   </div>
 </template>
 
@@ -715,6 +774,36 @@ onUnmounted(() => {
 .scheduler-page { max-width: 1400px; margin: 0 auto; }
 .sched-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .sched-grid__wide { grid-column: 1 / -1; }
+
+.scheduler-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.scheduler-summary-card {
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(58, 95, 75, 0.08);
+  background: rgba(255, 252, 247, 0.66);
+}
+
+.scheduler-summary-card__label,
+.scheduler-summary-card__hint,
+.sched-empty,
+.audit-item__meta,
+.audit-item__reason {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.7;
+}
+
+.scheduler-summary-card__value {
+  margin: 6px 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
 
 .sched-notice {
   padding: 14px 16px;
@@ -932,6 +1021,46 @@ onUnmounted(() => {
   max-height: 400px; overflow-y: auto;
 }
 
+.audit-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.audit-list {
+  display: grid;
+  gap: 10px;
+  max-height: 720px;
+}
+
+.audit-item {
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(58,95,75,0.08);
+  background: rgba(255,252,247,0.66);
+}
+
+.audit-item__top,
+.audit-item__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.audit-item__action {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.audit-item__risk {
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
 .carbon-eyebrow {
   font-size: 0.6875rem;
   color: var(--text-muted);
@@ -970,6 +1099,7 @@ onUnmounted(() => {
 }
 
 @media (max-width: 980px) {
+  .scheduler-summary-grid,
   .sched-grid { grid-template-columns: 1fr; }
   .sched-grid__wide { grid-column: auto; }
   .budget-form,

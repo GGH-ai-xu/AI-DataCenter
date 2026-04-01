@@ -13,8 +13,12 @@ import {
   terminateTask,
 } from '../services/api'
 import { exportTextFile } from '../services/desktopExport'
+import WorkspacePaneLayout from '../components/workspace/WorkspacePaneLayout.vue'
+import WorkspaceSummary from '../components/workspace/WorkspaceSummary.vue'
+import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
 
 const store = useAppStore()
+const activeTab = ref('actions')
 const keyword = ref('')
 const selectedPriority = ref('all')
 const showAllProcesses = ref(false)
@@ -32,6 +36,11 @@ const fairnessState = ref({
   recommendations: [],
 })
 let refreshTimer = null
+const taskTabs = [
+  { key: 'actions', label: '待处置任务', desc: '筛选与执行' },
+  { key: 'fairness', label: '公平治理', desc: '占用结构与让路建议' },
+  { key: 'rules', label: '规则配置', desc: '用户额度与角色' },
+]
 
 const priorityColors = {
   urgent: { bg: 'rgba(196,30,58,0.12)', color: '#C41E3A', label: '紧急' },
@@ -359,69 +368,63 @@ onUnmounted(() => {
 
 <template>
   <div class="task-page ink-page-shell">
-    <section class="tech-card hero-card">
-      <div>
-        <div class="hero-card__eyebrow">任务治理中心</div>
-        <h2 class="hero-card__title">把 GPU 进程从“看到”升级到“分级、让路、干预、追踪”</h2>
-        <p class="hero-card__desc">{{ fairnessOverview.summary || '当前共享状态稳定。' }}</p>
-      </div>
-      <div class="hero-card__actions">
-        <button class="btn-tech" :disabled="exporting" @click="doExportGovernance('markdown')">
-          {{ exporting ? '导出中...' : '导出治理报告' }}
-        </button>
-        <div class="mode-box">
-          <div class="mode-box__switch">
-            <button class="btn-tech" :class="{ 'btn-tech--primary': executionMode === 'dry_run' }" @click="executionMode = 'dry_run'">演练模式</button>
-            <button class="btn-tech" :class="{ 'btn-tech--primary': executionMode === 'real' }" @click="executionMode = 'real'">真实执行</button>
-          </div>
-          <label v-if="executionMode === 'real'" class="mode-box__ack">
-            <input v-model="riskAcknowledged" type="checkbox" />
-            我已确认会直接作用于真实进程
-          </label>
-          <div class="mode-box__hint">{{ executionSummary }}</div>
+    <WorkspaceSummary
+      eyebrow="任务治理中心"
+      title="把 GPU 进程从“看到”升级到“分级、让路、干预、追踪”"
+      :description="fairnessOverview.summary || '当前共享状态稳定。'"
+    >
+      <template #meta>
+        <div class="hero-card__actions">
+          <button class="btn-tech" :disabled="exporting" @click="doExportGovernance('markdown')">
+            {{ exporting ? '导出中...' : '导出治理报告' }}
+          </button>
+          <span class="status-badge" :class="executionMode === 'real' ? 'status-badge--warning' : 'status-badge--ok'">
+            {{ executionMode === 'real' ? '真实执行' : '演练模式' }}
+          </span>
         </div>
-      </div>
-    </section>
+      </template>
+      <section class="stats-grid">
+        <div class="tech-card stat-card">
+          <div class="stat-card__label">可治理任务</div>
+          <div class="stat-card__value stat-value">{{ manageableProcessCount }}</div>
+          <div class="stat-card__hint">默认只展示可真正干预的 GPU 任务</div>
+        </div>
+        <div class="tech-card stat-card">
+          <div class="stat-card__label">背景 / 系统进程</div>
+          <div class="stat-card__value stat-value" style="color:#999">{{ backgroundProcessCount }}</div>
+          <div class="stat-card__hint">浏览器 GPU 子进程、桌面渲染等会自动归到这里</div>
+        </div>
+        <div class="tech-card stat-card">
+          <div class="stat-card__label">治理用户</div>
+          <div class="stat-card__value stat-value">{{ userCount }}</div>
+          <div class="stat-card__hint">真正占用治理型 GPU 任务的用户数</div>
+        </div>
+        <div class="tech-card stat-card">
+          <div class="stat-card__label">紧急任务</div>
+          <div class="stat-card__value stat-value" style="color:#C41E3A">{{ urgentCount }}</div>
+          <div class="stat-card__hint">预算紧张时优先保障</div>
+        </div>
+        <div class="tech-card stat-card">
+          <div class="stat-card__label">可延迟任务</div>
+          <div class="stat-card__value stat-value" style="color:#666">{{ deferrableCount }}</div>
+          <div class="stat-card__hint">高峰期优先让路</div>
+        </div>
+        <div class="tech-card stat-card">
+          <div class="stat-card__label">治理显存占用</div>
+          <div class="stat-card__value stat-value">{{ fmtMem(totalGpuMemory) }}</div>
+          <div class="stat-card__hint">只统计可治理任务</div>
+        </div>
+      </section>
+    </WorkspaceSummary>
+
+    <WorkspaceTabs v-model="activeTab" :items="taskTabs" />
 
     <div v-if="actionNotice" class="tech-card notice" :class="`notice--${actionNotice.tone}`">
       <div class="notice__title">{{ actionNotice.title }}</div>
       <div class="notice__detail">{{ actionNotice.detail }}</div>
     </div>
 
-    <section class="stats-grid">
-      <div class="tech-card stat-card">
-        <div class="stat-card__label">可治理任务</div>
-        <div class="stat-card__value stat-value">{{ manageableProcessCount }}</div>
-        <div class="stat-card__hint">默认只展示可真正干预的 GPU 任务</div>
-      </div>
-      <div class="tech-card stat-card">
-        <div class="stat-card__label">背景 / 系统进程</div>
-        <div class="stat-card__value stat-value" style="color:#999">{{ backgroundProcessCount }}</div>
-        <div class="stat-card__hint">浏览器 GPU 子进程、桌面渲染等会自动归到这里</div>
-      </div>
-      <div class="tech-card stat-card">
-        <div class="stat-card__label">治理用户</div>
-        <div class="stat-card__value stat-value">{{ userCount }}</div>
-        <div class="stat-card__hint">真正占用治理型 GPU 任务的用户数</div>
-      </div>
-      <div class="tech-card stat-card">
-        <div class="stat-card__label">紧急任务</div>
-        <div class="stat-card__value stat-value" style="color:#C41E3A">{{ urgentCount }}</div>
-        <div class="stat-card__hint">预算紧张时优先保障</div>
-      </div>
-      <div class="tech-card stat-card">
-        <div class="stat-card__label">可延迟任务</div>
-        <div class="stat-card__value stat-value" style="color:#666">{{ deferrableCount }}</div>
-        <div class="stat-card__hint">高峰期优先让路</div>
-      </div>
-      <div class="tech-card stat-card">
-        <div class="stat-card__label">治理显存占用</div>
-        <div class="stat-card__value stat-value">{{ fmtMem(totalGpuMemory) }}</div>
-        <div class="stat-card__hint">只统计可治理任务</div>
-      </div>
-    </section>
-
-    <section class="fairness-dashboard">
+    <section v-if="activeTab === 'fairness'" class="fairness-dashboard">
       <div class="tech-card fairness-gauge-card">
         <div class="fairness-gauge-card__head">
           <div>
@@ -504,7 +507,7 @@ onUnmounted(() => {
       </div>
     </section>
 
-    <section v-if="fairnessUsers.length" class="tech-card rules-panel">
+    <section v-if="activeTab === 'rules' && fairnessUsers.length" class="tech-card rules-panel">
       <div class="rules-panel__head">
         <div class="panel-card__title">用户额度规则</div>
         <div class="rules-panel__hint">为活跃用户设置任务数、GPU数、显存额度与是否允许让路</div>
@@ -551,107 +554,151 @@ onUnmounted(() => {
       </div>
     </section>
 
-    <section class="tech-card toolbar-card">
-      <div class="toolbar-card__left">
-        <input v-model="keyword" class="task-input" placeholder="搜索 PID / 用户 / 进程名 / 命令" />
-        <select v-model="selectedPriority" class="task-select">
-          <option value="all">全部优先级</option>
-          <option value="urgent">紧急</option>
-          <option value="normal">普通</option>
-          <option value="deferrable">可延迟</option>
-        </select>
-      </div>
-      <div class="toolbar-card__right">
-        <div class="toolbar-card__switch">
-          <button class="btn-tech" :class="{ 'btn-tech--primary': !showAllProcesses }" @click="showAllProcesses = false">仅治理任务</button>
-          <button class="btn-tech" :class="{ 'btn-tech--primary': showAllProcesses }" @click="showAllProcesses = true">全部 GPU 相关进程</button>
-        </div>
-        <span class="toolbar-card__summary">当前显示 {{ filteredProcesses.length }} / {{ visibleProcesses.length }} 条</span>
-      </div>
+    <section v-else-if="activeTab === 'rules'" class="tech-card rules-panel rules-panel--empty">
+      <div class="panel-card__title">用户额度规则</div>
+      <div class="panel-card__item">当前没有活跃用户需要配置规则。</div>
     </section>
 
-    <section class="tech-card table-card">
-      <table class="task-table">
-        <colgroup>
-          <col style="width: 82px" />
-          <col style="width: 76px" />
-          <col style="width: 128px" />
-          <col style="width: 118px" />
-          <col style="width: 96px" />
-          <col style="width: 78px" />
-          <col style="width: 110px" />
-          <col style="width: 110px" />
-          <col style="width: 240px" />
-          <col style="width: 300px" />
-          <col style="width: 250px" />
-        </colgroup>
-        <thead>
-          <tr>
-            <th>PID</th>
-            <th>GPU</th>
-            <th>进程名</th>
-            <th>用户</th>
-            <th>显存</th>
-            <th>CPU</th>
-            <th>优先级</th>
-            <th>治理状态</th>
-            <th>说明</th>
-            <th>命令</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="proc in filteredProcesses" :key="proc.pid">
-            <td class="stat-value">{{ proc.pid }}</td>
-            <td>GPU {{ proc.gpu_index }}</td>
-            <td>{{ proc.name }}</td>
-            <td>{{ proc.username }}</td>
-            <td class="task-table__metric" :class="{ 'task-table__metric--muted': !isManageable(proc) && Number(proc.gpu_memory_used || 0) <= 0 }" :title="gpuMetricTitle(proc)">{{ displayGpuMemory(proc) }}</td>
-            <td class="task-table__metric" :class="{ 'task-table__metric--muted': !isManageable(proc) && Number(proc.cpu_percent || 0) <= 0 }" :title="cpuMetricTitle(proc)">{{ displayCpuPercent(proc) }}</td>
-            <td>
-              <select
-                class="priority-select"
-                :disabled="!isManageable(proc)"
-                :value="proc.priority || 'normal'"
-                :style="{ color: priorityColors[proc.priority || 'normal'].color, background: priorityColors[proc.priority || 'normal'].bg }"
-                @change="changePriority(proc, $event.target.value)"
-              >
-                <option value="urgent">紧急</option>
-                <option value="normal">普通</option>
-                <option value="deferrable">可延迟</option>
-              </select>
-            </td>
-            <td>
-              <span class="status-badge" :class="getCategoryClass(proc)">{{ getCategoryLabel(proc) }}</span>
-            </td>
-            <td>
-              <div class="task-table__reason" :title="getManageableReason(proc)">{{ getReasonSummary(proc) }}</div>
-            </td>
-            <td>
-              <div class="task-table__command" :title="proc.command || '-'">{{ getCommandPreview(proc) }}</div>
-            </td>
-            <td class="task-table__ops">
-              <div v-if="isManageable(proc)">
-                <div class="task-table__actions">
-                  <button class="btn-tech" :disabled="isActionDisabled(proc, 'pause')" @click="doAction(proc, 'pause')">暂停</button>
-                  <button class="btn-tech" :disabled="isActionDisabled(proc, 'resume')" @click="doAction(proc, 'resume')">恢复</button>
-                  <button class="btn-tech btn-tech--danger" :disabled="isActionDisabled(proc, 'terminate')" @click="doAction(proc, 'terminate')">终止</button>
-                </div>
-                <div class="task-table__hint" :title="getActionHint(proc)">{{ getActionHint(proc) }}</div>
+    <WorkspacePaneLayout v-if="activeTab === 'actions'">
+      <template #main>
+        <section class="tech-card toolbar-card">
+          <div class="toolbar-card__left">
+            <input v-model="keyword" class="task-input" placeholder="搜索 PID / 用户 / 进程名 / 命令" />
+            <select v-model="selectedPriority" class="task-select">
+              <option value="all">全部优先级</option>
+              <option value="urgent">紧急</option>
+              <option value="normal">普通</option>
+              <option value="deferrable">可延迟</option>
+            </select>
+          </div>
+          <div class="toolbar-card__right">
+            <div class="toolbar-card__switch">
+              <button class="btn-tech" :class="{ 'btn-tech--primary': !showAllProcesses }" @click="showAllProcesses = false">仅治理任务</button>
+              <button class="btn-tech" :class="{ 'btn-tech--primary': showAllProcesses }" @click="showAllProcesses = true">全部 GPU 相关进程</button>
+            </div>
+            <span class="toolbar-card__summary">当前显示 {{ filteredProcesses.length }} / {{ visibleProcesses.length }} 条</span>
+          </div>
+        </section>
+
+        <section class="tech-card table-card">
+          <div class="panel-scroll">
+            <table class="task-table">
+              <colgroup>
+                <col style="width: 82px" />
+                <col style="width: 76px" />
+                <col style="width: 128px" />
+                <col style="width: 118px" />
+                <col style="width: 96px" />
+                <col style="width: 78px" />
+                <col style="width: 110px" />
+                <col style="width: 110px" />
+                <col style="width: 240px" />
+                <col style="width: 300px" />
+                <col style="width: 250px" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>PID</th>
+                  <th>GPU</th>
+                  <th>进程名</th>
+                  <th>用户</th>
+                  <th>显存</th>
+                  <th>CPU</th>
+                  <th>优先级</th>
+                  <th>治理状态</th>
+                  <th>说明</th>
+                  <th>命令</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="proc in filteredProcesses" :key="proc.pid">
+                  <td class="stat-value">{{ proc.pid }}</td>
+                  <td>GPU {{ proc.gpu_index }}</td>
+                  <td>{{ proc.name }}</td>
+                  <td>{{ proc.username }}</td>
+                  <td class="task-table__metric" :class="{ 'task-table__metric--muted': !isManageable(proc) && Number(proc.gpu_memory_used || 0) <= 0 }" :title="gpuMetricTitle(proc)">{{ displayGpuMemory(proc) }}</td>
+                  <td class="task-table__metric" :class="{ 'task-table__metric--muted': !isManageable(proc) && Number(proc.cpu_percent || 0) <= 0 }" :title="cpuMetricTitle(proc)">{{ displayCpuPercent(proc) }}</td>
+                  <td>
+                    <select
+                      class="priority-select"
+                      :disabled="!isManageable(proc)"
+                      :value="proc.priority || 'normal'"
+                      :style="{ color: priorityColors[proc.priority || 'normal'].color, background: priorityColors[proc.priority || 'normal'].bg }"
+                      @change="changePriority(proc, $event.target.value)"
+                    >
+                      <option value="urgent">紧急</option>
+                      <option value="normal">普通</option>
+                      <option value="deferrable">可延迟</option>
+                    </select>
+                  </td>
+                  <td>
+                    <span class="status-badge" :class="getCategoryClass(proc)">{{ getCategoryLabel(proc) }}</span>
+                  </td>
+                  <td>
+                    <div class="task-table__reason" :title="getManageableReason(proc)">{{ getReasonSummary(proc) }}</div>
+                  </td>
+                  <td>
+                    <div class="task-table__command" :title="proc.command || '-'">{{ getCommandPreview(proc) }}</div>
+                  </td>
+                  <td class="task-table__ops">
+                    <div v-if="isManageable(proc)">
+                      <div class="task-table__actions">
+                        <button class="btn-tech" :disabled="isActionDisabled(proc, 'pause')" @click="doAction(proc, 'pause')">暂停</button>
+                        <button class="btn-tech" :disabled="isActionDisabled(proc, 'resume')" @click="doAction(proc, 'resume')">恢复</button>
+                        <button class="btn-tech btn-tech--danger" :disabled="isActionDisabled(proc, 'terminate')" @click="doAction(proc, 'terminate')">终止</button>
+                      </div>
+                      <div class="task-table__hint" :title="getActionHint(proc)">{{ getActionHint(proc) }}</div>
+                    </div>
+                    <div v-else class="task-table__readonly" :title="getManageableReason(proc)">
+                      该类进程只做观测，不提供暂停/终止
+                    </div>
+                  </td>
+                </tr>
+                <tr v-if="!filteredProcesses.length">
+                  <td colspan="11" class="task-table__empty">
+                    {{ showAllProcesses ? '暂无匹配的 GPU 相关进程。' : '当前没有可治理任务，可切换到“全部 GPU 相关进程”查看背景与系统进程。' }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </template>
+
+      <template #side>
+        <section class="tech-card panel-card">
+          <div class="panel-card__title">执行模式</div>
+          <div class="mode-box">
+            <div class="mode-box__switch">
+              <button class="btn-tech" :class="{ 'btn-tech--primary': executionMode === 'dry_run' }" @click="executionMode = 'dry_run'">演练模式</button>
+              <button class="btn-tech" :class="{ 'btn-tech--primary': executionMode === 'real' }" @click="executionMode = 'real'">真实执行</button>
+            </div>
+            <label v-if="executionMode === 'real'" class="mode-box__ack">
+              <input v-model="riskAcknowledged" type="checkbox" />
+              我已确认会直接作用于真实进程
+            </label>
+            <div class="mode-box__hint">{{ executionSummary }}</div>
+          </div>
+        </section>
+
+        <section class="tech-card panel-card">
+          <div class="panel-card__title">候选让路任务</div>
+          <div class="yield-list">
+            <div v-for="candidate in yieldCandidates.slice(0, 5)" :key="candidate.pid" class="yield-item">
+              <div class="yield-item__top">
+                <span class="yield-item__pid">PID {{ candidate.pid }}</span>
+                <span class="yield-item__priority" :style="{ color: priorityColors[candidate.priority || 'normal'].color, background: priorityColors[candidate.priority || 'normal'].bg }">
+                  {{ priorityColors[candidate.priority || 'normal'].label }}
+                </span>
               </div>
-              <div v-else class="task-table__readonly" :title="getManageableReason(proc)">
-                该类进程只做观测，不提供暂停/终止
-              </div>
-            </td>
-          </tr>
-          <tr v-if="!filteredProcesses.length">
-            <td colspan="11" class="task-table__empty">
-              {{ showAllProcesses ? '暂无匹配的 GPU 相关进程。' : '当前没有可治理任务，可切换到“全部 GPU 相关进程”查看背景与系统进程。' }}
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </section>
+              <div class="yield-item__reason">{{ candidate.yield_reason }}</div>
+            </div>
+            <div v-if="!yieldCandidates.length" class="panel-card__item">当前没有需要优先让路的任务。</div>
+          </div>
+        </section>
+      </template>
+    </WorkspacePaneLayout>
   </div>
 </template>
 

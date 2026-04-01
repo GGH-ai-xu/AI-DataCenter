@@ -8,6 +8,8 @@ import {
   testLlmConfig,
   updateLlmConfig,
 } from '../services/api'
+import WorkspaceSummary from '../components/workspace/WorkspaceSummary.vue'
+import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
 
 const DEFAULT_INTRO = '你好，我是 AI 治理助手。我可以解释当前 GPU 状态，也可以在上方“AI 执行控制台”里把自然语言指令转换成可审核、可演练、可执行的治理动作。'
 const BLOCKED_INTRO = 'AI 对话助手当前未启用。你可以继续使用上方的“AI 执行控制台”第一版，它支持规则解析；如果想获得更强的自然语言规划能力，请先在左侧接入 LLM。'
@@ -18,6 +20,12 @@ const QUICK_CONTROLS = [
   '将 PID 1234 标记为可延迟',
   '把总功率预算设置为 1200W',
   '执行一次调度',
+]
+const activeTab = ref('control')
+const assistantTabs = [
+  { key: 'control', label: '执行控制', desc: '规划、演练、执行' },
+  { key: 'chat', label: '对话解释', desc: '问答与说明' },
+  { key: 'model', label: '模型配置', desc: 'LLM 接入与测试' },
 ]
 
 const messages = ref([{ role: 'assistant', content: DEFAULT_INTRO }])
@@ -373,26 +381,25 @@ onMounted(() => {
 
 <template>
   <div class="ai-page ink-page-shell">
-    <section class="ink-page-head tech-card">
-      <div class="ink-page-head__body">
-        <div class="ink-page-head__eyebrow">自然语言规划 · 演练执行 · 风险确认</div>
-        <h2 class="ink-page-head__title">AI 执行控制台第一版</h2>
-        <p class="ink-page-head__desc">
-          这不是直接放权给 AI 自动乱动，而是把自然语言先转成结构化动作计划，再由你选择演练或真实执行。
-          当前版本支持任务暂停/恢复/终止、优先级调整、单卡限功率、总功率预算和一次综合调度。
-        </p>
-      </div>
-      <div class="ink-page-head__side">
-        <div class="ink-page-head__quote">“先成策，再落子。”</div>
+    <WorkspaceSummary
+      eyebrow="自然语言规划 · 演练执行 · 风险确认"
+      title="AI 执行控制台第一版"
+      description="这不是直接放权给 AI 自动乱动，而是把自然语言先转成结构化动作计划，再由你选择演练或真实执行。当前版本支持任务暂停/恢复/终止、优先级调整、单卡限功率、总功率预算和一次综合调度。"
+    >
+      <template #meta>
         <div class="ink-inline-meta">
           <span class="status-badge status-badge--ok">可审核</span>
           <span class="status-badge status-badge--warning">先演练后执行</span>
+          <span class="status-badge" :class="llmReady ? 'status-badge--ok' : 'status-badge--warning'">
+            {{ llmReady ? 'LLM 已就绪' : '规则解析模式' }}
+          </span>
         </div>
-      </div>
-    </section>
+      </template>
+    </WorkspaceSummary>
 
-    <div class="ai-layout">
-      <aside class="ai-config tech-card">
+    <WorkspaceTabs v-model="activeTab" :items="assistantTabs" />
+
+    <aside v-if="activeTab === 'model'" class="ai-config tech-card">
         <div class="ai-config__head">
           <div>
             <div class="ai-config__eyebrow">在线接入 LLM</div>
@@ -479,10 +486,9 @@ onMounted(() => {
             执行控制台在未接入 LLM 时也能工作，但只会走规则解析。接入后，系统会基于当前真实 GPU/任务状态生成更像“运维助理”的动作计划。
           </div>
         </div>
-      </aside>
+    </aside>
 
-      <div class="ai-main">
-        <section class="tech-card control-console">
+    <section v-else-if="activeTab === 'control'" class="tech-card control-console">
           <div class="control-console__head">
             <div>
               <div class="control-console__eyebrow">AI 执行控制台</div>
@@ -655,9 +661,9 @@ onMounted(() => {
               </div>
             </div>
           </div>
-        </section>
+    </section>
 
-        <section class="ai-container tech-card">
+    <section v-else class="ai-container tech-card">
           <div class="ai-header">
             <div class="ai-header__icon">问</div>
             <div>
@@ -717,9 +723,7 @@ onMounted(() => {
               发送
             </button>
           </div>
-        </section>
-      </div>
-    </div>
+    </section>
   </div>
 </template>
 

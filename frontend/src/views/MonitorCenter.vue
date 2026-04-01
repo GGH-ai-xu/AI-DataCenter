@@ -7,6 +7,9 @@ import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useAppStore } from '../stores/app'
 import { getMonitorReplay, getSystemDetail, getTrainingProgress, getUserStats, getTaskHistory } from '../services/api'
 import VChart from 'vue-echarts'
+import WorkspacePaneLayout from '../components/workspace/WorkspacePaneLayout.vue'
+import WorkspaceSummary from '../components/workspace/WorkspaceSummary.vue'
+import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart, BarChart, CustomChart, GaugeChart } from 'echarts/charts'
@@ -17,6 +20,13 @@ use([CanvasRenderer, LineChart, BarChart, CustomChart, GaugeChart, GridComponent
 const store = useAppStore()
 const activeTab = ref('system')
 const loading = ref(false)
+const monitorTabs = [
+  { key: 'system', label: '系统全貌', desc: '底盘与资源' },
+  { key: 'training', label: '训练进度', desc: '训练曲线与日志' },
+  { key: 'users', label: '用户统计', desc: '占用结构与画像' },
+  { key: 'timeline', label: '任务时间线', desc: '生命周期与回放' },
+  { key: 'replay', label: '治理回放', desc: '动作与趋势复盘' },
+]
 
 // 数据状态
 const systemDetail = ref(null)
@@ -229,6 +239,10 @@ const selectedReplayFrame = computed(() => {
   return replayFrames.value[selectedReplayIndex.value] || replayFrames.value[replayFrames.value.length - 1]
 })
 
+const activeTabLabel = computed(() =>
+  monitorTabs.find((tab) => tab.key === activeTab.value)?.label || '系统全貌'
+)
+
 const replayOption = computed(() => {
   if (!replayFrames.value.length) return null
   return {
@@ -323,16 +337,12 @@ onUnmounted(() => {
 
 <template>
   <div class="monitor-page ink-page-shell">
-    <section class="ink-page-head tech-card">
-      <div class="ink-page-head__body">
-        <div class="ink-page-head__eyebrow">系统全貌 · 训练进度 · 用户画像 · 任务时间线</div>
-        <h2 class="ink-page-head__title">先静观其势，再判断系统应如何治理</h2>
-        <p class="ink-page-head__desc">
-          这里把训练过程、用户占用、时间线和系统资源放到同一张观察图里，帮助你从“单点告警”升级到“整体态势判断”。
-        </p>
-      </div>
-      <div class="ink-page-head__side">
-        <div class="ink-page-head__quote">“见微知著，察势而动。”</div>
+    <WorkspaceSummary
+      eyebrow="系统全貌 · 训练进度 · 用户画像 · 任务时间线"
+      title="先静观其势，再判断系统应如何治理"
+      :description="`当前聚焦 ${activeTabLabel}，把训练、用户、时间线和系统底盘拆入独立舱位，避免不同观察任务相互挤压。`"
+    >
+      <template #meta>
         <div class="ink-inline-meta">
           <span class="status-badge status-badge--ok">{{ trainingData.length }} 个训练任务</span>
           <span class="status-badge status-badge--warning">{{ userStats.length }} 个活跃用户</span>
@@ -340,93 +350,97 @@ onUnmounted(() => {
             {{ loading ? '数据刷新中' : '观察就绪' }}
           </span>
         </div>
+      </template>
+      <div class="monitor-summary-grid">
+        <div class="monitor-summary-card">
+          <div class="monitor-summary-card__label">当前聚焦</div>
+          <div class="monitor-summary-card__value">{{ activeTabLabel }}</div>
+          <div class="monitor-summary-card__hint">在不同观察任务之间切换，但保持顶部判断区稳定。</div>
+        </div>
+        <div class="monitor-summary-card">
+          <div class="monitor-summary-card__label">时间线样本</div>
+          <div class="monitor-summary-card__value">{{ taskTimeline.length }}</div>
+          <div class="monitor-summary-card__hint">已采集的任务生命周期样本数量。</div>
+        </div>
+        <div class="monitor-summary-card">
+          <div class="monitor-summary-card__label">治理回放桶</div>
+          <div class="monitor-summary-card__value">{{ replayFrames.length }}</div>
+          <div class="monitor-summary-card__hint">用于复盘动作与风险的时间桶数量。</div>
+        </div>
       </div>
-    </section>
+    </WorkspaceSummary>
 
-    <div class="page-header">
-      <div class="page-header__meta">当前聚焦：{{ activeTab === 'system' ? '系统全貌' : activeTab === 'training' ? '训练进度' : activeTab === 'users' ? '用户统计' : activeTab === 'timeline' ? '任务时间线' : '治理回放' }}</div>
-      <div class="tab-bar">
-        <button v-for="tab in [
-          { key: 'system', label: '系统全貌', icon: '总' },
-          { key: 'training', label: '训练进度', icon: '训' },
-          { key: 'users', label: '用户统计', icon: '人' },
-          { key: 'timeline', label: '任务时间线', icon: '时' },
-          { key: 'replay', label: '治理回放', icon: '回' },
-        ]" :key="tab.key" class="tab-btn" :class="{ 'tab-btn--active': activeTab === tab.key }" @click="activeTab = tab.key">
-          <span>{{ tab.icon }}</span> {{ tab.label }}
-        </button>
-      </div>
-    </div>
+    <WorkspaceTabs v-model="activeTab" :items="monitorTabs" />
 
     <!-- ========== Tab: 系统全貌 ========== -->
     <div v-if="activeTab === 'system'" class="tab-content">
-      <div v-if="systemDetail" class="sys-grid">
-        <!-- 运行时长 + 负载 -->
-        <div class="tech-card sys-info-card">
-          <div class="sys-info-title">服务器概况</div>
-          <div class="sys-info-items">
-            <div class="sys-info-row"><span class="sys-label">运行时长</span><span class="stat-value">{{ uptime }}</span></div>
-            <div class="sys-info-row"><span class="sys-label">CPU核心</span><span class="stat-value">{{ systemDetail.cpu_count_physical || '-' }}核 {{ systemDetail.cpu_count }}线程</span></div>
-            <div class="sys-info-row"><span class="sys-label">系统负载</span><span class="stat-value">{{ (systemDetail.load_avg || []).map(v => v.toFixed(2)).join(' / ') }}</span></div>
-            <div class="sys-info-row"><span class="sys-label">网络上传</span><span class="stat-value" style="color: #2E8B57">{{ fmtSpeed(networkSpeed.sent) }}</span></div>
-            <div class="sys-info-row"><span class="sys-label">网络下载</span><span class="stat-value" style="color: #3A5F4B">{{ fmtSpeed(networkSpeed.recv) }}</span></div>
-          </div>
-        </div>
-
-        <!-- CPU 使用率 -->
-        <div class="tech-card">
-          <div class="card-title">CPU 使用率 <span class="stat-value" :style="{ color: systemDetail.cpu_percent > 80 ? '#C41E3A' : '#3A5F4B' }">{{ systemDetail.cpu_percent?.toFixed(1) }}%</span></div>
-          <v-chart :option="cpuCoreOption" style="height: 200px" autoresize />
-        </div>
-
-        <!-- 内存 -->
-        <div class="tech-card">
-          <div class="card-title">内存</div>
-          <div class="gauge-row">
-            <div class="gauge-item">
-              <div class="gauge-ring">
-                <svg viewBox="0 0 100 100">
-                  <circle cx="50" cy="50" r="40" fill="none" stroke="#1e293b" stroke-width="8"/>
-                  <circle cx="50" cy="50" r="40" fill="none" :stroke="systemDetail.memory_percent > 80 ? '#C41E3A' : '#3A5F4B'" stroke-width="8" stroke-linecap="round"
-                    :stroke-dasharray="(systemDetail.memory_percent / 100 * 251.2) + ' 251.2'" stroke-dashoffset="0" transform="rotate(-90 50 50)"/>
-                </svg>
-                <span class="gauge-text stat-value">{{ systemDetail.memory_percent?.toFixed(0) }}%</span>
-              </div>
-              <div class="gauge-label">物理内存</div>
-              <div class="gauge-sub">{{ fmtBytes(systemDetail.memory_used) }} / {{ fmtBytes(systemDetail.memory_total) }}</div>
-            </div>
-            <div class="gauge-item">
-              <div class="gauge-ring">
-                <svg viewBox="0 0 100 100">
-                  <circle cx="50" cy="50" r="40" fill="none" stroke="#1e293b" stroke-width="8"/>
-                  <circle cx="50" cy="50" r="40" fill="none" stroke="#5B4B8C" stroke-width="8" stroke-linecap="round"
-                    :stroke-dasharray="((systemDetail.swap_percent || 0) / 100 * 251.2) + ' 251.2'" stroke-dashoffset="0" transform="rotate(-90 50 50)"/>
-                </svg>
-                <span class="gauge-text stat-value">{{ (systemDetail.swap_percent || 0).toFixed(0) }}%</span>
-              </div>
-              <div class="gauge-label">Swap</div>
-              <div class="gauge-sub">{{ fmtBytes(systemDetail.swap_used) }} / {{ fmtBytes(systemDetail.swap_total) }}</div>
+      <WorkspacePaneLayout v-if="systemDetail">
+        <template #main>
+          <div class="tech-card sys-info-card">
+            <div class="sys-info-title">服务器概况</div>
+            <div class="sys-info-items">
+              <div class="sys-info-row"><span class="sys-label">运行时长</span><span class="stat-value">{{ uptime }}</span></div>
+              <div class="sys-info-row"><span class="sys-label">CPU核心</span><span class="stat-value">{{ systemDetail.cpu_count_physical || '-' }}核 {{ systemDetail.cpu_count }}线程</span></div>
+              <div class="sys-info-row"><span class="sys-label">系统负载</span><span class="stat-value">{{ (systemDetail.load_avg || []).map(v => v.toFixed(2)).join(' / ') }}</span></div>
+              <div class="sys-info-row"><span class="sys-label">网络上传</span><span class="stat-value" style="color: #2E8B57">{{ fmtSpeed(networkSpeed.sent) }}</span></div>
+              <div class="sys-info-row"><span class="sys-label">网络下载</span><span class="stat-value" style="color: #3A5F4B">{{ fmtSpeed(networkSpeed.recv) }}</span></div>
             </div>
           </div>
-        </div>
 
-        <!-- 磁盘 -->
-        <div class="tech-card disk-card">
-          <div class="card-title">磁盘</div>
-          <div class="disk-list">
-            <div v-for="d in (systemDetail.disks || [])" :key="d.mountpoint" class="disk-item">
-              <div class="disk-header">
-                <span class="disk-mount">{{ d.mountpoint }}</span>
-                <span class="disk-usage stat-value">{{ d.percent }}%</span>
+          <div class="tech-card disk-card">
+            <div class="card-title">磁盘</div>
+            <div class="disk-list">
+              <div v-for="d in (systemDetail.disks || [])" :key="d.mountpoint" class="disk-item">
+                <div class="disk-header">
+                  <span class="disk-mount">{{ d.mountpoint }}</span>
+                  <span class="disk-usage stat-value">{{ d.percent }}%</span>
+                </div>
+                <div class="progress-bar" style="height: 6px; margin-top: 4px">
+                  <div class="progress-bar__fill" :style="{ width: d.percent + '%', background: d.percent > 90 ? '#C41E3A' : d.percent > 70 ? '#B8860B' : '#3A5F4B' }"></div>
+                </div>
+                <div class="disk-detail">{{ fmtBytes(d.used) }} / {{ fmtBytes(d.total) }} ({{ d.fstype }})</div>
               </div>
-              <div class="progress-bar" style="height: 6px; margin-top: 4px">
-                <div class="progress-bar__fill" :style="{ width: d.percent + '%', background: d.percent > 90 ? '#C41E3A' : d.percent > 70 ? '#B8860B' : '#3A5F4B' }"></div>
-              </div>
-              <div class="disk-detail">{{ fmtBytes(d.used) }} / {{ fmtBytes(d.total) }} ({{ d.fstype }})</div>
             </div>
           </div>
-        </div>
-      </div>
+        </template>
+
+        <template #side>
+          <div class="tech-card">
+            <div class="card-title">CPU 使用率 <span class="stat-value" :style="{ color: systemDetail.cpu_percent > 80 ? '#C41E3A' : '#3A5F4B' }">{{ systemDetail.cpu_percent?.toFixed(1) }}%</span></div>
+            <v-chart :option="cpuCoreOption" style="height: 200px" autoresize />
+          </div>
+
+          <div class="tech-card">
+            <div class="card-title">内存</div>
+            <div class="gauge-row">
+              <div class="gauge-item">
+                <div class="gauge-ring">
+                  <svg viewBox="0 0 100 100">
+                    <circle cx="50" cy="50" r="40" fill="none" stroke="#1e293b" stroke-width="8"/>
+                    <circle cx="50" cy="50" r="40" fill="none" :stroke="systemDetail.memory_percent > 80 ? '#C41E3A' : '#3A5F4B'" stroke-width="8" stroke-linecap="round"
+                      :stroke-dasharray="(systemDetail.memory_percent / 100 * 251.2) + ' 251.2'" stroke-dashoffset="0" transform="rotate(-90 50 50)"/>
+                  </svg>
+                  <span class="gauge-text stat-value">{{ systemDetail.memory_percent?.toFixed(0) }}%</span>
+                </div>
+                <div class="gauge-label">物理内存</div>
+                <div class="gauge-sub">{{ fmtBytes(systemDetail.memory_used) }} / {{ fmtBytes(systemDetail.memory_total) }}</div>
+              </div>
+              <div class="gauge-item">
+                <div class="gauge-ring">
+                  <svg viewBox="0 0 100 100">
+                    <circle cx="50" cy="50" r="40" fill="none" stroke="#1e293b" stroke-width="8"/>
+                    <circle cx="50" cy="50" r="40" fill="none" stroke="#5B4B8C" stroke-width="8" stroke-linecap="round"
+                      :stroke-dasharray="((systemDetail.swap_percent || 0) / 100 * 251.2) + ' 251.2'" stroke-dashoffset="0" transform="rotate(-90 50 50)"/>
+                  </svg>
+                  <span class="gauge-text stat-value">{{ (systemDetail.swap_percent || 0).toFixed(0) }}%</span>
+                </div>
+                <div class="gauge-label">Swap</div>
+                <div class="gauge-sub">{{ fmtBytes(systemDetail.swap_used) }} / {{ fmtBytes(systemDetail.swap_total) }}</div>
+              </div>
+            </div>
+          </div>
+        </template>
+      </WorkspacePaneLayout>
       <div v-else class="empty-state">系统数据加载中...</div>
     </div>
 
@@ -510,131 +524,144 @@ onUnmounted(() => {
 
     <!-- ========== Tab: 任务时间线 ========== -->
     <div v-if="activeTab === 'timeline'" class="tab-content">
-      <div class="timeline-controls">
-        <span style="color: var(--text-secondary)">时间范围:</span>
-        <button v-for="h in [1, 6, 24, 72]" :key="h" class="btn-tech btn-sm" :class="{ 'btn-tech--active': timelineHours === h }"
-          @click="timelineHours = h; loadTimeline()">{{ h >= 24 ? (h/24) + '天' : h + '小时' }}</button>
-      </div>
-      <div class="tech-card" v-if="timelineOption">
-        <div class="card-title">GPU任务占用时间线</div>
-        <v-chart :option="timelineOption" style="height: 400px" autoresize />
-      </div>
-      <div v-else class="empty-state">
-        <div class="empty-icon">时</div>
-        <div>暂无任务历史记录</div>
-        <div class="text-sm" style="color: var(--text-muted)">系统启动后会自动追踪GPU进程的生命周期</div>
-      </div>
-      <!-- 时间线表格 -->
-      <div class="tech-card" v-if="taskTimeline.length" style="margin-top: 16px">
-        <div class="card-title">历史记录 <span style="color: var(--text-muted); font-size: 0.75rem">({{ taskTimeline.length }} 条)</span></div>
-        <div class="table-wrap">
-          <table class="data-table">
-            <thead>
-              <tr><th>用户</th><th>PID</th><th>GPU</th><th>命令</th><th>显存</th><th>开始</th><th>时长</th><th>状态</th></tr>
-            </thead>
-            <tbody>
-              <tr v-for="t in taskTimeline.slice(0, 30)" :key="t.id">
-                <td>{{ t.username }}</td>
-                <td class="stat-value">{{ t.pid }}</td>
-                <td><span class="proc-gpu">GPU{{ t.gpu_index }}</span></td>
-                <td class="proc-cmd-cell" :title="t.command">{{ t.command }}</td>
-                <td class="stat-value">{{ fmtBytes(t.gpu_memory_used) }}</td>
-                <td>{{ fmtTime(t.first_seen) }}</td>
-                <td class="stat-value">{{ fmtDuration(t.last_seen - t.first_seen) }}</td>
-                <td><span :class="t.is_active ? 'status-badge status-badge--ok' : 'status-badge'">{{ t.is_active ? '运行中' : '已结束' }}</span></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <WorkspacePaneLayout>
+        <template #main>
+          <div class="timeline-controls">
+            <span style="color: var(--text-secondary)">时间范围:</span>
+            <button v-for="h in [1, 6, 24, 72]" :key="h" class="btn-tech btn-sm" :class="{ 'btn-tech--active': timelineHours === h }"
+              @click="timelineHours = h; loadTimeline()">{{ h >= 24 ? (h/24) + '天' : h + '小时' }}</button>
+          </div>
+          <div class="tech-card" v-if="timelineOption">
+            <div class="card-title">GPU任务占用时间线</div>
+            <v-chart :option="timelineOption" style="height: 400px" autoresize />
+          </div>
+          <div v-else class="empty-state">
+            <div class="empty-icon">时</div>
+            <div>暂无任务历史记录</div>
+            <div class="text-sm" style="color: var(--text-muted)">系统启动后会自动追踪GPU进程的生命周期</div>
+          </div>
+        </template>
+
+        <template #side>
+          <div class="tech-card">
+            <div class="card-title">时间线台账 <span style="color: var(--text-muted); font-size: 0.75rem">({{ taskTimeline.length }} 条)</span></div>
+            <div v-if="taskTimeline.length" class="table-wrap panel-scroll">
+              <table class="data-table">
+                <thead>
+                  <tr><th>用户</th><th>PID</th><th>GPU</th><th>命令</th><th>显存</th><th>开始</th><th>时长</th><th>状态</th></tr>
+                </thead>
+                <tbody>
+                  <tr v-for="t in taskTimeline.slice(0, 30)" :key="t.id">
+                    <td>{{ t.username }}</td>
+                    <td class="stat-value">{{ t.pid }}</td>
+                    <td><span class="proc-gpu">GPU{{ t.gpu_index }}</span></td>
+                    <td class="proc-cmd-cell" :title="t.command">{{ t.command }}</td>
+                    <td class="stat-value">{{ fmtBytes(t.gpu_memory_used) }}</td>
+                    <td>{{ fmtTime(t.first_seen) }}</td>
+                    <td class="stat-value">{{ fmtDuration(t.last_seen - t.first_seen) }}</td>
+                    <td><span :class="t.is_active ? 'status-badge status-badge--ok' : 'status-badge'">{{ t.is_active ? '运行中' : '已结束' }}</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div v-else class="empty-state empty-state--compact">时间线明细会在这里持续累积。</div>
+          </div>
+        </template>
+      </WorkspacePaneLayout>
     </div>
 
     <div v-if="activeTab === 'replay'" class="tab-content">
-      <div class="timeline-controls">
-        <span style="color: var(--text-secondary)">回放窗口:</span>
-        <button
-          v-for="h in [6, 24, 72]"
-          :key="`replay-${h}`"
-          class="btn-tech btn-sm"
-          :class="{ 'btn-tech--active': replayHours === h }"
-          @click="replayHours = h; loadReplay()"
-        >
-          {{ h >= 24 ? (h / 24) + '天' : h + '小时' }}
-        </button>
-        <span style="color: var(--text-secondary); margin-left: 8px">粒度:</span>
-        <button
-          v-for="bucket in [5, 10, 15]"
-          :key="`bucket-${bucket}`"
-          class="btn-tech btn-sm"
-          :class="{ 'btn-tech--active': replayBucketMinutes === bucket }"
-          @click="replayBucketMinutes = bucket; loadReplay()"
-        >
-          {{ bucket }} 分钟
-        </button>
-      </div>
-
       <div v-if="replayFrames.length">
-        <div class="tech-card replay-card">
-          <div class="card-title">治理回放轴</div>
-          <input
-            v-model.number="selectedReplayIndex"
-            type="range"
-            min="0"
-            :max="Math.max(replayFrames.length - 1, 0)"
-            class="replay-slider"
-          />
-          <div class="replay-meta" v-if="selectedReplayFrame">
-            <span>时间 {{ fmtTime(selectedReplayFrame.bucket_ts) }}</span>
-            <span>活跃任务 {{ selectedReplayFrame.active_task_count }}</span>
-            <span>告警 {{ selectedReplayFrame.alert_count }}</span>
-            <span>动作 {{ selectedReplayFrame.schedule_action_count }}</span>
-          </div>
-        </div>
-
-        <div class="replay-grid">
-          <div class="tech-card replay-stat">
-            <div class="replay-stat__label">平均功率</div>
-            <div class="replay-stat__value stat-value">{{ selectedReplayFrame?.avg_power?.toFixed(1) || '0.0' }}W</div>
-            <div class="replay-stat__hint">用于复盘该时间桶的整体负载强度</div>
-          </div>
-          <div class="tech-card replay-stat">
-            <div class="replay-stat__label">最高温度</div>
-            <div class="replay-stat__value stat-value">{{ selectedReplayFrame?.max_temp || 0 }}°C</div>
-            <div class="replay-stat__hint">帮助定位热风险是否伴随动作触发</div>
-          </div>
-          <div class="tech-card replay-stat">
-            <div class="replay-stat__label">活跃用户</div>
-            <div class="replay-stat__value stat-value">{{ selectedReplayFrame?.active_user_count || 0 }}</div>
-            <div class="replay-stat__hint">观察资源竞争是否集中到少数用户</div>
-          </div>
-          <div class="tech-card replay-stat">
-            <div class="replay-stat__label">关键告警</div>
-            <div class="replay-stat__value stat-value">{{ selectedReplayFrame?.critical_alert_count || 0 }}</div>
-            <div class="replay-stat__hint">衡量该窗口是否进入高风险区</div>
-          </div>
-        </div>
-
-        <div class="tech-card">
-          <div class="card-title">回放趋势</div>
-          <v-chart :option="replayOption" style="height: 340px" autoresize />
-        </div>
-
-        <div class="tech-card replay-actions" v-if="selectedReplayFrame?.schedule_actions?.length">
-          <div class="card-title">当前时间桶的调度动作</div>
-          <div class="replay-action-list">
-            <div
-              v-for="(item, index) in selectedReplayFrame.schedule_actions"
-              :key="`${selectedReplayFrame.bucket_ts}-${index}`"
-              class="replay-action-item"
-            >
-              <div class="replay-action-item__top">
-                <span>{{ item.action }}</span>
-                <span>{{ item.result || 'unknown' }}</span>
-              </div>
-              <div class="replay-action-item__reason">{{ item.reason }}</div>
+        <WorkspacePaneLayout>
+          <template #main>
+            <div class="timeline-controls">
+              <span style="color: var(--text-secondary)">回放窗口:</span>
+              <button
+                v-for="h in [6, 24, 72]"
+                :key="`replay-${h}`"
+                class="btn-tech btn-sm"
+                :class="{ 'btn-tech--active': replayHours === h }"
+                @click="replayHours = h; loadReplay()"
+              >
+                {{ h >= 24 ? (h / 24) + '天' : h + '小时' }}
+              </button>
+              <span style="color: var(--text-secondary); margin-left: 8px">粒度:</span>
+              <button
+                v-for="bucket in [5, 10, 15]"
+                :key="`bucket-${bucket}`"
+                class="btn-tech btn-sm"
+                :class="{ 'btn-tech--active': replayBucketMinutes === bucket }"
+                @click="replayBucketMinutes = bucket; loadReplay()"
+              >
+                {{ bucket }} 分钟
+              </button>
             </div>
-          </div>
-        </div>
+
+            <div class="tech-card">
+              <div class="card-title">回放趋势</div>
+              <v-chart :option="replayOption" style="height: 340px" autoresize />
+            </div>
+
+            <div class="tech-card replay-actions" v-if="selectedReplayFrame?.schedule_actions?.length">
+              <div class="card-title">当前时间桶的调度动作</div>
+              <div class="replay-action-list">
+                <div
+                  v-for="(item, index) in selectedReplayFrame.schedule_actions"
+                  :key="`${selectedReplayFrame.bucket_ts}-${index}`"
+                  class="replay-action-item"
+                >
+                  <div class="replay-action-item__top">
+                    <span>{{ item.action }}</span>
+                    <span>{{ item.result || 'unknown' }}</span>
+                  </div>
+                  <div class="replay-action-item__reason">{{ item.reason }}</div>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <template #side>
+            <div class="tech-card replay-card">
+              <div class="card-title">治理回放轴</div>
+              <input
+                v-model.number="selectedReplayIndex"
+                type="range"
+                min="0"
+                :max="Math.max(replayFrames.length - 1, 0)"
+                class="replay-slider"
+              />
+              <div class="replay-meta" v-if="selectedReplayFrame">
+                <span>时间 {{ fmtTime(selectedReplayFrame.bucket_ts) }}</span>
+                <span>活跃任务 {{ selectedReplayFrame.active_task_count }}</span>
+                <span>告警 {{ selectedReplayFrame.alert_count }}</span>
+                <span>动作 {{ selectedReplayFrame.schedule_action_count }}</span>
+              </div>
+            </div>
+
+            <div class="replay-grid replay-grid--stacked">
+              <div class="tech-card replay-stat">
+                <div class="replay-stat__label">平均功率</div>
+                <div class="replay-stat__value stat-value">{{ selectedReplayFrame?.avg_power?.toFixed(1) || '0.0' }}W</div>
+                <div class="replay-stat__hint">用于复盘该时间桶的整体负载强度</div>
+              </div>
+              <div class="tech-card replay-stat">
+                <div class="replay-stat__label">最高温度</div>
+                <div class="replay-stat__value stat-value">{{ selectedReplayFrame?.max_temp || 0 }}°C</div>
+                <div class="replay-stat__hint">帮助定位热风险是否伴随动作触发</div>
+              </div>
+              <div class="tech-card replay-stat">
+                <div class="replay-stat__label">活跃用户</div>
+                <div class="replay-stat__value stat-value">{{ selectedReplayFrame?.active_user_count || 0 }}</div>
+                <div class="replay-stat__hint">观察资源竞争是否集中到少数用户</div>
+              </div>
+              <div class="tech-card replay-stat">
+                <div class="replay-stat__label">关键告警</div>
+                <div class="replay-stat__value stat-value">{{ selectedReplayFrame?.critical_alert_count || 0 }}</div>
+                <div class="replay-stat__hint">衡量该窗口是否进入高风险区</div>
+              </div>
+            </div>
+          </template>
+        </WorkspacePaneLayout>
       </div>
       <div v-else class="empty-state">
         <div class="empty-icon">回</div>
@@ -651,39 +678,37 @@ onUnmounted(() => {
   margin: 0 auto;
 }
 
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 20px;
+.monitor-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
 }
 
-.page-header__meta {
-  font-size: 0.78rem;
+.monitor-summary-card {
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(58, 95, 75, 0.08);
+  background: rgba(255, 252, 247, 0.66);
+}
+
+.monitor-summary-card__label {
+  font-size: 0.74rem;
   color: var(--text-muted);
-  letter-spacing: 0.14em;
+  line-height: 1.6;
 }
 
-.tab-bar {
-  display: flex;
-  gap: 6px;
+.monitor-summary-card__value {
+  margin: 6px 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
 }
 
-.tab-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  border-radius: 8px;
-  border: 1px solid var(--border-color);
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: 0.8125rem;
-  cursor: pointer;
-  transition: all 0.2s;
+.monitor-summary-card__hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.7;
 }
-.tab-btn:hover { background: rgba(58, 95, 75, 0.06); color: var(--text-primary); }
-.tab-btn--active { background: rgba(58, 95, 75, 0.12); color: var(--accent-primary); border-color: var(--accent-primary); }
 
 .tab-content { animation: fadeIn 0.2s ease; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
@@ -772,6 +797,11 @@ onUnmounted(() => {
   margin-bottom: 16px;
 }
 
+.replay-grid--stacked {
+  grid-template-columns: 1fr;
+  margin-bottom: 0;
+}
+
 .replay-stat {
   padding: 16px;
 }
@@ -825,22 +855,12 @@ onUnmounted(() => {
 
 /* ===== 空状态 ===== */
 .empty-state { text-align: center; padding: 60px 20px; color: var(--text-secondary); }
+.empty-state--compact { padding: 24px 18px; }
 .empty-icon { font-size: 2.5rem; margin-bottom: 12px; opacity: 0.5; }
 
 @media (max-width: 980px) {
-  .page-header {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 10px;
-  }
-
-  .tab-bar {
-    overflow-x: auto;
-    padding-bottom: 4px;
-  }
-
-  .tab-btn {
-    flex: 0 0 auto;
+  .monitor-summary-grid {
+    grid-template-columns: 1fr;
   }
 
   .replay-grid,
