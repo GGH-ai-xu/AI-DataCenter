@@ -2,6 +2,9 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
 
+const backendHttpTarget = process.env.DEV_BACKEND_URL || 'http://localhost:8000'
+const backendWsTarget = process.env.DEV_BACKEND_WS_URL || 'ws://localhost:8000'
+
 export default defineConfig({
   plugins: [vue(), tailwindcss()],
   build: {
@@ -20,11 +23,11 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: backendHttpTarget,
         changeOrigin: true,
       },
       '/ws': {
-        target: 'ws://localhost:8000',
+        target: backendWsTarget,
         ws: true,
       },
     },

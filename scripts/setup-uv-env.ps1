@@ -26,8 +26,7 @@ if (-not (Test-Path $venvPython)) {
 
 uv pip install --python $venvPython `
   -r (Join-Path $root "backend\requirements.txt") `
-  -r (Join-Path $root "server-agent\requirements.txt") `
-  pyinstaller
+  -r (Join-Path $root "server-agent\requirements.txt")
 if ($LASTEXITCODE -ne 0) {
   throw "uv pip install failed."
 }

@@ -49,3 +49,5 @@ verification.md
 # Runtime logs
 *.log
 runtime/
+.superpowers
+AGENTS.md
