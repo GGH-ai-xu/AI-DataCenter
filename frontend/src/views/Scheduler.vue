@@ -378,18 +378,26 @@ onUnmounted(() => {
       </div>
     </WorkspaceSummary>
 
-    <WorkspaceTabs v-model="activeTab" :items="schedulerTabs" />
+    <div class="workspace-nav-layout">
+      <aside class="workspace-nav-layout__nav">
+        <WorkspaceTabs
+          v-model="activeTab"
+          :items="schedulerTabs"
+          orientation="vertical"
+        />
+      </aside>
 
-    <div
-      v-if="actionNotice"
-      class="sched-notice tech-card"
-      :class="`sched-notice--${actionNotice.tone}`"
-    >
-      <div class="sched-notice__title">{{ actionNotice.title }}</div>
-      <div class="sched-notice__desc">{{ actionNotice.detail }}</div>
-    </div>
+      <section class="workspace-nav-layout__content">
+        <div
+          v-if="actionNotice"
+          class="sched-notice tech-card"
+          :class="`sched-notice--${actionNotice.tone}`"
+        >
+          <div class="sched-notice__title">{{ actionNotice.title }}</div>
+          <div class="sched-notice__desc">{{ actionNotice.detail }}</div>
+        </div>
 
-    <div v-if="activeTab === 'control'" class="sched-grid">
+        <div v-if="activeTab === 'control'" class="sched-grid">
       <!-- 总功率预算 -->
       <div class="tech-card" style="padding: 20px">
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px">
@@ -737,6 +745,8 @@ onUnmounted(() => {
         </div>
         <div v-else class="sched-empty">最近 72 小时还没有调度审计记录。</div>
       </div>
+        </div>
+      </section>
     </div>
   </div>
 </template>

@@ -402,8 +402,16 @@ onUnmounted(()=>{clearInterval(timer);window.removeEventListener('resize',handle
       {{ exportFeedback.text }}
     </section>
 
-    <WorkspaceTabs v-model="activeTab" :items="energyTabs" />
+    <div class="workspace-nav-layout">
+      <aside class="workspace-nav-layout__nav">
+        <WorkspaceTabs
+          v-model="activeTab"
+          :items="energyTabs"
+          orientation="vertical"
+        />
+      </aside>
 
+      <section class="workspace-nav-layout__content">
     <!-- ===== KPI 六宫格 ===== -->
     <div v-if="activeTab === 'overview'" class="kpi-grid si" style="--d:.1s">
       <div class="kpi-ink kpi-ink--hero">
@@ -693,8 +701,10 @@ onUnmounted(()=>{clearInterval(timer);window.removeEventListener('resize',handle
     </div>
 
     <!-- 底部竖排文字装饰 -->
-    <div class="ink-footer si" style="--d:.9s">
-      <div class="ink-vert-text">绿色计算 · 智慧能源</div>
+        <div class="ink-footer si" style="--d:.9s">
+          <div class="ink-vert-text">绿色计算 · 智慧能源</div>
+        </div>
+      </section>
     </div>
   </template>
 </div>

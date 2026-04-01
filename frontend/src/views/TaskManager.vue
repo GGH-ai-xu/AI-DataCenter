@@ -417,14 +417,22 @@ onUnmounted(() => {
       </section>
     </WorkspaceSummary>
 
-    <WorkspaceTabs v-model="activeTab" :items="taskTabs" />
+    <div class="workspace-nav-layout">
+      <aside class="workspace-nav-layout__nav">
+        <WorkspaceTabs
+          v-model="activeTab"
+          :items="taskTabs"
+          orientation="vertical"
+        />
+      </aside>
 
-    <div v-if="actionNotice" class="tech-card notice" :class="`notice--${actionNotice.tone}`">
-      <div class="notice__title">{{ actionNotice.title }}</div>
-      <div class="notice__detail">{{ actionNotice.detail }}</div>
-    </div>
+      <section class="workspace-nav-layout__content">
+        <div v-if="actionNotice" class="tech-card notice" :class="`notice--${actionNotice.tone}`">
+          <div class="notice__title">{{ actionNotice.title }}</div>
+          <div class="notice__detail">{{ actionNotice.detail }}</div>
+        </div>
 
-    <section v-if="activeTab === 'fairness'" class="fairness-dashboard">
+        <section v-if="activeTab === 'fairness'" class="fairness-dashboard">
       <div class="tech-card fairness-gauge-card">
         <div class="fairness-gauge-card__head">
           <div>
@@ -699,6 +707,8 @@ onUnmounted(() => {
         </section>
       </template>
     </WorkspacePaneLayout>
+      </section>
+    </div>
   </div>
 </template>
 
@@ -1031,17 +1041,17 @@ onUnmounted(() => {
 }
 
 .task-table__reason {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   line-height: 1.5;
   color: var(--text-secondary);
 }
 
 .task-table__command {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   line-height: 1.5;
   color: var(--text-secondary);
 }
@@ -1066,9 +1076,9 @@ onUnmounted(() => {
 .task-table__readonly,
 .task-table__hint {
   margin-top: 8px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   font-size: 0.72rem;
   line-height: 1.6;
   color: var(--text-muted);

@@ -1,4 +1,5 @@
 import unittest
+import re
 from pathlib import Path
 
 
@@ -25,6 +26,35 @@ class FrontendUIStructureTests(unittest.TestCase):
             text = (ROOT / rel).read_text(encoding="utf-8")
             self.assertIn("activeTab", text, rel)
             self.assertIn("WorkspaceTabs", text, rel)
+
+    def test_workspace_tabs_support_vertical_orientation(self):
+        text = (ROOT / "frontend/src/components/workspace/WorkspaceTabs.vue").read_text(encoding="utf-8")
+
+        self.assertIn("orientation", text)
+        self.assertIn("workspace-tabs--vertical", text)
+
+    def test_workbench_pages_use_left_nav_layout(self):
+        for rel in [
+            "frontend/src/views/Dashboard.vue",
+            "frontend/src/views/Scheduler.vue",
+            "frontend/src/views/MonitorCenter.vue",
+            "frontend/src/views/TaskManager.vue",
+            "frontend/src/views/EnergyOptimization.vue",
+            "frontend/src/views/AIAssistant.vue",
+        ]:
+            text = (ROOT / rel).read_text(encoding="utf-8")
+            self.assertIn("workspace-nav-layout", text, rel)
+            self.assertIn("workspace-nav-layout__nav", text, rel)
+            self.assertIn("workspace-nav-layout__content", text, rel)
+            self.assertIn('orientation="vertical"', text, rel)
+
+    def test_shared_style_defines_sticky_workbench_nav(self):
+        text = (ROOT / "frontend/src/style.css").read_text(encoding="utf-8")
+
+        self.assertIn(".workspace-nav-layout", text)
+        self.assertIn(".workspace-nav-layout__nav", text)
+        self.assertIn("position: sticky", text)
+        self.assertIn(".workspace-tabs--vertical", text)
 
     def test_monitor_and_alert_views_use_shared_shell(self):
         for rel in [
@@ -65,6 +95,29 @@ class FrontendUIStructureTests(unittest.TestCase):
         self.assertNotIn("执行真实动作", text)
         self.assertNotIn("controlMode === 'real'", text)
         self.assertNotIn("将执行真实治理动作", text)
+
+    def test_monitor_center_cards_define_own_padding(self):
+        text = (ROOT / "frontend/src/views/MonitorCenter.vue").read_text(encoding="utf-8")
+
+        for cls in [
+            "sys-info-card",
+            "disk-card",
+            "resource-card",
+            "training-card",
+            "user-card",
+            "timeline-chart-card",
+            "timeline-ledger-card",
+        ]:
+            self.assertRegex(text, rf"\.{cls}\s*\{{[^}}]*padding:", cls)
+
+    def test_views_do_not_use_ellipsis_to_hide_text(self):
+        for rel in [
+            "frontend/src/views/MonitorCenter.vue",
+            "frontend/src/views/TaskManager.vue",
+            "frontend/src/views/Dashboard.vue",
+        ]:
+            text = (ROOT / rel).read_text(encoding="utf-8")
+            self.assertNotIn("text-overflow: ellipsis", text, rel)
 
 
 if __name__ == "__main__":

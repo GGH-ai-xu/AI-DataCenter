@@ -381,8 +381,16 @@ onMounted(() => {
       </template>
     </WorkspaceSummary>
 
-    <WorkspaceTabs v-model="activeTab" :items="assistantTabs" />
+    <div class="workspace-nav-layout">
+      <aside class="workspace-nav-layout__nav">
+        <WorkspaceTabs
+          v-model="activeTab"
+          :items="assistantTabs"
+          orientation="vertical"
+        />
+      </aside>
 
+      <section class="workspace-nav-layout__content">
     <aside v-if="activeTab === 'model'" class="ai-config tech-card">
         <div class="ai-config__head">
           <div>
@@ -688,6 +696,8 @@ onMounted(() => {
             </button>
           </div>
     </section>
+      </section>
+    </div>
   </div>
 </template>
 

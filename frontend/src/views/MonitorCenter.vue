@@ -201,7 +201,7 @@ const timelineOption = computed(() => {
       axisLabel: { color: '#999999', formatter: (v) => new Date(v).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) },
       axisLine: { lineStyle: { color: '#1e293b' } }, splitLine: { lineStyle: { color: '#1e293b' } },
     },
-    yAxis: { type: 'category', data: categories, axisLabel: { color: '#666666', fontSize: 11, width: 150, overflow: 'truncate' }, axisLine: { lineStyle: { color: '#1e293b' } } },
+    yAxis: { type: 'category', data: categories, axisLabel: { color: '#666666', fontSize: 11, width: 150, overflow: 'break' }, axisLine: { lineStyle: { color: '#1e293b' } } },
     series: [{
       type: 'custom',
       renderItem: (params, api) => {
@@ -275,8 +275,16 @@ onUnmounted(() => {
       </div>
     </WorkspaceSummary>
 
-    <WorkspaceTabs v-model="activeTab" :items="monitorTabs" />
+    <div class="workspace-nav-layout">
+      <aside class="workspace-nav-layout__nav">
+        <WorkspaceTabs
+          v-model="activeTab"
+          :items="monitorTabs"
+          orientation="vertical"
+        />
+      </aside>
 
+      <section class="workspace-nav-layout__content">
     <!-- ========== Tab: 系统全貌 ========== -->
     <div v-if="activeTab === 'system'" class="tab-content">
       <WorkspacePaneLayout v-if="systemDetail">
@@ -310,12 +318,12 @@ onUnmounted(() => {
         </template>
 
         <template #side>
-          <div class="tech-card">
+          <div class="tech-card resource-card">
             <div class="card-title">CPU 使用率 <span class="stat-value" :style="{ color: systemDetail.cpu_percent > 80 ? '#C41E3A' : '#3A5F4B' }">{{ systemDetail.cpu_percent?.toFixed(1) }}%</span></div>
             <v-chart :option="cpuCoreOption" style="height: 200px" autoresize />
           </div>
 
-          <div class="tech-card">
+          <div class="tech-card resource-card">
             <div class="card-title">内存</div>
             <div class="gauge-row">
               <div class="gauge-item">
@@ -436,7 +444,7 @@ onUnmounted(() => {
             <button v-for="h in [1, 6, 24, 72]" :key="h" class="btn-tech btn-sm" :class="{ 'btn-tech--active': timelineHours === h }"
               @click="timelineHours = h; loadTimeline()">{{ h >= 24 ? (h/24) + '天' : h + '小时' }}</button>
           </div>
-          <div class="tech-card" v-if="timelineOption">
+          <div class="tech-card timeline-chart-card" v-if="timelineOption">
             <div class="card-title">GPU任务占用时间线</div>
             <v-chart :option="timelineOption" style="height: 400px" autoresize />
           </div>
@@ -448,7 +456,7 @@ onUnmounted(() => {
         </template>
 
         <template #side>
-          <div class="tech-card">
+          <div class="tech-card timeline-ledger-card">
             <div class="card-title">时间线台账 <span style="color: var(--text-muted); font-size: 0.75rem">({{ taskTimeline.length }} 条)</span></div>
             <div v-if="taskTimeline.length" class="table-wrap panel-scroll">
               <table class="data-table">
@@ -473,6 +481,8 @@ onUnmounted(() => {
           </div>
         </template>
       </WorkspacePaneLayout>
+    </div>
+      </section>
     </div>
 
   </div>
@@ -521,7 +531,7 @@ onUnmounted(() => {
 
 /* ===== 系统全貌 ===== */
 .sys-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.sys-info-card { grid-column: 1; }
+.sys-info-card { grid-column: 1; padding: 18px 20px; }
 .sys-info-title { font-size: 0.875rem; font-weight: 600; color: var(--accent-primary); margin-bottom: 12px; }
 .sys-info-items { display: flex; flex-direction: column; gap: 10px; }
 .sys-info-row { display: flex; justify-content: space-between; align-items: center; }
@@ -536,7 +546,8 @@ onUnmounted(() => {
 .gauge-label { font-size: 0.8125rem; color: var(--text-secondary); }
 .gauge-sub { font-size: 0.6875rem; color: var(--text-muted); margin-top: 2px; }
 
-.disk-card { grid-column: 1 / -1; }
+.disk-card { grid-column: 1 / -1; padding: 18px 20px; }
+.resource-card { padding: 18px 20px; }
 .disk-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
 .disk-item { padding: 10px; border-radius: 8px; background: rgba(255, 255, 255, 0.6); }
 .disk-header { display: flex; justify-content: space-between; }
@@ -545,7 +556,7 @@ onUnmounted(() => {
 .disk-detail { font-size: 0.6875rem; color: var(--text-muted); margin-top: 4px; }
 
 /* ===== 训练进度 ===== */
-.training-card { margin-bottom: 16px; }
+.training-card { margin-bottom: 16px; padding: 18px 20px; }
 .training-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
 .training-user { font-weight: 600; color: var(--accent-primary); margin-right: 8px; }
 .training-cmd { color: var(--text-secondary); font-size: 0.8125rem; font-family: 'JetBrains Mono', monospace; }
@@ -558,7 +569,7 @@ onUnmounted(() => {
 
 /* ===== 用户统计 ===== */
 .user-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 16px; }
-.user-card { }
+.user-card { padding: 18px 20px; }
 .user-header { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
 .user-avatar { width: 40px; height: 40px; border-radius: 10px; background: var(--gradient-blue); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.125rem; color: white; }
 .user-name { font-weight: 600; font-size: 1rem; }
@@ -567,13 +578,15 @@ onUnmounted(() => {
 .user-stat { }
 .user-stat-label { font-size: 0.6875rem; color: var(--text-muted); margin-bottom: 2px; }
 .user-procs { display: flex; flex-direction: column; gap: 6px; }
-.user-proc-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; background: rgba(255, 255, 255, 0.6); font-size: 0.75rem; }
+.user-proc-item { display: flex; align-items: flex-start; gap: 8px; padding: 6px 8px; border-radius: 6px; background: rgba(255, 255, 255, 0.6); font-size: 0.75rem; }
 .proc-gpu { background: rgba(58, 95, 75, 0.15); color: var(--accent-primary); padding: 2px 6px; border-radius: 4px; font-size: 0.6875rem; font-weight: 600; white-space: nowrap; }
-.proc-cmd { color: var(--text-secondary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'JetBrains Mono', monospace; }
+.proc-cmd { color: var(--text-secondary); flex: 1; min-width: 0; white-space: normal; overflow-wrap: anywhere; word-break: break-word; font-family: 'JetBrains Mono', monospace; line-height: 1.6; }
 .proc-mem { color: var(--accent-primary); font-weight: 500; white-space: nowrap; }
 .proc-time { color: var(--text-muted); white-space: nowrap; }
 
 /* ===== 时间线 ===== */
+.timeline-chart-card { padding: 18px 20px; }
+.timeline-ledger-card { padding: 18px 20px; }
 .timeline-controls { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
 .btn-sm { padding: 4px 12px; font-size: 0.75rem; }
 .btn-tech--active { background: rgba(58, 95, 75, 0.15); color: var(--accent-primary); border-color: var(--accent-primary); }
@@ -583,7 +596,7 @@ onUnmounted(() => {
 .data-table th { text-align: left; padding: 8px 12px; color: var(--text-muted); font-weight: 500; border-bottom: 1px solid var(--border-color); }
 .data-table td { padding: 8px 12px; border-bottom: 1px solid rgba(30, 41, 59, 0.5); }
 .data-table tr:hover td { background: rgba(58, 95, 75, 0.03); }
-.proc-cmd-cell { max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'JetBrains Mono', monospace; color: var(--text-secondary); font-size: 0.75rem; }
+.proc-cmd-cell { max-width: 250px; white-space: normal; overflow-wrap: anywhere; word-break: break-word; font-family: 'JetBrains Mono', monospace; color: var(--text-secondary); font-size: 0.75rem; line-height: 1.6; }
 
 /* ===== 空状态 ===== */
 .empty-state { text-align: center; padding: 60px 20px; color: var(--text-secondary); }

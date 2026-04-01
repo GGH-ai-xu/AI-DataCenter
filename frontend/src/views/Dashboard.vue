@@ -1047,8 +1047,16 @@ onUnmounted(() => {
       </template>
     </WorkspaceSummary>
 
-    <WorkspaceTabs v-model="activeTab" :items="dashboardTabs" />
+    <div class="workspace-nav-layout">
+      <aside class="workspace-nav-layout__nav">
+        <WorkspaceTabs
+          v-model="activeTab"
+          :items="dashboardTabs"
+          orientation="vertical"
+        />
+      </aside>
 
+      <section class="workspace-nav-layout__content">
     <template v-if="activeTab === 'access'">
     <section class="connection-panel tech-card">
       <div class="connection-panel__head">
@@ -1747,6 +1755,8 @@ onUnmounted(() => {
     </div>
 
     </template>
+      </section>
+    </div>
   </div>
 </template>
 
@@ -2966,15 +2976,18 @@ onUnmounted(() => {
 
 .gpu-card__header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
+  gap: 12px;
   margin-bottom: 16px;
 }
 
 .gpu-card__id {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
+  min-width: 0;
 }
 
 .gpu-card__badge {
@@ -2990,10 +3003,11 @@ onUnmounted(() => {
 .gpu-card__name {
   font-size: 0.75rem;
   color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 150px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.5;
+  max-width: 220px;
 }
 
 .gpu-card__metrics {
