@@ -10,11 +10,6 @@ frontend/dist/
 *.egg-info/
 dist/
 build/
-!desktop-shell/build/
-!desktop-shell/build/.gitkeep
-!desktop-shell/build/icon.ico
-!desktop-shell/build/icon.png
-
 # Data
 backend/data/
 *.db
@@ -51,4 +46,9 @@ verification.md
 runtime/
 .superpowers
 AGENTS.md
-desktop-shell
+desktop-shell/*
+!desktop-shell/build/
+!desktop-shell/build/.gitkeep
+!desktop-shell/build/icon.ico
+!desktop-shell/build/icon.png
+!desktop-shell/devSessionBinding.js
