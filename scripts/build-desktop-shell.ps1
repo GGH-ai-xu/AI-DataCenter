@@ -10,10 +10,11 @@ $desktopShellDir = Join-Path $root "desktop-shell"
 $windowsPackageDir = Join-Path $root "dist\windows-package"
 $windowsAppDir = Join-Path $windowsPackageDir "app"
 $distPyInstallerDir = Join-Path $root "dist\pyinstaller"
-$buildSpecDir = Join-Path $root "build\pyinstaller"
-$backendSpec = Join-Path $buildSpecDir "GPUGovernanceBackend.spec"
-$agentSpec = Join-Path $buildSpecDir "GPUServerAgent.spec"
-$launcherSpec = Join-Path $buildSpecDir "GPUGovernanceWorkbench.spec"
+$pyInstallerWorkDir = Join-Path $root "build"
+$pyInstallerSpecDir = Join-Path $root "build\pyinstaller"
+$backendSpec = Join-Path $pyInstallerSpecDir "GPUGovernanceBackend.spec"
+$agentSpec = Join-Path $pyInstallerSpecDir "GPUServerAgent.spec"
+$launcherSpec = Join-Path $pyInstallerSpecDir "GPUGovernanceWorkbench.spec"
 $defaultElectronMirror = "https://npmmirror.com/mirrors/electron/"
 $venvPython = Join-Path $root ".venv\Scripts\python.exe"
 
@@ -74,6 +75,20 @@ function Sync-Directory {
   Copy-Item -Recurse -Force $Source $Target
 }
 
+function Reset-BuildTarget {
+  param([string]$Name)
+
+  foreach ($dir in @(
+    (Join-Path $pyInstallerWorkDir $Name),
+    (Join-Path $distPyInstallerDir $Name),
+    (Join-Path (Join-Path $root "dist") $Name)
+  )) {
+    if (Test-Path $dir) {
+      Remove-Item -Recurse -Force $dir
+    }
+  }
+}
+
 Ensure-Command "npm"
 Ensure-Command $PythonExe
 
@@ -86,14 +101,18 @@ Write-Host "Electron binary mirror: $($env:ELECTRON_MIRROR)"
 
 Run-Step -Title "Build frontend" -Workdir $frontendDir -CommandArgs @("npm", "run", "build")
 
+Reset-BuildTarget -Name "GPUGovernanceBackend"
+Reset-BuildTarget -Name "GPUServerAgent"
+Reset-BuildTarget -Name "GPUGovernanceWorkbench"
+
 Run-Step -Title "Build backend runtime" -Workdir $root -CommandArgs @(
-  $PythonExe, "-m", "PyInstaller", "--noconfirm", $backendSpec
+  $PythonExe, "-m", "PyInstaller", "--clean", "--noconfirm", "--distpath", $distPyInstallerDir, "--workpath", $pyInstallerWorkDir, $backendSpec
 )
 Run-Step -Title "Build agent runtime" -Workdir $root -CommandArgs @(
-  $PythonExe, "-m", "PyInstaller", "--noconfirm", $agentSpec
+  $PythonExe, "-m", "PyInstaller", "--clean", "--noconfirm", "--distpath", $distPyInstallerDir, "--workpath", $pyInstallerWorkDir, $agentSpec
 )
 Run-Step -Title "Build launcher runtime" -Workdir $root -CommandArgs @(
-  $PythonExe, "-m", "PyInstaller", "--noconfirm", $launcherSpec
+  $PythonExe, "-m", "PyInstaller", "--clean", "--noconfirm", "--distpath", $distPyInstallerDir, "--workpath", $pyInstallerWorkDir, $launcherSpec
 )
 
 New-Item -ItemType Directory -Force -Path $windowsAppDir | Out-Null

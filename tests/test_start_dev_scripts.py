@@ -150,6 +150,17 @@ class StartDevScriptTests(unittest.TestCase):
         self.assertIn("npmmirror.com/mirrors/electron/", script)
         self.assertIn("Desktop shell dependencies installed.", script)
 
+    def test_build_desktop_shell_cleans_pyinstaller_runtime_cache(self):
+        script = (ROOT / "scripts" / "build-desktop-shell.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("function Reset-BuildTarget", script)
+        self.assertIn('Reset-BuildTarget -Name "GPUGovernanceBackend"', script)
+        self.assertIn('Reset-BuildTarget -Name "GPUServerAgent"', script)
+        self.assertIn('Reset-BuildTarget -Name "GPUGovernanceWorkbench"', script)
+        self.assertIn('"PyInstaller", "--clean", "--noconfirm"', script)
+        self.assertIn('"--distpath", $distPyInstallerDir', script)
+        self.assertIn('"--workpath", $pyInstallerWorkDir', script)
+
     def test_vite_config_reads_dynamic_proxy_targets(self):
         config = (ROOT / "frontend" / "vite.config.js").read_text(encoding="utf-8")
 
