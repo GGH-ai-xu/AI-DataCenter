@@ -294,7 +294,7 @@ function Register-ManagedServiceShutdown {
     return
   }
 
-  $null = Register-EngineEvent -SourceIdentifier "$($script:EventSourcePrefix).shutdown" -Action {
+  $null = Register-EngineEvent -SourceIdentifier PowerShell.Exiting -Action {
     Stop-ManagedServiceProcesses
   }
 

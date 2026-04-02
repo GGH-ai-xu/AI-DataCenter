@@ -2,6 +2,7 @@ param()
 
 $ErrorActionPreference = "Stop"
 . "$PSScriptRoot\dev-launch-helpers.ps1"
+. "$PSScriptRoot\electron-dev-session.ps1"
 Initialize-ConsoleEncoding
 
 $root = Split-Path -Parent $PSScriptRoot
@@ -15,50 +16,6 @@ $agentDir = Join-Path $root "server-agent"
 $backendDir = Join-Path $root "backend"
 $frontendDir = Join-Path $root "frontend"
 $desktopShellDir = Join-Path $root "desktop-shell"
-
-function Start-DesktopShellProcess {
-  param([hashtable]$LaunchSpec)
-
-  $cmdStatements = @(
-    "set ""DESKTOP_DEV_SERVER_URL=$($LaunchSpec.ServerUrl)""",
-    "set ""DESKTOP_DEV_BACKEND_URL=$($LaunchSpec.BackendUrl)""",
-    "set ""DESKTOP_DEV_AGENT_URL=$($LaunchSpec.AgentUrl)""",
-    ('start "" /d "{0}" "{1}" .' -f $LaunchSpec.Workdir, $LaunchSpec.LauncherPath)
-  )
-
-  Start-Process cmd.exe -WindowStyle Hidden -ArgumentList @(
-    "/d",
-    "/c",
-    ($cmdStatements -join " && ")
-  ) | Out-Null
-}
-
-function Prepare-ElectronDevLauncher {
-  param(
-    [string]$NodePath,
-    [string]$ScriptPath
-  )
-
-  $launcherPath = & $NodePath $ScriptPath
-  if ($LASTEXITCODE -ne 0) {
-    throw "Failed to prepare Electron dev launcher."
-  }
-
-  $resolved = $launcherPath.Trim()
-  if (-not $resolved) {
-    throw "Electron dev launcher path is empty."
-  }
-
-  if (-not (Test-Path $resolved)) {
-    throw "Electron dev launcher not found: $resolved"
-  }
-
-  if ((Split-Path -Leaf $resolved) -ne $desktopShellLauncherName) {
-    throw "Unexpected Electron dev launcher name: $resolved"
-  }
-
-  return $resolved
-}
 
 if (-not (Test-Path $pythonExe)) {
   throw "Python virtual environment not found: $pythonExe. Run install-deps.bat first."
@@ -90,9 +47,18 @@ if (-not $nodeCmd) {
   throw "node not found. Please install Node.js first."
 }
 
+$desktopBootstrapProcess = $null
+$desktopProcess = $null
+$desktopSessionFile = $null
+
 $pythonExe = (Resolve-Path $pythonExe).Path
 $npmCliPath = Resolve-NpmCliPath -NodePath $nodeCmd
-$desktopLauncherExe = Prepare-ElectronDevLauncher -NodePath $nodeCmd -ScriptPath $desktopShellLauncherPrep
+$desktopLauncherExe = Prepare-ElectronDevLauncher -NodePath $nodeCmd -ScriptPath $desktopShellLauncherPrep -ExpectedLauncherName $desktopShellLauncherName
+$existingDesktopProcess = Get-RunningDesktopShellRootProcess -LauncherPath $desktopLauncherExe
+while ($existingDesktopProcess) {
+  Stop-OrphanedDesktopShellSession -DesktopRootProcess $existingDesktopProcess -RepoRoot $root
+  $existingDesktopProcess = Get-RunningDesktopShellRootProcess -LauncherPath $desktopLauncherExe
+}
 $agentPort = Get-FreePort
 $backendPort = Get-FreePort
 while ($backendPort -eq $agentPort) {
@@ -154,12 +120,32 @@ Wait-HttpReady -Name "Frontend" -Url $frontendUrl -Port $frontendPort -LaunchCom
 
 Write-ServiceLog -ServiceName "Launcher" -Message "Desktop shell launcher: $desktopLauncherExe"
 Write-ServiceLog -ServiceName "Launcher" -Message "GPU Desktop Shell: launching direct runtime process"
-Start-DesktopShellProcess -LaunchSpec @{
+$desktopSessionFile = New-DesktopDevSessionFilePath
+$desktopBootstrapProcess = Start-DesktopShellProcess -LaunchSpec @{
   Workdir = $desktopShellDir
   LauncherPath = $desktopLauncherExe
   ServerUrl = $frontendUrl
   BackendUrl = $backendUrl
   AgentUrl = $agentUrl
+  SessionFile = $desktopSessionFile
+  LauncherPid = $PID
+}
+$desktopSessionInfo = Wait-DesktopDevSessionInfo -SessionFile $desktopSessionFile
+if (-not $desktopSessionInfo) {
+  $desktopBootstrapProcess.WaitForExit()
+  throw "Desktop shell session file was not written. Bootstrap exit code: $($desktopBootstrapProcess.ExitCode)"
+}
+$desktopRootPid = [int]$desktopSessionInfo.pid
+Write-ServiceLog -ServiceName "Launcher" -Message "Desktop shell root process: $desktopRootPid"
+$desktopProcess = [System.Diagnostics.Process]::GetProcessById($desktopRootPid)
+$null = Register-EngineEvent -SourceIdentifier PowerShell.Exiting -Action {
+  & taskkill /PID $event.MessageData.DesktopPid /T /F *> $null
+  if (Test-Path $event.MessageData.SessionFile) {
+    Remove-Item -Path $event.MessageData.SessionFile -Force -ErrorAction SilentlyContinue
+  }
+} -MessageData @{
+  DesktopPid = $desktopRootPid
+  SessionFile = $desktopSessionFile
 }
 
 Write-ServiceLog -ServiceName "Launcher" -Message "Agent URL: $agentUrl"
@@ -167,6 +153,22 @@ Write-ServiceLog -ServiceName "Launcher" -Message "Backend URL: $backendUrl"
 Write-ServiceLog -ServiceName "Launcher" -Message "Frontend URL: $frontendUrl"
 Write-ServiceLog -ServiceName "Launcher" -Message "Desktop mode: Electron dev shell connected to $frontendUrl"
 
-while ($true) {
-  Start-Sleep -Seconds 1
+$desktopExitCode = 0
+try {
+  $desktopProcess.WaitForExit()
+  $desktopExitCode = $desktopProcess.ExitCode
+  Write-ServiceLog -ServiceName "Launcher" -Message "Desktop shell exited with code $desktopExitCode"
+} finally {
+  Stop-ManagedServiceProcesses
+  if ($null -ne $desktopProcess) {
+    $desktopProcess.Dispose()
+  }
+  if ($null -ne $desktopBootstrapProcess) {
+    $desktopBootstrapProcess.Dispose()
+  }
+  Remove-DesktopDevSessionFile -SessionFile $desktopSessionFile
+}
+
+if ($desktopExitCode -ne 0) {
+  exit $desktopExitCode
 }

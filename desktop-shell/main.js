@@ -6,6 +6,12 @@ const http = require('node:http')
 const net = require('node:net')
 const { spawn } = require('node:child_process')
 const DESKTOP_PACKAGE = require('./package.json')
+const {
+  clearDesktopDevSession,
+  startDesktopDevLauncherWatch,
+  stopDesktopDevLauncherWatch,
+  writeDesktopDevSession,
+} = require('./devSessionBinding')
 
 const APP_ID = 'com.gpu.governance.workbench'
 const APP_TITLE = 'GPU 共享治理平台'
@@ -31,6 +37,7 @@ let ownsBackend = false
 let ownsAgent = false
 let isQuitting = false
 let allowWindowClose = false
+let desktopDevExitForced = false
 let tray = null
 let closeDialogOpen = false
 let backendPort = DEFAULT_BACKEND_PORT
@@ -886,7 +893,15 @@ function showMainWindow() {
   presentWindow(mainWindow)
 }
 
+function supportsTrayCloseFlow() {
+  return !desktopDevModeEnabled()
+}
+
 function ensureTray() {
+  if (!supportsTrayCloseFlow()) {
+    return null
+  }
+
   if (tray && !tray.isDestroyed()) {
     return tray
   }
@@ -967,6 +982,11 @@ function handleMainWindowClose(event) {
 
   event.preventDefault()
 
+  if (!supportsTrayCloseFlow()) {
+    void requestAppShutdown()
+    return
+  }
+
   if (closeDialogOpen) {
     showMainWindow()
     return
@@ -993,6 +1013,19 @@ async function requestAppShutdown() {
     allowWindowClose = true
     app.quit()
   }
+}
+
+function forceDesktopDevShutdownExit(code = 0) {
+  if (!desktopDevModeEnabled() || desktopDevExitForced) {
+    return
+  }
+
+  desktopDevExitForced = true
+  stopDesktopDevLauncherWatch()
+  clearDesktopDevSession()
+  closeSplashWindow()
+  allowWindowClose = true
+  app.exit(code)
 }
 
 ipcMain.handle('desktop-shell:get-app-info', async () => ({
@@ -1664,6 +1697,14 @@ async function createMainWindow() {
   mainWindow.on('close', handleMainWindowClose)
   mainWindow.on('closed', () => {
     mainWindow = null
+    if (!desktopDevModeEnabled()) {
+      return
+    }
+    if (!isQuitting) {
+      void requestAppShutdown()
+      return
+    }
+    forceDesktopDevShutdownExit()
   })
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -1731,6 +1772,15 @@ async function createMainWindow() {
 }
 
 async function launchWorkbench() {
+  if (desktopDevModeEnabled()) {
+    writeDesktopDevSession()
+    startDesktopDevLauncherWatch(() => {
+      if (isQuitting) {
+        return
+      }
+      void requestAppShutdown()
+    })
+  }
   await createSplashWindow()
   emitBootStatus('正在准备桌面环境', 8)
   if (desktopDevModeEnabled()) {
@@ -1763,9 +1813,19 @@ async function showStartupError(error) {
 }
 
 async function launchWorkbenchWithRecovery() {
+  if (isQuitting) {
+    closeSplashWindow()
+    return
+  }
+
   try {
     await launchWorkbench()
   } catch (error) {
+    if (isQuitting || allowWindowClose) {
+      closeSplashWindow()
+      return
+    }
+
     emitBootStatus('启动失败，请检查日志目录', 100)
     await showStartupError(error)
     isQuitting = true
@@ -1787,6 +1847,10 @@ async function bootstrap() {
   }
 
   app.on('second-instance', () => {
+    if (isQuitting) {
+      return
+    }
+
     if (mainWindow && !mainWindow.isDestroyed()) {
       showMainWindow()
       return
@@ -1807,12 +1871,26 @@ async function bootstrap() {
   })
 
   app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
-      void requestAppShutdown()
+    if (process.platform === 'darwin') {
+      return
     }
+    if (desktopDevModeEnabled()) {
+      forceDesktopDevShutdownExit()
+      return
+    }
+    void requestAppShutdown()
+  })
+
+  app.on('will-quit', () => {
+    stopDesktopDevLauncherWatch()
+    clearDesktopDevSession()
   })
 
   app.on('activate', async () => {
+    if (isQuitting) {
+      return
+    }
+
     if (BrowserWindow.getAllWindows().length === 0) {
       await launchWorkbenchWithRecovery()
       return
