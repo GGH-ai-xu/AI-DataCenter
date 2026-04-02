@@ -39,6 +39,8 @@ const {
   taskSummary,
   refreshTaskGovernance,
 } = useTaskManagerData(keyword, selectedPriority, showAllProcesses)
+const normalizedProcesses = computed(() => visibleProcesses.value)
+const processSummary = computed(() => taskSummary.value)
 
 const priorityColors = {
   urgent: { bg: 'rgba(196,30,58,0.12)', color: '#C41E3A', label: '紧急' },
@@ -130,9 +132,9 @@ const fairnessLevelLabel = computed(() => {
   const level = fairnessOverview.value.level || 'balanced'
   return { balanced: '均衡', moderate: '轻度倾斜', skewed: '显著倾斜', critical: '严重不均' }[level] || level
 })
-const manageableProcessCount = computed(() => taskSummary.value.manageableCount)
-const urgentCount = computed(() => taskSummary.value.urgentCount)
-const totalGpuMemory = computed(() => taskSummary.value.totalGpuMemory)
+const manageableProcessCount = computed(() => processSummary.value.manageableCount)
+const urgentCount = computed(() => processSummary.value.urgentCount)
+const totalGpuMemory = computed(() => processSummary.value.totalGpuMemory)
 const executionSummary = computed(() =>
   executionMode.value === 'real'
     ? (riskAcknowledged.value
@@ -539,7 +541,7 @@ async function doExportGovernance(fmt = 'markdown') {
             <button class="btn-tech" :disabled="exporting" @click="doExportGovernance('markdown')">
               {{ exporting ? '导出中...' : '导出治理报告' }}
             </button>
-            <span class="toolbar-card__summary">当前显示 {{ filteredProcesses.length }} / {{ visibleProcesses.length }} 条</span>
+            <span class="toolbar-card__summary">当前显示 {{ filteredProcesses.length }} / {{ normalizedProcesses.length }} 条</span>
           </div>
         </section>
 
