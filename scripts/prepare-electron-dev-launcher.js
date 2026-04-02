@@ -56,8 +56,39 @@ function shouldSyncRuntime(meta) {
   return meta.electronVersion !== electronRuntimeVersion()
 }
 
+function resetDirectoryContents(dirPath) {
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true })
+    return
+  }
+
+  for (const name of fs.readdirSync(dirPath)) {
+    fs.rmSync(path.join(dirPath, name), {
+      recursive: true,
+      force: true,
+    })
+  }
+}
+
+function copyDirectoryContents(sourceDir, targetDir) {
+  fs.mkdirSync(targetDir, { recursive: true })
+
+  for (const entry of fs.readdirSync(sourceDir, { withFileTypes: true })) {
+    const sourcePath = path.join(sourceDir, entry.name)
+    const targetPath = path.join(targetDir, entry.name)
+
+    if (entry.isDirectory()) {
+      copyDirectoryContents(sourcePath, targetPath)
+      continue
+    }
+
+    fs.copyFileSync(sourcePath, targetPath)
+  }
+}
+
 function syncRuntime() {
-  fs.cpSync(electronDistDir, runtimeDir, { recursive: true, force: true })
+  resetDirectoryContents(runtimeDir)
+  copyDirectoryContents(electronDistDir, runtimeDir)
 }
 
 function launcherNeedsRefresh(meta) {
@@ -110,12 +141,18 @@ function nextMeta() {
 }
 
 function main() {
-  ensurePaths()
-  const currentMeta = readJson(metaPath)
-  ensureLauncher(currentMeta)
-  const updatedMeta = nextMeta()
-  writeJson(metaPath, updatedMeta)
-  process.stdout.write(`${launcherPath}\n`)
+  try {
+    ensurePaths()
+    const currentMeta = readJson(metaPath)
+    ensureLauncher(currentMeta)
+    const updatedMeta = nextMeta()
+    writeJson(metaPath, updatedMeta)
+    process.stdout.write(`${launcherPath}\n`)
+  } catch (error) {
+    const detail = error && (error.stack || error.message || String(error))
+    process.stderr.write(`${detail}\n`)
+    process.exit(1)
+  }
 }
 
 main()
