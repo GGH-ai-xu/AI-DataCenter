@@ -75,6 +75,38 @@ function isActive(path) {
     </nav>
 
     <div class="app-primary-sidebar__footer">
+      <div class="app-primary-sidebar__runtime">
+        <span class="app-primary-sidebar__runtime-tag">
+          {{ props.appInfo.runtimeModeLabel || (props.isDesktop ? '桌面模式' : '网页模式') }}
+        </span>
+        <span class="app-primary-sidebar__runtime-tag app-primary-sidebar__runtime-tag--muted">
+          {{ props.appInfo.connectionModeLabel || '接入模式待识别' }}
+        </span>
+      </div>
+      <div class="app-primary-sidebar__sources">
+        <div class="app-primary-sidebar__source">
+          <span class="app-primary-sidebar__source-label">前端</span>
+          <strong class="app-primary-sidebar__source-value">
+            {{ props.appInfo.frontendSourceLabel || (props.isDesktop ? '桌面前端' : '网页前端') }}
+          </strong>
+        </div>
+        <div class="app-primary-sidebar__source">
+          <span class="app-primary-sidebar__source-label">后端</span>
+          <strong class="app-primary-sidebar__source-value">
+            {{ props.appInfo.backendSourceLabel || (props.isDesktop ? '桌面后端' : '网页后端') }}
+          </strong>
+        </div>
+        <div class="app-primary-sidebar__source">
+          <span class="app-primary-sidebar__source-label">连接</span>
+          <strong class="app-primary-sidebar__source-value">
+            {{ props.appInfo.agentSourceLabel || '由接入中心决定' }}
+          </strong>
+        </div>
+        <div v-if="props.appInfo.webReferenceEntry" class="app-primary-sidebar__source">
+          <span class="app-primary-sidebar__source-label">对照网页</span>
+          <strong class="app-primary-sidebar__source-value">{{ props.appInfo.webReferenceEntry }}</strong>
+        </div>
+      </div>
       <div v-if="props.isDesktop" class="app-primary-sidebar__desktop">
         <span class="app-primary-sidebar__version">v{{ props.appInfo.version || '1.1.0' }}</span>
         <button
@@ -232,6 +264,59 @@ function isActive(path) {
   background: linear-gradient(180deg, rgba(248, 245, 240, 0), rgba(248, 245, 240, 0.9) 18%, rgba(248, 245, 240, 0.98));
   position: relative;
   z-index: 1;
+}
+
+.app-primary-sidebar__runtime {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.app-primary-sidebar__runtime-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: rgba(46, 139, 87, 0.08);
+  border: 1px solid rgba(46, 139, 87, 0.12);
+  color: #2E8B57;
+  font-size: 0.69rem;
+  font-family: var(--font-kaishu);
+  letter-spacing: 0.08em;
+}
+
+.app-primary-sidebar__runtime-tag--muted {
+  background: rgba(51, 51, 51, 0.04);
+  border-color: rgba(51, 51, 51, 0.08);
+  color: var(--text-muted);
+}
+
+.app-primary-sidebar__sources {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(26, 26, 26, 0.06);
+  background: rgba(255, 252, 247, 0.78);
+}
+
+.app-primary-sidebar__source {
+  display: grid;
+  gap: 2px;
+}
+
+.app-primary-sidebar__source-label {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+}
+
+.app-primary-sidebar__source-value {
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
 }
 
 .app-primary-sidebar__desktop {

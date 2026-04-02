@@ -92,9 +92,16 @@ const desktopOpsReady = ref(false)
 const desktopRuntime = ref({
   runtimeRoot: '',
   logsRoot: '',
+  runtimeMode: '',
+  runtimeModeLabel: '',
   backendBaseUrl: '',
   agentBaseUrl: '',
   connectionMode: '',
+  connectionModeLabel: '',
+  frontendSourceLabel: '',
+  backendSourceLabel: '',
+  agentSourceLabel: '',
+  webReferenceEntry: '',
 })
 const desktopServiceState = ref({})
 const desktopOpsBusy = ref(false)
@@ -706,9 +713,16 @@ async function loadDesktopOpsState() {
     desktopRuntime.value = {
       runtimeRoot: runtime?.runtimeRoot || '',
       logsRoot: runtime?.logsRoot || '',
+      runtimeMode: runtime?.runtimeMode || '',
+      runtimeModeLabel: runtime?.runtimeModeLabel || '',
       backendBaseUrl: runtime?.backendBaseUrl || '',
       agentBaseUrl: runtime?.agentBaseUrl || '',
       connectionMode: runtime?.connectionMode || '',
+      connectionModeLabel: runtime?.connectionModeLabel || '',
+      frontendSourceLabel: runtime?.frontendSourceLabel || '',
+      backendSourceLabel: runtime?.backendSourceLabel || '',
+      agentSourceLabel: runtime?.agentSourceLabel || '',
+      webReferenceEntry: runtime?.webReferenceEntry || '',
     }
     applyDesktopServiceState(serviceState)
     desktopOpsReady.value = true
@@ -776,9 +790,16 @@ async function restartDesktopServices() {
       desktopRuntime.value = {
         runtimeRoot: result.runtime.runtimeRoot || desktopRuntime.value.runtimeRoot,
         logsRoot: result.runtime.logsRoot || desktopRuntime.value.logsRoot,
+        runtimeMode: result.runtime.runtimeMode || desktopRuntime.value.runtimeMode,
+        runtimeModeLabel: result.runtime.runtimeModeLabel || desktopRuntime.value.runtimeModeLabel,
         backendBaseUrl: result.runtime.backendBaseUrl || desktopRuntime.value.backendBaseUrl,
         agentBaseUrl: result.runtime.agentBaseUrl || desktopRuntime.value.agentBaseUrl,
         connectionMode: result.runtime.connectionMode || desktopRuntime.value.connectionMode,
+        connectionModeLabel: result.runtime.connectionModeLabel || desktopRuntime.value.connectionModeLabel,
+        frontendSourceLabel: result.runtime.frontendSourceLabel || desktopRuntime.value.frontendSourceLabel,
+        backendSourceLabel: result.runtime.backendSourceLabel || desktopRuntime.value.backendSourceLabel,
+        agentSourceLabel: result.runtime.agentSourceLabel || desktopRuntime.value.agentSourceLabel,
+        webReferenceEntry: result.runtime.webReferenceEntry || desktopRuntime.value.webReferenceEntry,
       }
     }
 
@@ -1369,10 +1390,11 @@ onUnmounted(() => {
       <div class="desktop-ops-panel__head">
         <div>
           <div class="section-title">桌面服务</div>
-          <div class="workbench-card__sub">这是桌面安装版自己维护的本机后端与本机 Agent 状态。出问题时先看这里，再决定要不要重拉本机服务。</div>
+          <div class="workbench-card__sub">这里显示桌面安装版当前实际使用的运行模式与服务来源，用来对照 [start-dev.bat] 这条网页版基准链路。</div>
         </div>
         <div class="connection-panel__badges">
-          <span class="status-badge">{{ desktopRuntime.connectionMode === 'remote' ? '远程接入模式' : '本机接入模式' }}</span>
+          <span class="status-badge">{{ desktopRuntime.runtimeModeLabel || '桌面模式待识别' }}</span>
+          <span class="status-badge">{{ desktopRuntime.connectionModeLabel || (desktopRuntime.connectionMode === 'remote' ? '远程接入模式' : '本机接入模式') }}</span>
           <span class="status-badge">{{ desktopRuntime.backendBaseUrl || '未识别后端地址' }}</span>
         </div>
       </div>
@@ -1388,7 +1410,7 @@ onUnmounted(() => {
             <div class="desktop-ops-item__top">
               <div>
                 <div class="desktop-ops-item__title">{{ service.label }}</div>
-                <div class="desktop-ops-item__meta">端口 {{ service.port || '—' }} · {{ service.managed ? '桌面壳托管' : '外部实例/未托管' }}</div>
+                <div class="desktop-ops-item__meta">端口 {{ service.port || '—' }} · {{ service.sourceLabel || (service.managed ? '桌面壳托管' : '外部实例/未托管') }}</div>
               </div>
               <span class="status-badge" :class="statusBadgeClass(service.status === 'error' ? 'critical' : service.status === 'running' ? 'ok' : 'warning')">
                 {{ service.status === 'running' ? '运行中' : service.status === 'error' ? '异常' : service.status === 'idle' ? '未运行' : '处理中' }}
@@ -1399,9 +1421,29 @@ onUnmounted(() => {
         </div>
 
         <div class="desktop-ops-card">
-          <div class="desktop-ops-card__label">本机目录</div>
+          <div class="desktop-ops-card__label">当前来源</div>
+          <div class="desktop-ops-facts">
+            <div class="desktop-ops-facts__item">
+              <span class="desktop-ops-facts__name">前端</span>
+              <span class="desktop-ops-facts__value">{{ desktopRuntime.frontendSourceLabel || '未识别' }}</span>
+            </div>
+            <div class="desktop-ops-facts__item">
+              <span class="desktop-ops-facts__name">后端</span>
+              <span class="desktop-ops-facts__value">{{ desktopRuntime.backendSourceLabel || '未识别' }}</span>
+            </div>
+            <div class="desktop-ops-facts__item">
+              <span class="desktop-ops-facts__name">连接</span>
+              <span class="desktop-ops-facts__value">{{ desktopRuntime.agentSourceLabel || '未识别' }}</span>
+            </div>
+            <div class="desktop-ops-facts__item">
+              <span class="desktop-ops-facts__name">网页版基准</span>
+              <span class="desktop-ops-facts__value">{{ desktopRuntime.webReferenceEntry || 'start-dev.bat' }}</span>
+            </div>
+          </div>
+
+          <div class="desktop-ops-card__label" style="margin-top: 16px">本机目录</div>
           <div class="desktop-ops-card__path">{{ desktopRuntime.logsRoot || '未识别日志目录' }}</div>
-          <div class="desktop-ops-card__sub">优先打开日志目录查看 backend-shell.log 和 agent-shell.log；如果目录没问题，再考虑重拉本机服务。</div>
+          <div class="desktop-ops-card__sub">正式桌面版现在固定使用内置后端；如果 UI 和 [start-dev.bat] 打开的网页版不一致，先看这里确认当前来源是否正确。</div>
 
           <div class="action-grid" style="margin-top: 16px">
             <button class="btn-tech" :disabled="desktopOpsBusy" @click="refreshDesktopOpsState">
@@ -2098,6 +2140,34 @@ onUnmounted(() => {
   font-size: 0.74rem;
   color: var(--text-muted);
   letter-spacing: 0.1em;
+}
+
+.desktop-ops-facts {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.desktop-ops-facts__item {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.68);
+  border: 1px solid rgba(58,95,75,0.08);
+}
+
+.desktop-ops-facts__name {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+}
+
+.desktop-ops-facts__value {
+  font-size: 0.82rem;
+  color: var(--text-primary);
+  line-height: 1.58;
+  word-break: break-word;
 }
 
 .desktop-ops-card__path {

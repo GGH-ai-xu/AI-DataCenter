@@ -44,6 +44,7 @@ const managedServices = {
     port: DEFAULT_BACKEND_PORT,
     managed: false,
     owned: false,
+    sourceLabel: '桌面内置后端',
     restartAttempts: 0,
     launchSpec: null,
     recoveryPending: false,
@@ -57,11 +58,67 @@ const managedServices = {
     port: DEFAULT_AGENT_PORT,
     managed: false,
     owned: false,
+    sourceLabel: '桌面内置本机 Agent',
     restartAttempts: 0,
     launchSpec: null,
     recoveryPending: false,
     updatedAt: Date.now(),
   },
+}
+
+function desktopRuntimeMode() {
+  return desktopDevModeEnabled() ? 'desktop-dev' : 'desktop-release'
+}
+
+function desktopRuntimeModeLabel() {
+  return desktopDevModeEnabled() ? '桌面开发模式' : '桌面正式模式'
+}
+
+function currentConnectionMode() {
+  return readConnectionMode()
+}
+
+function connectionModeLabel(mode = currentConnectionMode()) {
+  return mode === 'remote' ? '远程服务器模式' : '本机模式'
+}
+
+function frontendSourceLabel() {
+  return desktopDevModeEnabled()
+    ? 'Electron 开发前端'
+    : '桌面内置前端'
+}
+
+function backendSourceLabel() {
+  return desktopDevModeEnabled()
+    ? '开发后端'
+    : '桌面内置后端'
+}
+
+function agentSourceLabel() {
+  if (currentConnectionMode() === 'remote') {
+    return '远程 Agent'
+  }
+
+  return desktopDevModeEnabled()
+    ? '开发本机 Agent'
+    : '桌面内置本机 Agent'
+}
+
+function serviceSourceLabel(key, state = managedServices[key]) {
+  if (key === 'backend') {
+    if (desktopDevModeEnabled()) return '开发后端'
+    return state.managed || state.owned ? '桌面内置后端' : '外部后端'
+  }
+
+  if (currentConnectionMode() === 'remote') {
+    return '远程 Agent'
+  }
+
+  if (desktopDevModeEnabled()) {
+    return '开发本机 Agent'
+  }
+
+  return state.managed || state.owned ? '桌面内置本机 Agent' : '外部 Agent'
 }
 
 function managedServicePort(key) {
@@ -99,6 +156,7 @@ function managedServiceSnapshot(key) {
     port: state.port,
     managed: state.managed,
     owned: state.owned,
+    sourceLabel: serviceSourceLabel(key, state),
     restartAttempts: state.restartAttempts,
     updatedAt: state.updatedAt,
   }
@@ -127,6 +185,7 @@ function updateManagedServiceState(key, patch = {}) {
   const state = managedServices[key]
   Object.assign(state, patch, {
     port: patch.port ?? managedServicePort(key),
+    sourceLabel: patch.sourceLabel ?? serviceSourceLabel(key, state),
     updatedAt: Date.now(),
   })
   emitManagedServiceState()
@@ -139,6 +198,7 @@ function markManagedServiceExternal(key, label, detail) {
     detail,
     managed: false,
     owned: false,
+    sourceLabel: serviceSourceLabel(key),
     restartAttempts: 0,
     launchSpec: null,
     recoveryPending: false,
@@ -337,7 +397,15 @@ function runtimeInfoSnapshot() {
     logsRoot: logsRoot(),
     backendBaseUrl: backendBaseUrl(),
     agentBaseUrl: agentBaseUrl(),
-    connectionMode: readConnectionMode(),
+    runtimeMode: desktopRuntimeMode(),
+    runtimeModeLabel: desktopRuntimeModeLabel(),
+    connectionMode: currentConnectionMode(),
+    connectionModeLabel: connectionModeLabel(),
+    frontendSourceLabel: frontendSourceLabel(),
+    backendSourceLabel: backendSourceLabel(),
+    agentSourceLabel: agentSourceLabel(),
+    webReferenceEntry: 'start-dev.bat',
+    webReferenceLabel: '网页版基准入口：start-dev.bat',
   }
 }
 
@@ -932,6 +1000,15 @@ ipcMain.handle('desktop-shell:get-app-info', async () => ({
   version: currentAppVersion(),
   updateSupported: Boolean(releaseRepository),
   releasesUrl: releasesPageUrl,
+  runtimeMode: desktopRuntimeMode(),
+  runtimeModeLabel: desktopRuntimeModeLabel(),
+  connectionMode: currentConnectionMode(),
+  connectionModeLabel: connectionModeLabel(),
+  frontendSourceLabel: frontendSourceLabel(),
+  backendSourceLabel: backendSourceLabel(),
+  agentSourceLabel: agentSourceLabel(),
+  webReferenceEntry: 'start-dev.bat',
+  webReferenceLabel: '网页版基准入口：start-dev.bat',
 }))
 
 ipcMain.handle('desktop-shell:get-service-state', async () => ({
@@ -1315,153 +1392,106 @@ async function restartManagedService(key, failureDetail) {
 }
 
 async function ensureServices(onStatus = () => {}) {
+  const mode = currentConnectionMode()
+
   updateManagedServiceState('backend', {
     status: 'starting',
-    detail: '正在检查治理后端状态',
+    detail: '桌面正式版正在启动内置治理后端',
     port: DEFAULT_BACKEND_PORT,
-    managed: false,
+    managed: true,
     owned: false,
+    sourceLabel: '桌面内置后端',
     restartAttempts: 0,
     launchSpec: null,
     recoveryPending: false,
   })
-  onStatus('正在检查治理后端状态', 12)
-  const backendReady = await healthCheck(backendHealthUrl(DEFAULT_BACKEND_PORT))
+  onStatus('正在准备桌面内置治理后端', 12)
+  backendPort = await findAvailablePort(DEFAULT_BACKEND_PORT, {
+    excluded: new Set(mode === 'local' ? [DEFAULT_AGENT_PORT] : []),
+  })
 
-  if (!backendReady) {
-    backendPort = await findAvailablePort(DEFAULT_BACKEND_PORT, {
-      excluded: new Set([DEFAULT_AGENT_PORT]),
+  if (backendPort !== DEFAULT_BACKEND_PORT) {
+    onStatus(`默认端口 ${DEFAULT_BACKEND_PORT} 已占用，桌面内置后端改用 ${backendPort}`, 20)
+  }
+
+  if (mode === 'local') {
+    updateManagedServiceState('agent', {
+      status: 'starting',
+      detail: '桌面正式版正在启动内置本机 Agent',
+      port: DEFAULT_AGENT_PORT,
+      managed: true,
+      owned: false,
+      sourceLabel: '桌面内置本机 Agent',
+      restartAttempts: 0,
+      launchSpec: null,
+      recoveryPending: false,
+    })
+    onStatus('正在准备桌面内置本机 Agent', 28)
+
+    agentPort = await findAvailablePort(DEFAULT_AGENT_PORT, {
+      excluded: new Set([backendPort]),
     })
 
-    if (backendPort !== DEFAULT_BACKEND_PORT) {
-      onStatus(`默认端口 ${DEFAULT_BACKEND_PORT} 已占用，改用 ${backendPort}`, 20)
+    if (agentPort !== DEFAULT_AGENT_PORT) {
+      onStatus(`默认 Agent 端口 ${DEFAULT_AGENT_PORT} 已占用，桌面内置 Agent 改用 ${agentPort}`, 34)
     }
 
-    const mode = readConnectionMode()
-
-    if (mode === 'local') {
-      updateManagedServiceState('agent', {
-        status: 'starting',
-        detail: '正在检查本机采集代理',
-        port: DEFAULT_AGENT_PORT,
-        managed: false,
-        owned: false,
-        restartAttempts: 0,
-        launchSpec: null,
-        recoveryPending: false,
-      })
-      onStatus('正在检查本机采集代理', 28)
-      const defaultAgentReady = await healthCheck(`http://${LOCAL_HOST}:${DEFAULT_AGENT_PORT}/api/health`)
-
-      if (defaultAgentReady) {
-        agentPort = DEFAULT_AGENT_PORT
-      } else {
-        agentPort = await findAvailablePort(DEFAULT_AGENT_PORT, {
-          excluded: new Set([backendPort]),
-        })
-
-        if (agentPort !== DEFAULT_AGENT_PORT) {
-          onStatus(`默认 Agent 端口 ${DEFAULT_AGENT_PORT} 已占用，改用 ${agentPort}`, 34)
-        }
-      }
-
-      const agentReady = await healthCheck(agentHealthUrl())
-
-      if (!agentReady) {
-        const agentExe = resourcesPath('agent', 'GPUServerAgent.exe')
-        if (!fs.existsSync(agentExe)) {
-          throw new Error(`Missing agent executable: ${agentExe}`)
-        }
-
-        onStatus('正在启动本机采集代理', 42)
-        await startManagedService({
-          key: 'agent',
-          executable: agentExe,
-          logName: 'agent-shell.log',
-          label: '本机采集代理',
-          extraEnv: {
-            HOST: LOCAL_HOST,
-            PORT: String(agentPort),
-            GPU_AGENT_HOST: LOCAL_HOST,
-            GPU_AGENT_PORT: String(agentPort),
-          },
-          healthUrl: agentHealthUrl(),
-          healthTimeoutMs: 12000,
-        })
-      } else {
-        onStatus('本机采集代理已在线', 42)
-        markManagedServiceExternal('agent', '本机采集代理', '检测到已存在的本机采集代理实例')
-      }
-    } else {
-      onStatus('远程服务器模式已启用，跳过本机代理启动', 42)
-      updateManagedServiceState('agent', {
-        label: '本机采集代理',
-        status: 'external',
-        detail: '当前为远程服务器模式，桌面端不会启动本机采集代理',
-        port: agentPort,
-        managed: false,
-        owned: false,
-        restartAttempts: 0,
-        launchSpec: null,
-        recoveryPending: false,
-      })
+    const agentExe = resourcesPath('agent', 'GPUServerAgent.exe')
+    if (!fs.existsSync(agentExe)) {
+      throw new Error(`Missing agent executable: ${agentExe}`)
     }
 
-    const backendExe = resourcesPath('backend', 'GPUGovernanceBackend.exe')
-    if (!fs.existsSync(backendExe)) {
-      throw new Error(`Missing backend executable: ${backendExe}`)
-    }
-
-    onStatus('正在启动治理后端', 64)
+    onStatus('正在启动桌面内置本机 Agent', 42)
     await startManagedService({
-      key: 'backend',
-      executable: backendExe,
-      logName: 'backend-shell.log',
-      label: '治理后端',
+      key: 'agent',
+      executable: agentExe,
+      logName: 'agent-shell.log',
+      label: '本机采集代理',
       extraEnv: {
         HOST: LOCAL_HOST,
-        PORT: String(backendPort),
-        AGENT_URL: agentBaseUrl(),
+        PORT: String(agentPort),
+        GPU_AGENT_HOST: LOCAL_HOST,
+        GPU_AGENT_PORT: String(agentPort),
       },
-      healthUrl: backendHealthUrl(),
-      healthTimeoutMs: 18000,
+      healthUrl: agentHealthUrl(),
+      healthTimeoutMs: 12000,
     })
   } else {
-    backendPort = DEFAULT_BACKEND_PORT
     agentPort = DEFAULT_AGENT_PORT
-    onStatus('治理后端已在线，正在同步工作台', 64)
-    markManagedServiceExternal('backend', '治理后端', '检测到已存在的治理后端实例')
-    if (readConnectionMode() === 'local') {
-      const localAgentReady = await healthCheck(`http://${LOCAL_HOST}:${DEFAULT_AGENT_PORT}/api/health`)
-      if (localAgentReady) {
-        markManagedServiceExternal('agent', '本机采集代理', '检测到已存在的本机采集代理实例')
-      } else {
-        updateManagedServiceState('agent', {
-          label: '本机采集代理',
-          status: 'idle',
-          detail: '当前会话未托管本机采集代理',
-          port: agentPort,
-          managed: false,
-          owned: false,
-          restartAttempts: 0,
-          launchSpec: null,
-          recoveryPending: false,
-        })
-      }
-    } else {
-      updateManagedServiceState('agent', {
-        label: '本机采集代理',
-        status: 'external',
-        detail: '当前为远程服务器模式，桌面端不会启动本机采集代理',
-        port: agentPort,
-        managed: false,
-        owned: false,
-        restartAttempts: 0,
-        launchSpec: null,
-        recoveryPending: false,
-      })
-    }
+    onStatus('远程服务器模式已启用，桌面正式版只保留内置后端', 42)
+    updateManagedServiceState('agent', {
+      label: '本机采集代理',
+      status: 'external',
+      detail: '当前为远程服务器模式，桌面正式版不会启动本机 Agent',
+      port: agentPort,
+      managed: false,
+      owned: false,
+      sourceLabel: '远程 Agent',
+      restartAttempts: 0,
+      launchSpec: null,
+      recoveryPending: false,
+    })
   }
+
+  const backendExe = resourcesPath('backend', 'GPUGovernanceBackend.exe')
+  if (!fs.existsSync(backendExe)) {
+    throw new Error(`Missing backend executable: ${backendExe}`)
+  }
+
+  onStatus('正在启动桌面内置治理后端', 64)
+  await startManagedService({
+    key: 'backend',
+    executable: backendExe,
+    logName: 'backend-shell.log',
+    label: '治理后端',
+    extraEnv: {
+      HOST: LOCAL_HOST,
+      PORT: String(backendPort),
+      AGENT_URL: agentBaseUrl(agentPort),
+    },
+    healthUrl: backendHealthUrl(),
+    healthTimeoutMs: 18000,
+  })
 
   onStatus('正在等待工作台服务就绪', 82)
   const ok = await waitForHealth(backendHealthUrl(), 18000)

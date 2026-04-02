@@ -174,6 +174,16 @@ class StartDevScriptTests(unittest.TestCase):
         self.assertIn("desktopDevModeEnabled() ? `${APP_ID}.dev` : APP_ID", script)
         self.assertIn("app.setAppUserModelId(currentAppUserModelId())", script)
 
+    def test_desktop_shell_release_runtime_aligns_with_start_dev_baseline(self):
+        script = (ROOT / "desktop-shell" / "main.js").read_text(encoding="utf-8")
+
+        self.assertIn("webReferenceEntry: 'start-dev.bat'", script)
+        self.assertIn("webReferenceLabel: '网页版基准入口：start-dev.bat'", script)
+        self.assertIn("function frontendSourceLabel()", script)
+        self.assertIn("function backendSourceLabel()", script)
+        self.assertIn("function agentSourceLabel()", script)
+        self.assertIn("AGENT_URL: agentBaseUrl(agentPort)", script)
+
 
 if __name__ == "__main__":
     unittest.main()

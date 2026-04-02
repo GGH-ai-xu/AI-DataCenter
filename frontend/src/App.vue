@@ -14,11 +14,27 @@ const store = useAppStore()
 const currentTime = ref('')
 const workspaceStatusChecked = ref(false)
 const lockHint = ref('')
+function baseAppInfo() {
+  const webDev = Boolean(import.meta.env.DEV)
+  return {
+    name: 'GPU 共享治理平台',
+    version: '',
+    updateSupported: false,
+    releasesUrl: '',
+    runtimeMode: webDev ? 'web-dev' : 'web-release',
+    runtimeModeLabel: webDev ? '网页开发模式' : '网页正式模式',
+    connectionMode: 'local',
+    connectionModeLabel: '接入模式待识别',
+    frontendSourceLabel: webDev ? 'start-dev.bat / Vite 开发前端' : '网页构建前端',
+    backendSourceLabel: webDev ? 'start-dev.bat / 本地后端' : '当前网页后端',
+    agentSourceLabel: '由接入中心决定（本机或远程 Agent）',
+    webReferenceEntry: 'start-dev.bat',
+    webReferenceLabel: '网页版基准入口：start-dev.bat',
+  }
+}
+
 const appInfo = ref({
-  name: 'GPU 共享治理平台',
-  version: '',
-  updateSupported: false,
-  releasesUrl: '',
+  ...baseAppInfo(),
 })
 const updateState = ref(null)
 const updateBusy = ref(false)
@@ -55,6 +71,46 @@ const workspaceLocked = computed(() => workspaceStatusChecked.value && !store.wo
 function getDesktopShellBridge() {
   if (typeof window === 'undefined') return null
   return window.desktopShell || null
+}
+
+function applyConnectionSummary(connection) {
+  if (!connection) {
+    return
+  }
+
+  const connectionMode = connection.mode || appInfo.value.connectionMode || 'local'
+  const isRemote = connectionMode === 'remote'
+  appInfo.value = {
+    ...appInfo.value,
+    connectionMode,
+    connectionModeLabel: connection.mode_label || (isRemote ? '远程服务器模式' : '本机模式'),
+    agentSourceLabel: isRemote
+      ? `${connection.agent_label || '远程 Agent'} · ${connection.agent_url || '地址待配置'}`
+      : (connection.agent_label || '本机 Agent'),
+  }
+}
+
+async function syncAppInfo() {
+  const shellBridge = getDesktopShellBridge()
+  if (!shellBridge?.getAppInfo) {
+    const current = { ...appInfo.value }
+    const base = baseAppInfo()
+    appInfo.value = {
+      ...base,
+      version: current.version || '',
+      connectionMode: current.connectionMode || base.connectionMode,
+      connectionModeLabel: current.connectionModeLabel || base.connectionModeLabel,
+      agentSourceLabel: current.agentSourceLabel || base.agentSourceLabel,
+    }
+    return
+  }
+
+  try {
+    appInfo.value = {
+      ...baseAppInfo(),
+      ...await shellBridge.getAppInfo(),
+    }
+  } catch {}
 }
 
 function updateClock() {
@@ -115,11 +171,13 @@ async function refreshWorkspaceStatus() {
   try {
     const { data } = await healthCheck()
     store.setWorkspaceReady(Boolean(data?.agent_connected))
+    applyConnectionSummary(data?.connection)
   } catch {
     store.setWorkspaceReady(false)
   } finally {
     workspaceStatusChecked.value = true
     enforceRouteAccess(route.path)
+    void syncAppInfo()
   }
 }
 
@@ -138,17 +196,10 @@ function navigateTo(item) {
 
 async function loadDesktopInfo() {
   const shellBridge = getDesktopShellBridge()
+  await syncAppInfo()
+
   if (!shellBridge) {
     return
-  }
-
-  if (shellBridge.getAppInfo) {
-    try {
-      appInfo.value = {
-        ...appInfo.value,
-        ...await shellBridge.getAppInfo(),
-      }
-    } catch {}
   }
 
   if (shellBridge.onCloseRequest) {
@@ -294,7 +345,7 @@ onUnmounted(() => {
               <img class="app-mobile-nav__logo" src="/logo.svg" alt="AI-DataCenter logo" />
               <div class="app-mobile-nav__brand-copy">
                 <strong>{{ appInfo.name || 'GPU 共享治理平台' }}</strong>
-                <span>{{ wsConnected ? '实时在线' : '实时离线' }}</span>
+                <span>{{ appInfo.runtimeModeLabel || (isDesktop ? '桌面模式' : '网页模式') }} · {{ wsConnected ? '实时在线' : '实时离线' }}</span>
               </div>
             </div>
             <button
