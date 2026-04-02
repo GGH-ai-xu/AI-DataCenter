@@ -78,12 +78,8 @@ async def control_execute(req: AIControlExecuteRequest):
 
     if not req.actions:
         raise HTTPException(status_code=400, detail="当前没有可执行动作")
-    if not req.dry_run and not req.acknowledge_risk:
-        raise HTTPException(status_code=400, detail="真实执行前请先确认风险")
+    if not req.acknowledge_risk:
+        raise HTTPException(status_code=400, detail="执行前请先确认风险")
 
     payload = [item.model_dump() for item in req.actions]
-    return await execute_control_actions(
-        app_state,
-        payload,
-        dry_run=req.dry_run,
-    )
+    return await execute_control_actions(app_state, payload)

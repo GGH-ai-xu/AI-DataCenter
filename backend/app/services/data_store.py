@@ -396,7 +396,6 @@ class DataStore:
         reason: str = '',
         operator: str = 'user',
         source: str = 'manual',
-        dry_run: bool = False,
         success: bool = True,
         error_message: str = '',
         risk_level: str = 'low',
@@ -411,7 +410,7 @@ class DataStore:
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 action, target, reason, operator, source,
-                1 if dry_run else 0,
+                0,
                 1 if success else 0,
                 error_message, risk_level, detail, time.time(),
             ),
@@ -428,15 +427,18 @@ class DataStore:
             (since, limit),
         )
         rows = await cursor.fetchall()
-        return [dict(row) for row in rows]
+        return [
+            {key: value for key, value in dict(row).items() if key != "dry_run"}
+            for row in rows
+        ]
 
-    async def save_governance_audit(self, action: str, target: str, reason: str, result: str, operator: str = "user", dry_run: bool = False):
+    async def save_governance_audit(self, action: str, target: str, reason: str, result: str, operator: str = "user"):
         """记录治理审计日志（写入 schedule_log 表）"""
         if not self._db:
             return
         await self._db.execute(
             "INSERT INTO schedule_log (action, target, reason, result, timestamp) VALUES (?, ?, ?, ?, ?)",
-            (action, target, reason, f"{'dry_run|' if dry_run else ''}{operator}|{result}", time.time()),
+            (action, target, reason, f"{operator}|{result}", time.time()),
         )
         await self._db.commit()
 
@@ -453,11 +455,10 @@ class DataStore:
         for row in rows:
             result_str = row["result"] or ""
             parts = result_str.split("|")
-            is_dry_run = "dry_run" in parts
             operator = "system"
             status = parts[-1] if parts else "unknown"
             if len(parts) >= 2:
-                operator = parts[-2] if not is_dry_run else (parts[1] if len(parts) >= 3 else "system")
+                operator = parts[-2]
             logs.append({
                 "id": row["id"],
                 "action": row["action"],
@@ -465,7 +466,6 @@ class DataStore:
                 "reason": row["reason"],
                 "operator": operator,
                 "status": status,
-                "dry_run": is_dry_run,
                 "timestamp": row["timestamp"],
             })
         return logs

@@ -58,15 +58,15 @@ export const useAppStore = defineStore('app', () => {
   const alerts = ref([])
   const wsConnected = ref(false)
   const workspaceReady = ref(false)
-  const dataSourceStatus = ref({ connected: false, simulated: false, gpu_count: 0 })
+  const dataSourceStatus = ref({ connected: false, gpu_count: 0 })
   const domains = ref(createDomainState())
 
   const dataSourceLabel = computed(() => {
     if (!dataSourceStatus.value.connected) {
       return { text: '数据源离线', level: 'offline', color: '#999' }
     }
-    if (dataSourceStatus.value.simulated) {
-      return { text: '模拟演示', level: 'simulated', color: '#B8860B' }
+    if ((dataSourceStatus.value.gpu_count || 0) <= 0) {
+      return { text: '无真实GPU', level: 'warning', color: '#B8860B' }
     }
     return { text: '真实采集', level: 'real', color: '#2E8B57' }
   })
@@ -141,9 +141,6 @@ export const useAppStore = defineStore('app', () => {
       gpus.value = data.gpus
       dataSourceStatus.value.connected = true
       dataSourceStatus.value.gpu_count = data.gpus.length
-    }
-    if (data.agent_info?.simulated !== undefined) {
-      dataSourceStatus.value.simulated = Boolean(data.agent_info.simulated)
     }
     if (data.system) system.value = data.system
     if (data.processes) processes.value = data.processes

@@ -5,7 +5,7 @@
  */
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { createDemoAlert, getSystemSelfCheck, testConnectionConfig, updateConnectionConfig } from '../services/api'
+import { getSystemSelfCheck, testConnectionConfig, updateConnectionConfig } from '../services/api'
 import DashboardLiveWorkspace from '../components/dashboard/DashboardLiveWorkspace.vue'
 import WorkspaceSummary from '../components/workspace/WorkspaceSummary.vue'
 import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
@@ -73,8 +73,6 @@ const remoteAssistState = ref({
   feedback: null,
 })
 const selfCheckBusy = ref(false)
-const demoAlertBusy = ref(false)
-const demoAlertFeedback = ref(null)
 const selfCheckState = ref({
   checked_at: null,
   summary: {
@@ -452,9 +450,7 @@ const desktopServiceCards = computed(() =>
     .map((key) => desktopServiceState.value?.[key])
     .filter(Boolean),
 )
-const hasDemoAlert = computed(() =>
-  store.alerts.some((alert) => alert?.alert_type === 'self_check' && !alert?.acknowledged),
-)
+const hasLiveAlerts = computed(() => store.alerts.length > 0)
 const hasGovernanceHistory = computed(() => (budget.value.last_actions || []).length > 0)
 const journeySteps = computed(() => {
   const selfCheckOk = selfCheckSummary.value.status === 'ok'
@@ -486,20 +482,20 @@ const journeySteps = computed(() => {
     {
       key: 'alert',
       index: 3,
-      title: '验证风险链路',
-      done: hasDemoAlert.value,
-      active: workspaceReady.value && selfCheckOk && !hasDemoAlert.value,
-      action: hasDemoAlert.value ? '去风险台确认' : '生成测试告警',
-      desc: hasDemoAlert.value
-        ? '测试告警已经出现，现在可以进入风险台完成确认流程。'
-        : '生成一条可安全忽略的测试告警，确认“工作台 -> 风险台”链路真的能走通。',
+      title: '查看风险台',
+      done: hasLiveAlerts.value,
+      active: workspaceReady.value && selfCheckOk && !hasLiveAlerts.value,
+      action: '打开风险台',
+      desc: hasLiveAlerts.value
+        ? '当前已有真实告警进入风险台，可以直接完成确认与处置流程。'
+        : '风险台只展示真实告警；如果当前为空，说明本轮采集暂未发现异常。',
     },
     {
       key: 'dispatch',
       index: 4,
       title: '执行一次治理',
       done: hasDispatch,
-      active: workspaceReady.value && selfCheckOk && (!hasDemoAlert.value || hasDemoAlert.value) && !hasDispatch,
+      active: workspaceReady.value && selfCheckOk && !hasDispatch,
       action: hasDispatch ? '已完成首轮治理' : '执行真实治理或去治理台',
       desc: hasDispatch
         ? '平台已经完成过一轮真实治理动作，接下来可以去复盘台看结果。'
@@ -855,32 +851,6 @@ async function runPlatformSelfCheck() {
     }
   } finally {
     selfCheckBusy.value = false
-  }
-}
-
-async function generateDemoAlert() {
-  demoAlertBusy.value = true
-  try {
-    const { data } = await createDemoAlert()
-    demoAlertFeedback.value = {
-      tone: 'ok',
-      title: '测试告警已写入',
-      detail: data?.message || '现在可以进入风险台，验证告警确认链路。',
-    }
-    if (data?.alert) {
-      store.$patch({
-        alerts: [data.alert, ...store.alerts].slice(0, 100),
-      })
-    }
-  } catch (error) {
-    const detail = error?.response?.data?.detail || error?.message || '测试告警写入失败'
-    demoAlertFeedback.value = {
-      tone: 'critical',
-      title: '测试告警写入失败',
-      detail,
-    }
-  } finally {
-    demoAlertBusy.value = false
   }
 }
 
@@ -1344,24 +1314,19 @@ onUnmounted(() => {
             <button class="btn-tech btn-tech--primary" :disabled="selfCheckBusy" @click="runPlatformSelfCheck">
               {{ selfCheckBusy ? '自检中...' : '平台自检' }}
             </button>
-            <button class="btn-tech" :disabled="demoAlertBusy" @click="generateDemoAlert">
-              {{ demoAlertBusy ? '写入中...' : '生成测试告警' }}
-            </button>
             <button class="btn-tech" :disabled="!workspaceReady" @click="router.push('/alerts')">
               打开风险台
             </button>
             <button class="btn-tech" :disabled="!workspaceReady" @click="router.push('/scheduler')">
               打开治理台
             </button>
+            <button class="btn-tech" @click="activeTab = 'live'">
+              查看实时态势
+            </button>
           </div>
 
           <div class="workbench-card__hint">
-            建议顺序：先点“平台自检”，确认后端、Agent、GPU 与实时连接；再点“生成测试告警”，去风险台做一遍确认流程。
-          </div>
-
-          <div v-if="demoAlertFeedback" class="action-feedback" :class="`action-feedback--${demoAlertFeedback.tone}`">
-            <div class="action-feedback__title">{{ demoAlertFeedback.title }}</div>
-            <div class="action-feedback__desc">{{ demoAlertFeedback.detail }}</div>
+            建议顺序：先点“平台自检”，确认后端、Agent、GPU 与实时连接；再打开风险台查看当前真实告警，最后去治理台执行真实动作。
           </div>
         </div>
 

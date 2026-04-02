@@ -27,7 +27,6 @@ const timePeriod = ref('')
 const powerInputs = ref({})
 const scheduleResult = ref(null)
 const scheduleLoading = ref(false)
-const executionMode = ref('dry_run')
 const riskAcknowledged = ref(false)
 const actionNotice = ref(null)
 const budget = ref({
@@ -82,9 +81,9 @@ const combinedResults = computed(() =>
 )
 
 const executionSummary = computed(() =>
-  executionMode.value === 'real'
-    ? '当前为真实执行模式，调度与单卡限功率会立即作用于真实设备。'
-    : '当前为演练模式，只输出动作预演，不会执行真实控制。'
+  riskAcknowledged.value
+    ? '风险已确认，调度与单卡限功率会直接写入真实设备。'
+    : '未确认风险前，调度和限功率按钮保持禁用。'
 )
 
 const budgetFillStyle = computed(() => {
@@ -127,15 +126,10 @@ function setActionNotice(tone, title, detail) {
 }
 
 function buildExecutionOptions() {
-  const isReal = executionMode.value === 'real'
-  return {
-    dry_run: !isReal,
-    acknowledge_risk: isReal && riskAcknowledged.value,
-  }
+  return { acknowledge_risk: riskAcknowledged.value }
 }
 
 function ensureRiskAcknowledged(label) {
-  if (executionMode.value !== 'real') return true
   if (riskAcknowledged.value) return true
   setActionNotice('warning', '尚未确认风险', `${label}前请先勾选风险确认。`)
   return false
@@ -222,14 +216,14 @@ async function setPower(gpuIndex) {
   const val = parseInt(powerInputs.value[gpuIndex])
   if (!val || val < 100 || val > 350) return
   if (!ensureRiskAcknowledged('单卡限功率')) return
-  if (executionMode.value === 'real' && !window.confirm(`将把 GPU ${gpuIndex} 的功耗上限设为 ${val}W，是否继续？`)) {
+  if (!window.confirm(`将把 GPU ${gpuIndex} 的功耗上限设为 ${val}W，是否继续？`)) {
     return
   }
   try {
     const { data } = await setManualPowerLimit(gpuIndex, val, buildExecutionOptions())
     setActionNotice(
-      data?.dry_run ? 'warning' : 'ok',
-      data?.dry_run ? '已生成限功率预演' : '限功率已写入',
+      'ok',
+      '限功率已写入',
       data?.message || `GPU ${gpuIndex} 目标功耗上限 ${val}W。`,
     )
     await loadStatus()
@@ -244,7 +238,7 @@ async function setPower(gpuIndex) {
 
 async function runOnce() {
   if (!ensureRiskAcknowledged('调度执行')) return
-  if (executionMode.value === 'real' && !window.confirm('将执行真实调度动作，是否继续？')) {
+  if (!window.confirm('将执行真实调度动作，是否继续？')) {
     return
   }
   scheduleLoading.value = true
@@ -253,11 +247,9 @@ async function runOnce() {
     scheduleResult.value = data
     applyBudgetState(data.budget)
     setActionNotice(
-      data?.dry_run ? 'warning' : 'ok',
-      data?.dry_run ? '已生成调度预演' : '调度已执行',
-      data?.dry_run
-        ? '本次返回的是预演动作，不会改动真实任务与功耗上限。'
-        : '本次调度已对真实任务与功耗限制生效。',
+      'ok',
+      '调度已执行',
+      '本次调度已对真实任务与功耗限制生效。',
     )
     await loadStatus()
     await loadEvaluation()
@@ -366,8 +358,8 @@ onMounted(() => {
           <span class="status-badge" :class="budget.is_exceeded ? 'status-badge--critical' : 'status-badge--ok'">
             {{ budget.is_exceeded ? '预算紧张' : '预算平稳' }}
           </span>
-          <span class="status-badge" :class="executionMode === 'real' ? 'status-badge--warning' : 'status-badge--ok'">
-            {{ executionMode === 'real' ? '真实执行' : '演练模式' }}
+          <span class="status-badge" :class="riskAcknowledged ? 'status-badge--warning' : 'status-badge--ok'">
+            {{ riskAcknowledged ? '已确认风险' : '待确认风险' }}
           </span>
         </div>
       </template>
@@ -577,23 +569,7 @@ onMounted(() => {
           当前集群功率: <span style="color: var(--text-primary)">{{ currentClusterPower.toFixed(1) }}W</span>
         </div>
         <div class="execution-panel">
-          <div class="execution-panel__switch">
-            <button
-              class="btn-tech"
-              :class="{ 'btn-tech--primary': executionMode === 'dry_run' }"
-              @click="executionMode = 'dry_run'"
-            >
-              演练模式
-            </button>
-            <button
-              class="btn-tech"
-              :class="{ 'btn-tech--primary': executionMode === 'real' }"
-              @click="executionMode = 'real'"
-            >
-              真实执行
-            </button>
-          </div>
-          <label v-if="executionMode === 'real'" class="execution-panel__ack">
+          <label class="execution-panel__ack">
             <input v-model="riskAcknowledged" type="checkbox" />
             我已确认会直接改动真实任务与功耗限制
           </label>
@@ -602,7 +578,7 @@ onMounted(() => {
           {{ executionSummary }}
         </div>
         <button class="btn-tech btn-tech--primary" @click="runOnce" :disabled="scheduleLoading">
-          {{ scheduleLoading ? '执行中...' : executionMode === 'real' ? '执行一次真实调度' : '演练一次调度' }}
+          {{ scheduleLoading ? '执行中...' : '执行一次调度' }}
         </button>
       </div>
 
@@ -637,7 +613,7 @@ onMounted(() => {
     <div v-else-if="activeTab === 'results'" class="sched-grid">
       <div v-if="scheduleResult" class="tech-card" style="padding: 20px">
         <div class="section-title" style="margin-bottom: 14px">
-          {{ scheduleResult.dry_run ? '调度预演结果' : '调度执行结果' }}
+          调度执行结果
         </div>
         <div v-if="scheduleResult.ai_strategy" style="margin-bottom: 12px">
           <div style="color: var(--accent-primary); font-size: 0.8125rem; margin-bottom: 6px">AI策略摘要</div>
@@ -663,13 +639,13 @@ onMounted(() => {
             <div class="result-item__reason">{{ r.reason }}</div>
           </div>
           <span style="flex: 1; text-align: right">
-            {{ r.dry_run ? '预演' : r.success ? '成功' : '失败' }}
+            {{ r.success ? '成功' : '失败' }}
           </span>
         </div>
       </div>
       <div v-else class="tech-card" style="padding: 20px">
         <div class="section-title" style="margin-bottom: 14px">执行结果</div>
-        <div class="sched-empty">先在“治理控制”页执行一次调度或演练，这里才会沉淀动作结果。</div>
+        <div class="sched-empty">先在“治理控制”页执行一次调度，这里才会沉淀动作结果。</div>
       </div>
 
       <!-- 策略效果对比 -->

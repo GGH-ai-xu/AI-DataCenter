@@ -418,7 +418,7 @@ class SchedulerEngine:
         strategy = await self.llm.generate_schedule(gpus, llm_processes, time_period)
         return strategy
 
-    async def execute_actions(self, actions: list[dict], dry_run: bool = False) -> list[dict]:
+    async def execute_actions(self, actions: list[dict]) -> list[dict]:
         """执行调度动作列表"""
         results = []
         for action in actions:
@@ -430,7 +430,6 @@ class SchedulerEngine:
                 "target": target,
                 "reason": reason,
                 "success": False,
-                "dry_run": dry_run,
             }
 
             # 校验动作参数合法性
@@ -457,12 +456,6 @@ class SchedulerEngine:
                 continue
 
             try:
-                if dry_run:
-                    result["success"] = True
-                    result["applied"] = False
-                    results.append(result)
-                    continue
-
                 if act == "set_power_limit":
                     resp = await self.agent.set_power_limit(
                         target["gpu_index"], target["power_limit"]

@@ -46,9 +46,12 @@ verification.md
 runtime/
 .superpowers
 AGENTS.md
-desktop-shell/*
 !desktop-shell/build/
+desktop-shell/build/*
+desktop-shell/build/dev-runtime/
 !desktop-shell/build/.gitkeep
 !desktop-shell/build/icon.ico
 !desktop-shell/build/icon.png
+!desktop-shell/build/logo.svg
 !desktop-shell/devSessionBinding.js
+desktop-shell/node_modules/

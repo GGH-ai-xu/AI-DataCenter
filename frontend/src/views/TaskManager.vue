@@ -20,7 +20,6 @@ const activeTab = ref('actions')
 const keyword = ref('')
 const selectedPriority = ref('all')
 const showAllProcesses = ref(false)
-const executionMode = ref('dry_run')
 const riskAcknowledged = ref(false)
 const exporting = ref(false)
 const actionNotice = ref(null)
@@ -136,11 +135,9 @@ const manageableProcessCount = computed(() => processSummary.value.manageableCou
 const urgentCount = computed(() => processSummary.value.urgentCount)
 const totalGpuMemory = computed(() => processSummary.value.totalGpuMemory)
 const executionSummary = computed(() =>
-  executionMode.value === 'real'
-    ? (riskAcknowledged.value
-      ? '当前为真实执行模式，操作会直接作用于可治理 GPU 任务。'
-      : '当前为真实执行模式，但还未确认风险，按钮会保持禁用。')
-    : '当前为演练模式，只生成预演结果，不会改动真实进程。'
+  riskAcknowledged.value
+    ? '风险已确认，治理动作会直接作用于真实 GPU 任务。'
+    : '未确认风险前，暂停、恢复、终止按钮保持禁用。'
 )
 
 function buildRuleDraft(user) {
@@ -180,22 +177,17 @@ watch(
 )
 
 function buildActionOptions() {
-  const isReal = executionMode.value === 'real'
-  return {
-    dry_run: !isReal,
-    acknowledge_risk: isReal && riskAcknowledged.value,
-  }
+  return { acknowledge_risk: riskAcknowledged.value }
 }
 
 function isActionDisabled(proc, action) {
   if (!isManageable(proc)) return true
-  if (executionMode.value === 'real' && !riskAcknowledged.value) return true
+  if (!riskAcknowledged.value) return true
   return Boolean(actionLoading.value[`${proc.pid}-${action}`])
 }
 
 function getActionHint(proc) {
   if (!isManageable(proc)) return '仅观察，不开放治理动作'
-  if (executionMode.value === 'dry_run') return '演练模式，不改动真实进程'
   if (!riskAcknowledged.value) return '确认风险后才会真实执行'
   return '将直接作用于真实进程'
 }
@@ -229,11 +221,11 @@ async function doAction(proc, action) {
     setActionNotice('warning', '当前进程不可治理', getManageableReason(proc))
     return
   }
-  if (executionMode.value === 'real' && !riskAcknowledged.value) {
+  if (!riskAcknowledged.value) {
     setActionNotice('warning', '尚未确认风险', '真实执行前请先勾选风险确认。')
     return
   }
-  if (executionMode.value === 'real' && action === 'terminate' && !window.confirm(`将终止真实进程 PID ${proc.pid}，是否继续？`)) {
+  if (action === 'terminate' && !window.confirm(`将终止真实进程 PID ${proc.pid}，是否继续？`)) {
     return
   }
 
@@ -246,14 +238,10 @@ async function doAction(proc, action) {
     else if (action === 'terminate') response = await terminateTask(proc.pid, options)
 
     const data = response?.data || {}
-    if (data.dry_run) {
-      setActionNotice('warning', '已生成演练结果', data.message || `已完成 PID ${proc.pid} 的动作预演。`)
-    } else {
-      const actionLabel = action === 'pause' ? '暂停' : action === 'resume' ? '恢复' : '终止'
-      const detail = data.message || `${actionLabel}指令已发送到 PID ${proc.pid}`
-      const suffix = action === 'terminate' && data.forced ? '，进程对普通终止无响应，已执行强制结束。' : '。'
-      setActionNotice('ok', '真实动作已执行', `${detail}${suffix}`)
-    }
+    const actionLabel = action === 'pause' ? '暂停' : action === 'resume' ? '恢复' : '终止'
+    const detail = data.message || `${actionLabel}指令已发送到 PID ${proc.pid}`
+    const suffix = action === 'terminate' && data.forced ? '，进程对普通终止无响应，已执行强制结束。' : '。'
+    setActionNotice('ok', '治理动作已执行', `${detail}${suffix}`)
   } catch (error) {
     console.error(error)
     setActionNotice(
@@ -347,8 +335,8 @@ async function doExportGovernance(fmt = 'markdown') {
         <div class="ink-inline-meta">
           <span class="status-badge status-badge--ok">{{ manageableProcessCount }} 可治理</span>
           <span class="status-badge status-badge--warning">{{ urgentCount }} 紧急</span>
-          <span class="status-badge" :class="executionMode === 'real' ? 'status-badge--warning' : 'status-badge--ok'">
-            {{ executionMode === 'real' ? '真实执行' : '演练模式' }}
+          <span class="status-badge" :class="riskAcknowledged ? 'status-badge--warning' : 'status-badge--ok'">
+            {{ riskAcknowledged ? '已确认风险' : '待确认风险' }}
           </span>
         </div>
       </template>
@@ -562,13 +550,9 @@ async function doExportGovernance(fmt = 'markdown') {
 
       <template #side>
         <section class="tech-card panel-card">
-          <div class="panel-card__title">执行模式</div>
+          <div class="panel-card__title">执行确认</div>
           <div class="mode-box">
-            <div class="mode-box__switch">
-              <button class="btn-tech" :class="{ 'btn-tech--primary': executionMode === 'dry_run' }" @click="executionMode = 'dry_run'">演练模式</button>
-              <button class="btn-tech" :class="{ 'btn-tech--primary': executionMode === 'real' }" @click="executionMode = 'real'">真实执行</button>
-            </div>
-            <label v-if="executionMode === 'real'" class="mode-box__ack">
+            <label class="mode-box__ack">
               <input v-model="riskAcknowledged" type="checkbox" />
               我已确认会直接作用于真实进程
             </label>

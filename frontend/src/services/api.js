@@ -95,7 +95,6 @@ export const getLlmConfig = () => api.get('/system/llm')
 export const testLlmConfig = (payload) => api.post('/system/llm/test', payload)
 export const updateLlmConfig = (payload) => api.post('/system/llm', payload)
 export const getSystemSelfCheck = () => api.get('/system/self-check')
-export const createDemoAlert = () => api.post('/system/demo-alert')
 
 // 监控观察
 export const getSystemDetail = () => api.get('/monitor/system-detail')

@@ -235,7 +235,7 @@ async def self_check():
         summary = {
             "status": "ok",
             "title": "平台主体链路可用",
-            "message": "现在可以继续做真实治理动作，或先生成一条测试告警，去风险台验证确认链路。",
+            "message": "现在可以继续做真实治理动作，或进入风险台查看当前真实告警。",
         }
 
     return {
@@ -249,39 +249,4 @@ async def self_check():
         "process_count": len(processes),
         "ws_connections": ws_manager.connection_count,
         "llm_available": app_state.llm is not None,
-    }
-
-
-@router.post("/demo-alert")
-async def create_demo_alert():
-    """写入一条可安全忽略的测试告警，便于验证风险台链路"""
-    from app.main import app_state
-
-    gpus = await app_state.agent.get_all_gpus()
-    gpu_index = int(gpus[0].get("index", 0)) if gpus else 0
-    alert = {
-        "gpu_index": gpu_index,
-        "alert_type": "self_check",
-        "severity": "warning",
-        "message": "平台自检测试告警：用于验证风险台与确认流程，可安全忽略。",
-        "value": 1.0,
-        "threshold": 0.0,
-        "timestamp": time.time(),
-    }
-    alert_id = await app_state.store.save_alert(alert)
-    alert_payload = {
-        **alert,
-        "id": alert_id,
-        "acknowledged": False,
-    }
-
-    await ws_manager.broadcast({
-        "type": "realtime",
-        "alerts": [alert_payload],
-    })
-
-    return {
-        "success": True,
-        "message": "测试告警已写入，接下来可以去风险台验证确认链路。",
-        "alert": alert_payload,
     }

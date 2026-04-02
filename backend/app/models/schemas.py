@@ -50,14 +50,12 @@ class ProcessInfo(BaseModel):
 
 class TaskActionRequest(BaseModel):
     pid: int = Field(gt=0)
-    dry_run: bool = False
     acknowledge_risk: bool = False
 
 
 class PowerLimitRequest(BaseModel):
     gpu_index: int = Field(ge=0)
     power_limit: int = Field(ge=100, le=350)
-    dry_run: bool = False
     acknowledge_risk: bool = False
 
 
@@ -69,7 +67,6 @@ class PowerBudgetConfigRequest(BaseModel):
 
 
 class ScheduleRunRequest(BaseModel):
-    dry_run: bool = False
     acknowledge_risk: bool = False
 
 class ScheduleAction(BaseModel):
@@ -126,7 +123,6 @@ class AIControlAction(BaseModel):
 class AIControlExecuteRequest(BaseModel):
     message: str = Field(default="", max_length=2000)
     actions: list[AIControlAction] = Field(default_factory=list)
-    dry_run: bool = True
     acknowledge_risk: bool = False
 
 

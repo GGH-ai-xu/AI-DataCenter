@@ -430,21 +430,21 @@ async def plan_control_actions(app_state, message: str) -> dict:
     }
 
 
-async def _run_schedule_once(app_state, dry_run: bool) -> dict:
+async def _run_schedule_once(app_state) -> dict:
     gpus = await app_state.agent.get_all_gpus()
     processes = await app_state.agent.get_processes()
     if not gpus:
         return {"success": False, "error": "无法获取 GPU 数据"}
 
     rule_actions = await app_state.scheduler.run_rules(gpus, processes)
-    rule_results = await app_state.scheduler.execute_actions(rule_actions, dry_run=dry_run) if rule_actions else []
+    rule_results = await app_state.scheduler.execute_actions(rule_actions) if rule_actions else []
 
     budget_actions = await app_state.scheduler.run_budget_schedule(gpus, processes)
-    budget_results = await app_state.scheduler.execute_actions(budget_actions, dry_run=dry_run) if budget_actions else []
+    budget_results = await app_state.scheduler.execute_actions(budget_actions) if budget_actions else []
 
     ai_strategy = await app_state.scheduler.run_ai_schedule(gpus, processes)
     ai_actions = ai_strategy.get("actions", []) if ai_strategy else []
-    ai_results = await app_state.scheduler.execute_actions(ai_actions, dry_run=dry_run) if ai_actions else []
+    ai_results = await app_state.scheduler.execute_actions(ai_actions) if ai_actions else []
 
     return {
         "success": True,
@@ -457,7 +457,6 @@ async def _run_schedule_once(app_state, dry_run: bool) -> dict:
 async def execute_control_actions(
     app_state,
     actions: list[dict],
-    dry_run: bool,
 ) -> dict:
     context = await build_control_context(app_state)
     results = []
@@ -473,7 +472,6 @@ async def execute_control_actions(
             "reason": enriched.get("reason", ""),
             "risk_level": enriched.get("risk_level", "low"),
             "success": False,
-            "dry_run": dry_run,
             "applied": False,
         }
         action_levels.append(result["risk_level"])
@@ -486,24 +484,6 @@ async def execute_control_actions(
         try:
             act = enriched["action"]
             target = enriched["target"]
-
-            if dry_run:
-                result["success"] = True
-                result["message"] = f"已生成{_action_label(act)}演练结果，未对真实设备或任务生效"
-                results.append(result)
-                try:
-                    await app_state.store.save_audit_log(
-                        action=act, target=str(target),
-                        reason=result.get("reason", ""),
-                        operator="ai_console", source="ai_control",
-                        dry_run=True, success=True,
-                        risk_level=result.get("risk_level", "low"),
-                        detail=str(result.get("target_label", "")),
-                    )
-                except Exception as audit_err:
-                    import logging
-                    logging.getLogger(__name__).warning("审计日志写入失败: %s", audit_err)
-                continue
 
             if act == "set_power_limit":
                 app_state.scheduler.clear_managed_gpu(target["gpu_index"])
@@ -549,7 +529,7 @@ async def execute_control_actions(
                 result["success"] = True
                 result["applied"] = True
             elif act == "run_schedule_once":
-                schedule_result = await _run_schedule_once(app_state, dry_run=False)
+                schedule_result = await _run_schedule_once(app_state)
                 result["success"] = bool(schedule_result.get("success"))
                 result["applied"] = result["success"]
                 result["details"] = schedule_result
@@ -570,7 +550,6 @@ async def execute_control_actions(
                 reason=result.get("reason", ""),
                 operator="ai_console",
                 source="ai_control",
-                dry_run=dry_run,
                 success=result.get("success", False),
                 error_message=result.get("error", ""),
                 risk_level=result.get("risk_level", "low"),
@@ -584,7 +563,6 @@ async def execute_control_actions(
     failure_count = len(results) - success_count
     return {
         "success": failure_count == 0 and len(results) > 0,
-        "dry_run": dry_run,
         "risk_level": _merge_risk_levels(action_levels),
         "summary": (
             f"共处理 {len(results)} 条动作，成功 {success_count} 条，失败 {failure_count} 条。"

@@ -1,7 +1,6 @@
 """任务控制 - 暂停/恢复/终止GPU进程"""
 
 import logging
-import platform
 
 try:
     import psutil
@@ -10,8 +9,6 @@ except ImportError:
     PSUTIL_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
-
-IS_WINDOWS = platform.system() == "Windows"
 
 
 def _validate_pid(pid: int) -> bool:
@@ -30,10 +27,7 @@ def _read_process_snapshot(pid: int) -> dict | None:
     from collectors.task_monitor import get_all_gpu_processes
     from process_policy import classify_process
 
-    processes = get_all_gpu_processes(
-        gpu_monitor.device_count,
-        simulate=gpu_monitor.is_simulated,
-    )
+    processes = get_all_gpu_processes(gpu_monitor.device_count)
     for proc in processes:
         if proc.get("pid") == pid:
             return {**proc, "_from_gpu_process_list": True}
@@ -78,11 +72,8 @@ def _ensure_manageable(pid: int) -> tuple[dict | None, dict | None]:
     return snapshot, None
 
 
-def pause_task(pid: int, simulate: bool = False) -> dict:
+def pause_task(pid: int) -> dict:
     """暂停进程（SIGSTOP / Windows suspend）"""
-    if simulate:
-        logger.info(f"[模拟] 进程 {pid} 已暂停")
-        return {"success": True, "pid": pid, "action": "paused"}
     snapshot, error = _ensure_manageable(pid)
     if error:
         return error
@@ -102,11 +93,8 @@ def pause_task(pid: int, simulate: bool = False) -> dict:
         return {"success": False, "error": str(e)}
 
 
-def resume_task(pid: int, simulate: bool = False) -> dict:
+def resume_task(pid: int) -> dict:
     """恢复进程（SIGCONT / Windows resume）"""
-    if simulate:
-        logger.info(f"[模拟] 进程 {pid} 已恢复")
-        return {"success": True, "pid": pid, "action": "resumed"}
     snapshot, error = _ensure_manageable(pid)
     if error:
         return error
@@ -126,11 +114,8 @@ def resume_task(pid: int, simulate: bool = False) -> dict:
         return {"success": False, "error": str(e)}
 
 
-def terminate_task(pid: int, simulate: bool = False) -> dict:
+def terminate_task(pid: int) -> dict:
     """终止进程（SIGTERM）"""
-    if simulate:
-        logger.info(f"[模拟] 进程 {pid} 已终止")
-        return {"success": True, "pid": pid, "action": "terminated"}
     snapshot, error = _ensure_manageable(pid)
     if error:
         return error

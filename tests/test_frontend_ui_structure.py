@@ -170,12 +170,13 @@ class FrontendUIStructureTests(unittest.TestCase):
         self.assertNotIn("{ key: 'replay'", text)
         self.assertNotIn("activeTab === 'replay'", text)
 
-    def test_ai_assistant_no_longer_allows_real_execution(self):
+    def test_ai_assistant_executes_real_actions_without_rehearsal_copy(self):
         text = (ROOT / "frontend/src/views/AIAssistant.vue").read_text(encoding="utf-8")
 
-        self.assertNotIn("执行真实动作", text)
-        self.assertNotIn("controlMode === 'real'", text)
-        self.assertNotIn("将执行真实治理动作", text)
+        self.assertIn("执行控制台", text)
+        self.assertNotIn("执行演练", text)
+        self.assertNotIn("先演练后执行", text)
+        self.assertNotIn("dry_run: true", text)
 
     def test_monitor_center_cards_define_own_padding(self):
         text = (ROOT / "frontend/src/views/MonitorCenter.vue").read_text(encoding="utf-8")
