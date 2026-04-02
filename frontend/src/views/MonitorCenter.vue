@@ -232,46 +232,44 @@ watch(timelineHours, () => {
 <template>
   <div class="monitor-page ink-page-shell">
     <WorkspaceSummary
-      eyebrow="系统全貌 · 训练进度 · 用户画像 · 任务时间线"
-      title="先静观其势，再判断系统应如何治理"
-      :description="`当前聚焦 ${activeTabLabel}，把训练、用户、时间线和系统底盘拆入独立舱位，避免不同观察任务相互挤压。`"
+      title="系统观察"
     >
       <template #meta>
         <div class="ink-inline-meta">
-          <span class="status-badge status-badge--ok">{{ trainingData.length }} 个训练任务</span>
+          <span class="status-badge status-badge--ok">{{ activeTabLabel }}</span>
           <span class="status-badge status-badge--warning">{{ userStats.length }} 个活跃用户</span>
           <span class="status-badge" :class="loading ? 'status-badge--warning' : 'status-badge--ok'">
             {{ loading ? '数据刷新中' : '观察就绪' }}
           </span>
         </div>
       </template>
-      <div class="monitor-summary-grid">
-        <div class="monitor-summary-card">
-          <div class="monitor-summary-card__label">当前聚焦</div>
-          <div class="monitor-summary-card__value">{{ activeTabLabel }}</div>
-          <div class="monitor-summary-card__hint">在不同观察任务之间切换，但保持顶部判断区稳定。</div>
-        </div>
-        <div class="monitor-summary-card">
-          <div class="monitor-summary-card__label">时间线样本</div>
-          <div class="monitor-summary-card__value">{{ taskTimeline.length }}</div>
-          <div class="monitor-summary-card__hint">已采集的任务生命周期样本数量。</div>
-        </div>
-        <div class="monitor-summary-card">
-          <div class="monitor-summary-card__label">活跃用户画像</div>
-          <div class="monitor-summary-card__value">{{ userStats.length }}</div>
-          <div class="monitor-summary-card__hint">当前已聚合的用户占用与画像样本数量。</div>
-        </div>
-      </div>
     </WorkspaceSummary>
 
+    <div class="monitor-summary-grid workspace-summary-strip">
+      <div class="monitor-summary-card">
+        <div class="monitor-summary-card__label">训练任务</div>
+        <div class="monitor-summary-card__value">{{ trainingData.length }}</div>
+        <div class="monitor-summary-card__hint">当前训练面板识别到的任务数量。</div>
+      </div>
+      <div class="monitor-summary-card">
+        <div class="monitor-summary-card__label">时间线样本</div>
+        <div class="monitor-summary-card__value">{{ taskTimeline.length }}</div>
+        <div class="monitor-summary-card__hint">已采集的任务生命周期样本数量。</div>
+      </div>
+      <div class="monitor-summary-card">
+        <div class="monitor-summary-card__label">活跃用户画像</div>
+        <div class="monitor-summary-card__value">{{ userStats.length }}</div>
+        <div class="monitor-summary-card__hint">当前已聚合的用户占用与画像样本数量。</div>
+      </div>
+    </div>
+
     <div class="workspace-nav-layout">
-      <aside class="workspace-nav-layout__nav">
+      <div class="workspace-nav-layout__nav">
         <WorkspaceTabs
           v-model="activeTab"
           :items="monitorTabs"
-          orientation="vertical"
         />
-      </aside>
+      </div>
 
       <section class="workspace-nav-layout__content">
     <!-- ========== Tab: 系统全貌 ========== -->

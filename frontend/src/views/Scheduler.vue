@@ -356,9 +356,7 @@ onMounted(() => {
 <template>
   <div class="scheduler-page ink-page-shell">
     <WorkspaceSummary
-      eyebrow="预算治理 · 自动调度 · 单卡功耗控制"
-      title="在峰谷之间，为每一瓦功率安排合适的落点"
-      :description="`当前时段 ${timePeriod || '待获取'}，${budget.is_exceeded ? '总预算已有压力，需要更积极的治理动作。' : '整体预算仍有余量，可继续维持监测与轻干预。'} 本页负责总预算、自动策略、单卡限功与复盘。`"
+      title="预算与调度"
     >
       <template #meta>
         <div class="ink-inline-meta">
@@ -373,33 +371,33 @@ onMounted(() => {
           </span>
         </div>
       </template>
-      <div class="scheduler-summary-grid">
-        <div class="scheduler-summary-card">
-          <div class="scheduler-summary-card__label">总预算占用</div>
-          <div class="scheduler-summary-card__value">{{ budget.usage_pct }}%</div>
-          <div class="scheduler-summary-card__hint">剩余 {{ Number(budget.remaining_power || 0).toFixed(1) }}W</div>
-        </div>
-        <div class="scheduler-summary-card">
-          <div class="scheduler-summary-card__label">碳预算占用</div>
-          <div class="scheduler-summary-card__value">{{ carbonBudget.usage_pct || 0 }}%</div>
-          <div class="scheduler-summary-card__hint">累计 {{ carbonBudget.accumulated_carbon_kg || 0 }} kgCO₂</div>
-        </div>
-        <div class="scheduler-summary-card">
-          <div class="scheduler-summary-card__label">审计日志</div>
-          <div class="scheduler-summary-card__value">{{ auditLogs.length }}</div>
-          <div class="scheduler-summary-card__hint">最近 72 小时治理动作记录</div>
-        </div>
-      </div>
     </WorkspaceSummary>
 
+    <div class="scheduler-summary-grid workspace-summary-strip">
+      <div class="scheduler-summary-card">
+        <div class="scheduler-summary-card__label">总预算占用</div>
+        <div class="scheduler-summary-card__value">{{ budget.usage_pct }}%</div>
+        <div class="scheduler-summary-card__hint">剩余 {{ Number(budget.remaining_power || 0).toFixed(1) }}W</div>
+      </div>
+      <div class="scheduler-summary-card">
+        <div class="scheduler-summary-card__label">碳预算占用</div>
+        <div class="scheduler-summary-card__value">{{ carbonBudget.usage_pct || 0 }}%</div>
+        <div class="scheduler-summary-card__hint">累计 {{ carbonBudget.accumulated_carbon_kg || 0 }} kgCO₂</div>
+      </div>
+      <div class="scheduler-summary-card">
+        <div class="scheduler-summary-card__label">审计日志</div>
+        <div class="scheduler-summary-card__value">{{ auditLogs.length }}</div>
+        <div class="scheduler-summary-card__hint">最近 72 小时治理动作记录</div>
+      </div>
+    </div>
+
     <div class="workspace-nav-layout">
-      <aside class="workspace-nav-layout__nav">
+      <div class="workspace-nav-layout__nav">
         <WorkspaceTabs
           v-model="activeTab"
           :items="schedulerTabs"
-          orientation="vertical"
         />
-      </aside>
+      </div>
 
       <section class="workspace-nav-layout__content">
         <div

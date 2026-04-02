@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { healthCheck } from './services/api'
 import { useAppStore } from './stores/app'
+import AppPrimarySidebar from './components/app/AppPrimarySidebar.vue'
 import GlobalToast from './components/GlobalToast.vue'
 import { setupInterceptor } from './services/api'
 import { useWebSocket } from './composables/useWebSocket'
@@ -270,115 +271,123 @@ onUnmounted(() => {
 
 <template>
   <div class="app-layout">
-    <header class="ink-header">
-      <div class="ink-header__left">
-        <img class="logo-mark" src="/logo.svg" alt="AI-DataCenter logo" />
-        <div class="logo-text">
-          <h1 class="logo-title">{{ appInfo.name || 'GPU 共享治理平台' }}</h1>
-          <p class="logo-sub">
-            {{ workspaceLocked ? 'CONNECT FIRST · UNLOCK LATER' : 'LAB · OPS · POWER BUDGET' }}
-          </p>
+    <div class="app-shell">
+      <aside class="app-sidebar">
+        <AppPrimarySidebar
+          :app-info="appInfo"
+          :current-path="route.path"
+          :current-time="currentTime"
+          :is-desktop="isDesktop"
+          :nav-items="navItems"
+          :update-busy="updateBusy"
+          :workspace-locked="workspaceLocked"
+          :ws-connected="wsConnected"
+          @check-updates="checkForUpdates"
+          @navigate="navigateTo"
+        />
+      </aside>
+
+      <div class="app-body">
+        <div class="app-mobile-nav">
+          <div class="app-mobile-nav__top">
+            <div class="app-mobile-nav__brand">
+              <img class="app-mobile-nav__logo" src="/logo.svg" alt="AI-DataCenter logo" />
+              <div class="app-mobile-nav__brand-copy">
+                <strong>{{ appInfo.name || 'GPU 共享治理平台' }}</strong>
+                <span>{{ wsConnected ? '实时在线' : '实时离线' }}</span>
+              </div>
+            </div>
+            <button
+              v-if="isDesktop"
+              type="button"
+              class="app-mobile-nav__update"
+              :disabled="updateBusy"
+              @click="checkForUpdates"
+            >
+              {{ updateBusy ? '检查中...' : '检查更新' }}
+            </button>
+          </div>
+          <div class="app-mobile-nav__rail">
+            <button
+              v-for="item in navItems"
+              :key="item.path"
+              type="button"
+              class="app-mobile-nav__item"
+              :class="{
+                'app-mobile-nav__item--active': route.path === item.path || (item.path !== '/' && route.path.startsWith(item.path)),
+                'app-mobile-nav__item--locked': workspaceLocked && item.path !== '/',
+              }"
+              :title="workspaceLocked && item.path !== '/' ? `请先接入 Agent，再打开${item.label}` : item.desc"
+              @click="navigateTo(item)"
+            >
+              <span class="app-mobile-nav__seal">{{ item.icon }}</span>
+              <span class="app-mobile-nav__label">{{ item.label }}</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="app-content">
+          <div v-if="workspaceLocked || lockHint || updateState" class="app-banner-stack">
+            <div v-if="workspaceLocked" class="app-banner app-banner--warning">
+              当前未接入 Agent，平台先只开放首页接入中心；任务、治理、观察、风险、AI 与复盘页面暂不开放。
+            </div>
+            <div v-if="lockHint" class="app-banner app-banner--soft">
+              {{ lockHint }}
+            </div>
+            <div
+              v-if="updateState"
+              class="app-banner"
+              :class="updateState.ok
+                ? (updateState.available ? 'app-banner--ok' : 'app-banner--neutral')
+                : 'app-banner--critical'"
+            >
+              <button type="button" class="app-banner__close" @click="clearUpdateNotice">
+                关闭
+              </button>
+              <template v-if="updateState.ok && updateState.available">
+                检测到新版本 `v{{ updateState.latestVersion }}`，当前版本 `v{{ updateState.currentVersion }}`。
+                <button type="button" class="app-banner__link" @click="openUpdateTarget(updateState.downloadUrl || updateState.releaseUrl)">
+                  打开下载地址
+                </button>
+              </template>
+              <template v-else-if="updateState.ok">
+                {{ updateState.noReleaseYet ? '当前仓库还没有发布正式 Release，暂时无法在线更新。' : `当前已是最新版本 v${updateState.currentVersion}。` }}
+                <button
+                  v-if="updateState.releasesUrl"
+                  type="button"
+                  class="app-banner__link"
+                  @click="openUpdateTarget(updateState.releasesUrl)"
+                >
+                  打开 Releases
+                </button>
+              </template>
+              <template v-else>
+                更新检查失败：{{ updateState.error || '无法连接 GitHub Releases。' }}
+                <button
+                  v-if="updateState.releasesUrl || appInfo.releasesUrl"
+                  type="button"
+                  class="app-banner__link"
+                  @click="openUpdateTarget(updateState.releasesUrl || appInfo.releasesUrl)"
+                >
+                  手动打开 Releases
+                </button>
+              </template>
+            </div>
+          </div>
+
+          <main class="app-main">
+            <router-view v-slot="{ Component }">
+              <transition name="ink-page" mode="out-in">
+                <component :is="Component" />
+              </transition>
+            </router-view>
+          </main>
         </div>
       </div>
 
-      <nav class="ink-nav">
-        <button
-          v-for="item in navItems"
-          :key="item.path"
-          type="button"
-          class="ink-nav__item"
-          :class="{
-            'ink-nav__item--active': route.path === item.path || (item.path !== '/' && route.path.startsWith(item.path)),
-            'ink-nav__item--locked': workspaceLocked && item.path !== '/',
-          }"
-          :title="workspaceLocked && item.path !== '/' ? `请先接入 Agent，再打开${item.label}` : item.desc"
-          @click="navigateTo(item)"
-        >
-          <span class="ink-nav__seal">{{ item.icon }}</span>
-          <span class="ink-nav__label">{{ item.label }}</span>
-        </button>
-      </nav>
-
-      <div class="ink-header__right">
-        <div v-if="isDesktop" class="desktop-meta">
-          <span class="desktop-meta__version">v{{ appInfo.version || '1.1.0' }}</span>
-          <button
-            type="button"
-            class="desktop-meta__action"
-            :disabled="updateBusy"
-            @click="checkForUpdates"
-          >
-            {{ updateBusy ? '检查中...' : '检查更新' }}
-          </button>
-        </div>
-        <div class="ink-status" :class="wsConnected ? 'ink-status--on' : 'ink-status--off'">
-          <span class="ink-status__dot"></span>
-          {{ wsConnected ? '在线' : '离线' }}
-        </div>
-        <div class="ink-clock">{{ currentTime }}</div>
+      <div class="side-deco">
+        <span class="side-deco__text">绿色计算</span>
       </div>
-
-      <div class="ink-header__brush"></div>
-    </header>
-
-    <div v-if="workspaceLocked || lockHint || updateState" class="app-banner-stack">
-      <div v-if="workspaceLocked" class="app-banner app-banner--warning">
-        当前未接入 Agent，平台先只开放首页接入中心；任务、治理、观察、风险、AI 与复盘页面暂不开放。
-      </div>
-      <div v-if="lockHint" class="app-banner app-banner--soft">
-        {{ lockHint }}
-      </div>
-      <div
-        v-if="updateState"
-        class="app-banner"
-        :class="updateState.ok
-          ? (updateState.available ? 'app-banner--ok' : 'app-banner--neutral')
-          : 'app-banner--critical'"
-      >
-        <button type="button" class="app-banner__close" @click="clearUpdateNotice">
-          关闭
-        </button>
-        <template v-if="updateState.ok && updateState.available">
-          检测到新版本 `v{{ updateState.latestVersion }}`，当前版本 `v{{ updateState.currentVersion }}`。
-          <button type="button" class="app-banner__link" @click="openUpdateTarget(updateState.downloadUrl || updateState.releaseUrl)">
-            打开下载地址
-          </button>
-        </template>
-        <template v-else-if="updateState.ok">
-          {{ updateState.noReleaseYet ? '当前仓库还没有发布正式 Release，暂时无法在线更新。' : `当前已是最新版本 v${updateState.currentVersion}。` }}
-          <button
-            v-if="updateState.releasesUrl"
-            type="button"
-            class="app-banner__link"
-            @click="openUpdateTarget(updateState.releasesUrl)"
-          >
-            打开 Releases
-          </button>
-        </template>
-        <template v-else>
-          更新检查失败：{{ updateState.error || '无法连接 GitHub Releases。' }}
-          <button
-            v-if="updateState.releasesUrl || appInfo.releasesUrl"
-            type="button"
-            class="app-banner__link"
-            @click="openUpdateTarget(updateState.releasesUrl || appInfo.releasesUrl)"
-          >
-            手动打开 Releases
-          </button>
-        </template>
-      </div>
-    </div>
-
-    <main class="app-main">
-      <router-view v-slot="{ Component }">
-        <transition name="ink-page" mode="out-in">
-          <component :is="Component" />
-        </transition>
-      </router-view>
-    </main>
-
-    <div class="side-deco">
-      <span class="side-deco__text">绿色计算</span>
     </div>
 
     <div v-if="closeDialog" class="shell-modal">
@@ -407,258 +416,156 @@ onUnmounted(() => {
 
 <style scoped>
 .app-layout {
-  display: flex;
-  flex-direction: column;
   width: 100%;
   height: 100vh;
   overflow: hidden;
   position: relative;
 }
 
-/* ===== 水墨顶栏 ===== */
-.ink-header {
+.app-shell {
+  display: grid;
+  grid-template-columns: 268px minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  background:
+    radial-gradient(circle at top left, rgba(58, 95, 75, 0.05), transparent 24%),
+    radial-gradient(circle at bottom right, rgba(91, 75, 140, 0.05), transparent 28%),
+    linear-gradient(180deg, rgba(248, 245, 240, 0.96), rgba(244, 240, 234, 0.88));
+}
+
+.app-sidebar {
+  display: flex;
+  min-height: 0;
+  padding: 24px 18px;
+  border-right: 1px solid rgba(26, 26, 26, 0.06);
+  background: rgba(248, 245, 240, 0.92);
+  backdrop-filter: blur(18px);
+  overflow: hidden;
+}
+
+.app-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+}
+
+.app-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+.app-mobile-nav {
+  display: none;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid rgba(26, 26, 26, 0.06);
+  background: rgba(248, 245, 240, 0.94);
+  backdrop-filter: blur(16px);
+}
+
+.app-mobile-nav__top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 56px;
-  padding: 0 32px;
-  background: rgba(248, 245, 240, 0.92);
-  backdrop-filter: blur(16px);
-  flex-shrink: 0;
-  position: relative;
-  z-index: 100;
+  gap: 12px;
 }
 
-/* 底部毛笔笔触线 */
-.ink-header__brush {
-  position: absolute;
-  bottom: 0; left: 3%; right: 3%;
-  height: 1px;
-  /* 模拟毛笔不均匀笔触 */
-  background: linear-gradient(90deg,
-    transparent 0%,
-    rgba(0,0,0,0.03) 5%,
-    rgba(0,0,0,0.08) 15%,
-    rgba(0,0,0,0.12) 30%,
-    rgba(0,0,0,0.1) 45%,
-    rgba(0,0,0,0.06) 55%,
-    rgba(0,0,0,0.1) 65%,
-    rgba(0,0,0,0.08) 80%,
-    rgba(0,0,0,0.04) 92%,
-    transparent 100%
-  );
-}
-
-.ink-header__left {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.logo-mark {
-  width: 40px;
-  height: 40px;
-  display: block;
-  flex-shrink: 0;
-  border-radius: 12px;
-  filter: drop-shadow(0 8px 14px rgba(6, 91, 83, 0.12));
-}
-
-.logo-title {
-  font-family: var(--font-xingshu);
-  font-size: 1.2rem;
-  font-weight: 400;
-  color: #1a1a1a;
-  letter-spacing: 0.18em;
-  line-height: 1.2;
-}
-
-.logo-sub {
-  font-family: var(--font-song);
-  font-size: 0.5rem;
-  color: #bbb;
-  letter-spacing: 0.35em;
-  font-weight: 300;
-  margin-top: 1px;
-}
-
-/* ===== 水墨导航 ===== */
-.ink-nav {
-  display: flex;
-  gap: 2px;
-}
-
-.ink-nav__item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
-  border-radius: 4px;
-  border: none;
-  background: transparent;
-  text-decoration: none;
-  transition: all 0.3s;
-  position: relative;
-  cursor: pointer;
-}
-
-.ink-nav__seal {
-  font-family: var(--font-seal);
-  font-size: 0.7rem;
-  color: #bbb;
-  width: 20px; height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1.5px solid transparent;
-  border-radius: 2px;
-  transition: all 0.3s;
-}
-
-.ink-nav__label {
-  font-family: var(--font-kaishu);
-  font-size: 0.8125rem;
-  color: #888;
-  letter-spacing: 0.1em;
-  transition: color 0.3s;
-}
-
-.ink-nav__item:hover .ink-nav__label {
-  color: #333;
-}
-
-.ink-nav__item:hover .ink-nav__seal {
-  color: #999;
-  border-color: rgba(0,0,0,0.08);
-}
-
-/* 活跃项 */
-.ink-nav__item--active .ink-nav__seal {
-  color: var(--ink-vermillion);
-  border-color: var(--ink-vermillion);
-  opacity: 0.6;
-}
-
-.ink-nav__item--active .ink-nav__label {
-  color: var(--text-primary);
-  font-weight: 500;
-}
-
-/* 活跃项底部朱红墨点 */
-.ink-nav__item--active::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 50%;
-  width: 4px;
-  height: 4px;
-  background: var(--ink-vermillion);
-  border-radius: 50%;
-  transform: translateX(-50%);
-  opacity: 0.5;
-}
-
-.ink-nav__item--locked {
-  opacity: 0.52;
-}
-
-.ink-nav__item--locked .ink-nav__seal,
-.ink-nav__item--locked .ink-nav__label {
-  color: #b6afa7;
-}
-
-/* ===== 右侧 ===== */
-.ink-header__right {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-}
-
-.desktop-meta {
+.app-mobile-nav__brand {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
 }
 
-.desktop-meta__version {
-  font-family: var(--font-song);
-  font-size: 0.75rem;
-  color: #9c968f;
+.app-mobile-nav__logo {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  flex-shrink: 0;
 }
 
-.desktop-meta__action {
+.app-mobile-nav__brand-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.app-mobile-nav__brand-copy strong {
+  font-size: 0.92rem;
+  color: var(--text-primary);
+}
+
+.app-mobile-nav__brand-copy span {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.app-mobile-nav__update {
   border: 1px solid rgba(46, 139, 87, 0.14);
   background: rgba(46, 139, 87, 0.07);
   color: #3A5F4B;
   border-radius: 999px;
-  padding: 5px 12px;
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
-  cursor: pointer;
-  transition: all 0.2s ease;
+  padding: 5px 10px;
+  font-size: 0.7rem;
 }
 
-.desktop-meta__action:hover:not(:disabled) {
-  background: rgba(46, 139, 87, 0.12);
-}
-
-.desktop-meta__action:disabled {
-  opacity: 0.6;
-  cursor: wait;
-}
-
-.ink-status {
+.app-mobile-nav__rail {
   display: flex;
+  gap: 10px;
+  margin-top: 12px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.app-mobile-nav__item {
+  display: inline-flex;
   align-items: center;
-  gap: 5px;
-  font-size: 0.6875rem;
-  padding: 3px 10px;
-  border-radius: 3px;
-  font-family: var(--font-kaishu);
-  letter-spacing: 0.1em;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(58, 95, 75, 0.08);
+  background: rgba(255, 252, 247, 0.76);
+  color: var(--text-secondary);
 }
 
-.ink-status--on {
-  color: #2E8B57;
-  background: rgba(46, 139, 87, 0.05);
+.app-mobile-nav__item--active {
+  border-color: rgba(46, 139, 87, 0.18);
+  background: rgba(244, 250, 247, 0.92);
 }
 
-.ink-status--off {
-  color: #C41E3A;
-  background: rgba(196, 30, 58, 0.05);
+.app-mobile-nav__item--locked {
+  opacity: 0.56;
 }
 
-.ink-status__dot {
-  width: 4px; height: 4px;
-  border-radius: 50%;
+.app-mobile-nav__seal {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(196, 30, 58, 0.08);
+  color: var(--ink-vermillion);
+  font-family: var(--font-seal);
+  font-size: 0.7rem;
 }
 
-.ink-status--on .ink-status__dot {
-  background: #2E8B57;
-  box-shadow: 0 0 4px rgba(46,139,87,0.3);
-  animation: pulse-glow 3s ease-in-out infinite;
+.app-mobile-nav__label {
+  font-size: 0.78rem;
+  white-space: nowrap;
 }
 
-.ink-status--off .ink-status__dot {
-  background: #C41E3A;
-}
-
-.ink-clock {
-  font-family: var(--font-song);
-  font-size: 0.8125rem;
-  color: #bbb;
-  font-weight: 300;
-  letter-spacing: 0.08em;
-}
-
-/* ===== 内容区 ===== */
 .app-main {
   flex: 1;
+  min-height: 0;
+  position: relative;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 28px 32px;
-  position: relative;
-  z-index: 1;
 }
 
 .app-banner-stack {
@@ -751,6 +658,32 @@ onUnmounted(() => {
   font-size: 0.875rem;
   color: rgba(0, 0, 0, 0.04);
   letter-spacing: 0.6em;
+}
+
+@media (max-width: 980px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .app-sidebar {
+    display: none;
+  }
+
+  .app-mobile-nav {
+    display: block;
+  }
+
+  .app-banner-stack {
+    padding: 10px 16px 0;
+  }
+
+  .app-main {
+    padding: 18px 16px 24px;
+  }
+
+  .side-deco {
+    display: none;
+  }
 }
 
 /* ===== 页面切换 - 云雾出入 ===== */

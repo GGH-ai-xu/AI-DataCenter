@@ -6,11 +6,10 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { createDemoAlert, getSystemSelfCheck, testConnectionConfig, updateConnectionConfig } from '../services/api'
-import { useAppStore } from '../stores/app'
-import PowerTrendChart from '../components/charts/PowerTrendChart.vue'
-import UtilizationChart from '../components/charts/UtilizationChart.vue'
+import DashboardLiveWorkspace from '../components/dashboard/DashboardLiveWorkspace.vue'
 import WorkspaceSummary from '../components/workspace/WorkspaceSummary.vue'
 import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
+import { useAppStore } from '../stores/app'
 import { useDashboardData } from '../composables/useDashboardData.js'
 
 const router = useRouter()
@@ -105,12 +104,7 @@ const REMOTE_AGENT_PORT = 8001
 const REMOTE_AGENT_EXPORT_DIRNAME = 'GPU-Server-Agent'
 const REMOTE_AGENT_START_SCRIPT = 'Start-Agent.bat'
 
-const fmtMem = (bytes) => (bytes / 1073741824).toFixed(1)
 const shortUser = (username = 'unknown') => username.split('\\').pop() || username
-const tempColor = (t) => t >= 90 ? '#C41E3A' : t >= 80 ? '#B8860B' : t >= 60 ? '#3A5F4B' : '#2E8B57'
-const utilColor = (u) => u >= 90 ? '#C41E3A' : u >= 70 ? '#B8860B' : u >= 40 ? '#3A5F4B' : '#2E8B57'
-const powerPct = (usage, limit) => limit > 0 ? Math.round(usage / limit * 100) : 0
-const memPct = (used, total) => total > 0 ? Math.round(used / total * 100) : 0
 const formatConnectionTime = (timestamp) => {
   if (!timestamp) return '未保存'
   return new Date(timestamp * 1000).toLocaleString('zh-CN', {
@@ -409,6 +403,29 @@ const recommendationList = computed(() => {
   if (recommendations.length) return recommendations.slice(0, 3)
   return [governanceTip.value]
 })
+const overviewStats = computed(() => [
+  { label: '活跃用户', value: activeUsers.value, tone: 'neutral' },
+  { label: '紧急任务', value: urgentTasks.value, tone: urgentTasks.value > 0 ? 'warning' : 'neutral' },
+  { label: '严重告警', value: criticalAlerts.value.length, tone: criticalAlerts.value.length > 0 ? 'critical' : 'neutral' },
+])
+const liveSummary = computed(() => ({
+  activeUsers: activeUsers.value,
+  urgentTasks: urgentTasks.value,
+  deferrableTasks: deferrableTasks.value,
+  normalTasks: normalTasks.value,
+  criticalAlertCount: criticalAlerts.value.length,
+  hotGpuCount: hotGpuCount.value,
+}))
+const liveGovernance = computed(() => ({
+  budget: budget.value,
+  sourceState: sourceState.value,
+  governanceTip: governanceTip.value,
+  fairnessOverview: fairnessOverview.value,
+  fairnessTone: fairnessTone.value,
+  boardTone: boardTone.value,
+  recommendationList: recommendationList.value,
+  yieldQueue: yieldQueue.value,
+}))
 
 const selfCheckSummary = computed(() => selfCheckState.value.summary || {})
 const selfCheckBadgeClass = computed(() => ({
@@ -549,7 +566,19 @@ const todoItems = computed(() => {
     })
   }
 
-  return items.slice(0, 4)
+  return items
+})
+const overviewTodoItems = computed(() => todoItems.value.slice(0, 3))
+
+function dedupeRoutes(routes) {
+  return routes.filter((entry, index, list) => list.findIndex((candidate) => candidate.path === entry.path) === index)
+}
+
+const overviewRoutes = computed(() => {
+  const prioritizedRoutes = todoItems.value
+    .map((item) => quickRoutes.find((entry) => entry.path === item.path))
+    .filter(Boolean)
+  return dedupeRoutes([...prioritizedRoutes, ...quickRoutes]).slice(0, 3)
 })
 
 function statusBadgeClass(status = 'warning') {
@@ -1041,14 +1070,11 @@ onUnmounted(() => {
 <template>
   <div class="dashboard ink-page-shell">
     <WorkspaceSummary
-      :eyebrow="workspaceReady ? '治理工作台 · 第一屏先给判断与动作' : '接入中心 · 先接通，再解锁治理页面'"
-      :title="workspaceReady ? '不是只看 GPU，而是先知道现在该不该动、该动谁、动完如何回放' : '当前先完成 Agent 接入，接通后再开放治理、处置、风险与复盘功能'"
-      :description="workspaceReady ? governanceTip : '现在首页先不展示后续治理模块，避免未接入时出现空数据和错误动作。你先完成本机或远程 Agent 接入，再进入完整工作台。'"
+      :title="workspaceReady ? '治理总览' : '接入中心'"
     >
       <template #meta>
-        <div class="governance-hero__side">
+        <div class="dashboard-summary__meta">
           <span class="status-badge" :class="sourceBadge.cls">{{ sourceBadge.label }}</span>
-          <span class="status-badge">{{ connectionState.mode_label }}</span>
           <span
             v-if="workspaceReady"
             class="status-badge"
@@ -1069,13 +1095,12 @@ onUnmounted(() => {
     </WorkspaceSummary>
 
     <div class="workspace-nav-layout">
-      <aside class="workspace-nav-layout__nav">
+      <div class="workspace-nav-layout__nav">
         <WorkspaceTabs
           v-model="activeTab"
           :items="dashboardTabs"
-          orientation="vertical"
         />
-      </aside>
+      </div>
 
       <section class="workspace-nav-layout__content">
     <template v-if="activeTab === 'access'">
@@ -1456,325 +1481,92 @@ onUnmounted(() => {
     </template>
 
     <template v-if="workspaceReady && activeTab === 'overview'">
-    <section class="workbench-grid">
-      <div class="workbench-card workbench-card--main tech-card">
-        <div class="workbench-card__head">
-          <div>
-            <div class="section-title">治理判断</div>
-            <div class="workbench-card__sub">{{ sourceState.detail }}</div>
-          </div>
-          <span class="status-badge" :style="{ background: boardTone.bg, color: boardTone.color, border: '1px solid ' + boardTone.border }">
-            {{ boardTone.badge }}
-          </span>
-        </div>
-
-        <div class="workbench-card__headline">{{ boardTone.title }}</div>
-        <div class="workbench-chips">
-          <span class="governance-chip">活跃用户 {{ activeUsers }}</span>
-          <span class="governance-chip">紧急任务 {{ urgentTasks }}</span>
-          <span class="governance-chip">可延迟 {{ deferrableTasks }}</span>
-          <span class="governance-chip">严重告警 {{ criticalAlerts.length }}</span>
-        </div>
-
-        <div class="workbench-list">
-          <div v-for="(item, index) in recommendationList" :key="index" class="workbench-list__item">
-            <span class="workbench-list__idx">{{ index + 1 }}</span>
-            <span class="workbench-list__text">{{ item }}</span>
-          </div>
-        </div>
-
-        <div class="action-grid">
-          <button class="btn-tech btn-tech--primary" @click="router.push('/scheduler')">
-            打开治理台
-          </button>
-          <button class="btn-tech" @click="router.push('/tasks')">
-            打开任务处置
-          </button>
-          <button class="btn-tech" @click="router.push('/alerts')">
-            打开风险台
-          </button>
-          <button class="btn-tech" @click="router.push('/energy')">
-            打开复盘台
-          </button>
-        </div>
-        <div class="workbench-card__hint">首页只保留判断与跳转。真实治理、节能测算和历史复盘分别进入对应专题页完成。</div>
-      </div>
-
-      <div class="workbench-card tech-card">
-        <div class="workbench-card__head">
-          <div class="section-title">待处置事项</div>
-          <span class="workbench-card__count stat-value">{{ todoItems.length }}</span>
-        </div>
-        <div class="todo-list">
-          <button
-            v-for="(item, index) in todoItems"
-            :key="index"
-            class="todo-item"
-            :class="`todo-item--${item.tone}`"
-            @click="router.push(item.path)"
-          >
-            <div class="todo-item__top">
-              <span class="todo-item__title">{{ item.title }}</span>
-              <span class="todo-item__cta">{{ item.cta }}</span>
+      <section class="workbench-grid">
+        <div class="workbench-card workbench-card--main tech-card">
+          <div class="workbench-card__head">
+            <div>
+              <div class="section-title">治理判断</div>
+              <div class="workbench-card__sub">{{ sourceState.detail }}</div>
             </div>
-            <div class="todo-item__desc">{{ item.desc }}</div>
-          </button>
-        </div>
-      </div>
-    </section>
-
-    <section class="signal-grid">
-      <div class="signal-card tech-card">
-        <div class="signal-card__head">
-          <div class="section-title">工作入口</div>
-          <div class="signal-card__note">按职责进入专题页，避免首页继续堆明细卡</div>
-        </div>
-        <div class="route-grid">
-          <button v-for="entry in quickRoutes" :key="entry.path" class="route-entry" @click="router.push(entry.path)">
-            <span class="route-entry__stamp">{{ entry.stamp }}</span>
-            <span class="route-entry__body">
-              <strong>{{ entry.label }}</strong>
-              <small>{{ entry.desc }}</small>
+            <span class="status-badge" :style="{ background: boardTone.bg, color: boardTone.color, border: '1px solid ' + boardTone.border }">
+              {{ boardTone.badge }}
             </span>
-          </button>
+          </div>
+
+          <div class="workbench-card__headline">{{ boardTone.title }}</div>
+
+          <div class="workbench-chips workbench-chips--compact">
+            <span
+              v-for="stat in overviewStats"
+              :key="stat.label"
+              class="governance-chip"
+              :class="`governance-chip--${stat.tone}`"
+            >
+              {{ stat.label }} {{ stat.value }}
+            </span>
+          </div>
+
+          <div class="overview-layout">
+            <div class="overview-layout__main">
+              <div class="workbench-list">
+                <div v-for="(item, index) in recommendationList" :key="index" class="workbench-list__item">
+                  <span class="workbench-list__idx">{{ index + 1 }}</span>
+                  <span class="workbench-list__text">{{ item }}</span>
+                </div>
+              </div>
+            </div>
+
+            <aside class="overview-layout__side">
+              <div class="overview-side__head">
+                <div>
+                  <div class="section-title">当前动作</div>
+                  <div class="workbench-card__sub">首页只保留最需要处理的事项和直达入口。</div>
+                </div>
+                <span class="workbench-card__count stat-value">{{ todoItems.length }}</span>
+              </div>
+
+              <div class="todo-list todo-list--compact">
+                <button
+                  v-for="(item, index) in overviewTodoItems"
+                  :key="index"
+                  class="todo-item"
+                  :class="`todo-item--${item.tone}`"
+                  @click="router.push(item.path)"
+                >
+                  <div class="todo-item__top">
+                    <span class="todo-item__title">{{ item.title }}</span>
+                    <span class="todo-item__cta">{{ item.cta }}</span>
+                  </div>
+                  <div class="todo-item__desc">{{ item.desc }}</div>
+                </button>
+              </div>
+
+              <div class="route-grid route-grid--compact">
+                <button
+                  v-for="entry in overviewRoutes"
+                  :key="entry.path"
+                  class="route-entry route-entry--compact"
+                  @click="router.push(entry.path)"
+                >
+                  <span class="route-entry__stamp">{{ entry.stamp }}</span>
+                  <span class="route-entry__body">
+                    <strong>{{ entry.label }}</strong>
+                    <small>{{ entry.desc }}</small>
+                  </span>
+                </button>
+              </div>
+            </aside>
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
     </template>
 
     <template v-if="workspaceReady && activeTab === 'live'">
-    <div class="section-title" style="margin: 8px 0 4px">运行底盘</div>
-
-    <div class="stats-row">
-      <div class="stat-card">
-        <div class="stat-card__icon" style="background: linear-gradient(135deg, #3A5F4B, #5B4B8C)">⚡</div>
-        <div class="stat-card__content">
-          <div class="stat-card__label">当前总功率</div>
-          <div class="stat-card__value stat-value">
-            <span class="text-3xl">{{ store.totalPower.toFixed(1) }}</span>
-            <span class="stat-card__unit">W</span>
-          </div>
-          <div class="stat-card__sub">{{ store.gpus.length }} 张GPU实时汇总</div>
-        </div>
-      </div>
-
-      <div class="stat-card">
-        <div class="stat-card__icon" style="background: linear-gradient(135deg, #C41E3A, #F97316)">⌁</div>
-        <div class="stat-card__content">
-          <div class="stat-card__label">剩余预算</div>
-          <div class="stat-card__value stat-value">
-            <span class="text-3xl" :style="{ color: budget.is_exceeded ? '#C41E3A' : '#2E8B57' }">{{ Math.abs(budget.remaining_power || 0).toFixed(1) }}</span>
-            <span class="stat-card__unit">W</span>
-          </div>
-          <div class="stat-card__sub">
-            {{ budget.is_exceeded ? '预算已超限' : `预算上限 ${budget.total_power_budget || 0}W` }}
-          </div>
-        </div>
-      </div>
-
-      <div class="stat-card">
-        <div class="stat-card__icon" style="background: linear-gradient(135deg, #B8860B, #B8860B)">🌡</div>
-        <div class="stat-card__content">
-          <div class="stat-card__label">平均温度</div>
-          <div class="stat-card__value stat-value">
-            <span class="text-3xl" :style="{ color: tempColor(store.avgTemperature) }">{{ store.avgTemperature }}</span>
-            <span class="stat-card__unit">°C</span>
-          </div>
-          <div class="stat-card__sub">热点风险与散热压力</div>
-        </div>
-      </div>
-
-      <div class="stat-card">
-        <div class="stat-card__icon" style="background: linear-gradient(135deg, #5B8C7E, #7BB5A3)">人</div>
-        <div class="stat-card__content">
-          <div class="stat-card__label">活跃用户</div>
-          <div class="stat-card__value stat-value">
-            <span class="text-3xl">{{ activeUsers }}</span>
-            <span class="stat-card__unit">人</span>
-          </div>
-          <div class="stat-card__sub">{{ store.processes.length }} 个GPU进程</div>
-        </div>
-      </div>
-
-      <div class="stat-card">
-        <div class="stat-card__icon" style="background: linear-gradient(135deg, #7B6BA4, #5B4B8C)">优</div>
-        <div class="stat-card__content">
-          <div class="stat-card__label">任务优先级</div>
-          <div class="stat-card__value stat-value">
-            <span class="text-3xl">{{ urgentTasks }}</span>
-            <span class="stat-card__unit">紧急</span>
-          </div>
-          <div class="stat-card__sub">可延迟 {{ deferrableTasks }} / 普通 {{ normalTasks }}</div>
-        </div>
-      </div>
-
-      <div class="stat-card">
-        <div class="stat-card__icon" style="background: linear-gradient(135deg, #2E8B57, #3A5F4B)">卡</div>
-        <div class="stat-card__content">
-          <div class="stat-card__label">GPU数量</div>
-          <div class="stat-card__value stat-value">
-            <span class="text-3xl">{{ store.gpus.length }}</span>
-            <span class="stat-card__unit">张</span>
-          </div>
-          <div class="stat-card__sub">{{ sourceState.label }}</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="governance-grid">
-      <div class="tech-card governance-panel">
-        <div class="section-title">预算治理状态</div>
-        <div class="governance-panel__value">
-          <span class="stat-value">{{ budget.usage_pct || 0 }}%</span>
-          <span>预算占用</span>
-        </div>
-        <div class="governance-panel__bar">
-          <div class="governance-panel__bar-fill" :style="{ width: Math.min(100, Math.max(0, budget.usage_pct || 0)) + '%', background: budget.is_exceeded ? 'var(--gradient-red)' : 'var(--gradient-green)' }"></div>
-        </div>
-        <div class="governance-panel__hint">
-          {{ budget.enabled ? '预算治理已启用' : '预算治理当前关闭' }}，已接管 {{ budget.managed_gpu_count || 0 }} 张GPU
-        </div>
-      </div>
-
-      <div class="tech-card governance-panel">
-        <div class="section-title">任务治理建议</div>
-        <div class="governance-panel__desc">{{ governanceTip }}</div>
-        <div class="governance-panel__chips">
-          <span class="governance-chip">紧急任务 {{ urgentTasks }}</span>
-          <span class="governance-chip">普通任务 {{ normalTasks }}</span>
-          <span class="governance-chip">可延迟任务 {{ deferrableTasks }}</span>
-        </div>
-      </div>
-
-      <div class="tech-card governance-panel">
-        <div class="section-title">数据来源</div>
-        <div class="governance-panel__value">
-          <span class="stat-value">{{ sourceState.gpu_count }}</span>
-          <span>张卡</span>
-        </div>
-        <div class="governance-panel__desc">{{ sourceState.detail }}</div>
-        <button class="btn-tech" @click="router.push('/scheduler')">进入治理调度页</button>
-      </div>
-
-      <div class="tech-card governance-panel">
-        <div class="section-title">公平治理指数</div>
-        <div class="governance-panel__value">
-          <span class="stat-value" :style="{ color: fairnessTone.color }">{{ fairnessOverview.fairness_index ?? 0 }}</span>
-          <span>分</span>
-        </div>
-        <div class="governance-panel__desc">{{ fairnessOverview.summary }}</div>
-        <div class="governance-panel__chips">
-          <span class="governance-chip" :style="{ color: fairnessTone.color, background: fairnessTone.bg }">{{ fairnessTone.label }}</span>
-          <span class="governance-chip">最高占用 {{ fairnessOverview.highest_share_pct || 0 }}%</span>
-          <span class="governance-chip">候选让路 {{ fairnessOverview.reclaimable_candidates || 0 }}</span>
-          <span class="governance-chip">规则违规 {{ fairnessOverview.violation_user_count || 0 }}</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="section-title" style="margin: 20px 0 12px">GPU 实时状态</div>
-    <div class="gpu-grid">
-      <div class="gpu-grid__source-badge" v-if="store.gpus.length">
-        <span class="source-dot" :style="{ background: store.dataSourceLabel.color }"></span>
-        <span class="source-text" :style="{ color: store.dataSourceLabel.color }">{{ store.dataSourceLabel.text }}</span>
-        <span v-if="store.dataSourceStatus.gpu_count" class="source-count">{{ store.dataSourceStatus.gpu_count }} 卡</span>
-      </div>
-      <div
-        v-for="gpu in store.gpus"
-        :key="gpu.index"
-        class="gpu-card tech-card"
-        @click="router.push(`/gpu/${gpu.index}`)"
-      >
-        <div class="gpu-card__header">
-          <div class="gpu-card__id">
-            <span class="gpu-card__badge">GPU {{ gpu.index }}</span>
-            <span class="gpu-card__name">{{ gpu.name }}</span>
-          </div>
-          <span
-            class="status-badge"
-            :class="gpu.temperature >= 85 ? 'status-badge--critical' : gpu.temperature >= 70 ? 'status-badge--warning' : 'status-badge--ok'"
-          >
-            {{ gpu.temperature >= 85 ? '高温' : gpu.temperature >= 70 ? '偏高' : '正常' }}
-          </span>
-        </div>
-
-        <div class="gpu-card__metrics">
-          <div class="metric-item">
-            <div class="metric-item__label">温度</div>
-            <div class="metric-item__value stat-value" :style="{ color: tempColor(gpu.temperature) }">
-              {{ gpu.temperature }}<span class="metric-item__unit">°C</span>
-            </div>
-            <div class="metric-bar">
-              <div class="metric-bar__fill" :style="{ width: Math.min(gpu.temperature, 100) + '%', background: tempColor(gpu.temperature) }"></div>
-            </div>
-          </div>
-
-          <div class="metric-item">
-            <div class="metric-item__label">功耗</div>
-            <div class="metric-item__value stat-value">
-              {{ gpu.power_usage.toFixed(0) }}<span class="metric-item__unit">/ {{ gpu.power_limit.toFixed(0) }}W</span>
-            </div>
-            <div class="metric-bar">
-              <div class="metric-bar__fill" :style="{ width: powerPct(gpu.power_usage, gpu.power_limit) + '%', background: 'var(--gradient-blue)' }"></div>
-            </div>
-          </div>
-
-          <div class="metric-item">
-            <div class="metric-item__label">GPU利用率</div>
-            <div class="metric-item__value stat-value" :style="{ color: utilColor(gpu.gpu_utilization) }">
-              {{ gpu.gpu_utilization }}<span class="metric-item__unit">%</span>
-            </div>
-            <div class="metric-bar">
-              <div class="metric-bar__fill" :style="{ width: gpu.gpu_utilization + '%', background: utilColor(gpu.gpu_utilization) }"></div>
-            </div>
-          </div>
-
-          <div class="metric-item">
-            <div class="metric-item__label">显存</div>
-            <div class="metric-item__value stat-value">
-              {{ fmtMem(gpu.memory_used) }}<span class="metric-item__unit">/ {{ fmtMem(gpu.memory_total) }}G</span>
-            </div>
-            <div class="metric-bar">
-              <div class="metric-bar__fill" :style="{ width: memPct(gpu.memory_used, gpu.memory_total) + '%', background: 'var(--gradient-green)' }"></div>
-            </div>
-          </div>
-        </div>
-
-        <div class="gpu-card__footer">
-          <span>风扇 {{ gpu.fan_speed }}%</span>
-          <span>SM {{ gpu.clock_sm }} MHz</span>
-          <span>MEM {{ gpu.clock_mem }} MHz</span>
-        </div>
-      </div>
-
-      <div v-if="!store.gpus.length" class="gpu-grid__empty tech-card">
-        <div class="text-center" style="padding: 60px 20px; color: var(--text-muted)">
-          <div style="font-size: 2.5rem; margin-bottom: 12px; opacity: 0.3">◉</div>
-          <div style="font-size: 1rem; margin-bottom: 8px">等待GPU数据...</div>
-          <div style="font-size: 0.8rem">请确保 Agent 服务已启动，并确认当前数据源是否为真实采集</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="charts-row" v-if="store.gpus.length">
-      <div class="chart-panel tech-card">
-        <div class="chart-panel__header">
-          <div class="section-title">功耗趋势</div>
-        </div>
-        <div class="chart-panel__body">
-          <PowerTrendChart :gpus="store.gpus" />
-        </div>
-      </div>
-      <div class="chart-panel tech-card">
-        <div class="chart-panel__header">
-          <div class="section-title">利用率分布</div>
-        </div>
-        <div class="chart-panel__body">
-          <UtilizationChart :gpus="store.gpus" />
-        </div>
-      </div>
-    </div>
-
+      <DashboardLiveWorkspace
+        :store="store"
+        :summary="liveSummary"
+        :governance="liveGovernance"
+      />
     </template>
       </section>
     </div>
@@ -1787,48 +1579,12 @@ onUnmounted(() => {
   margin: 0 auto;
 }
 
-.governance-hero {
+.dashboard-summary__meta {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 24px;
-  padding: 24px 26px;
-  margin-bottom: 16px;
-  background:
-    radial-gradient(circle at top right, rgba(91,75,140,0.08), transparent 35%),
-    radial-gradient(circle at bottom left, rgba(58,95,75,0.08), transparent 35%),
-    var(--gradient-card);
-}
-
-.governance-hero__eyebrow {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  letter-spacing: 0.12em;
-  margin-bottom: 8px;
-}
-
-.governance-hero__title {
-  font-family: var(--font-song);
-  font-weight: 700;
-  font-size: 1.6rem;
-  line-height: 1.4;
-  color: var(--text-primary);
-  margin-bottom: 10px;
-}
-
-.governance-hero__desc,
-.governance-hero__meta {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  line-height: 1.7;
-}
-
-.governance-hero__side {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 8px;
-  min-width: 220px;
+  max-width: 360px;
 }
 
 .connection-panel {
@@ -2458,7 +2214,7 @@ onUnmounted(() => {
 
 .workbench-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.75fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
 }
 
@@ -2472,16 +2228,14 @@ onUnmounted(() => {
     linear-gradient(180deg, rgba(255,255,255,0.82), rgba(255,252,247,0.56));
 }
 
-.workbench-card__head,
-.signal-card__head {
+.workbench-card__head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
 }
 
-.workbench-card__sub,
-.signal-card__note {
+.workbench-card__sub {
   margin-top: 8px;
   font-size: 0.78rem;
   color: var(--text-muted);
@@ -2492,7 +2246,7 @@ onUnmounted(() => {
   margin-top: 18px;
   font-family: var(--font-song);
   font-weight: 700;
-  font-size: 1.58rem;
+  font-size: 1.44rem;
   line-height: 1.38;
   color: var(--text-primary);
 }
@@ -2516,11 +2270,35 @@ onUnmounted(() => {
   margin-top: 14px;
 }
 
+.workbench-chips--compact {
+  margin-top: 12px;
+}
+
+.overview-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+  gap: 14px;
+  align-items: start;
+  margin-top: 16px;
+}
+
+.overview-layout__main,
+.overview-layout__side {
+  min-width: 0;
+}
+
+.overview-side__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .workbench-list {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  margin-top: 16px;
+  margin-top: 0;
 }
 
 .workbench-list__item {
@@ -2550,6 +2328,7 @@ onUnmounted(() => {
   font-size: 0.86rem;
   color: var(--text-secondary);
   line-height: 1.75;
+  overflow-wrap: anywhere;
 }
 
 .action-grid {
@@ -2604,6 +2383,10 @@ onUnmounted(() => {
   color: var(--accent-secondary);
 }
 
+.todo-list--compact {
+  margin-top: 14px;
+}
+
 .todo-list {
   display: flex;
   flex-direction: column;
@@ -2643,19 +2426,23 @@ onUnmounted(() => {
 
 .todo-item__top {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
 }
 
 .todo-item__title {
   font-size: 0.9rem;
   color: var(--text-primary);
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .todo-item__cta {
   font-size: 0.72rem;
   color: var(--accent-secondary);
+  flex-shrink: 0;
 }
 
 .todo-item__desc {
@@ -2663,31 +2450,7 @@ onUnmounted(() => {
   font-size: 0.82rem;
   color: var(--text-secondary);
   line-height: 1.72;
-}
-
-.signal-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.signal-card {
-  padding: 20px;
-}
-
-.signal-card__link {
-  border: 0;
-  background: transparent;
-  color: var(--accent-secondary);
-  cursor: pointer;
-  font-size: 0.76rem;
-}
-
-.signal-card__body {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 16px;
+  overflow-wrap: anywhere;
 }
 
 .signal-card__empty {
@@ -2775,6 +2538,11 @@ onUnmounted(() => {
   margin-top: 16px;
 }
 
+.route-grid--compact {
+  grid-template-columns: 1fr;
+  margin-top: 12px;
+}
+
 .route-entry {
   width: 100%;
   text-align: left;
@@ -2822,17 +2590,24 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
 }
 
 .route-entry__body strong {
   font-size: 0.84rem;
   color: var(--text-primary);
+  overflow-wrap: anywhere;
 }
 
 .route-entry__body small {
   font-size: 0.72rem;
   color: var(--text-muted);
   line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.route-entry--compact {
+  padding: 12px;
 }
 
 .stats-row {
@@ -2947,6 +2722,16 @@ onUnmounted(() => {
   background: rgba(58,95,75,0.08);
   padding: 4px 8px;
   border-radius: 999px;
+}
+
+.governance-chip--warning {
+  color: #B8860B;
+  background: rgba(212,175,55,0.12);
+}
+
+.governance-chip--critical {
+  color: #C41E3A;
+  background: rgba(196,30,58,0.10);
 }
 
 .gpu-grid {
@@ -3149,19 +2934,14 @@ onUnmounted(() => {
   .workbench-grid { grid-template-columns: 1fr; }
   .stats-row { grid-template-columns: repeat(3, 1fr); }
   .journey-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .signal-grid,
   .governance-grid { grid-template-columns: repeat(2, 1fr); }
   .gpu-grid { grid-template-columns: repeat(2, 1fr); }
 }
 
 @media (max-width: 980px) {
-  .governance-hero {
-    flex-direction: column;
-  }
-
-  .governance-hero__side {
-    align-items: flex-start;
-    min-width: 0;
+  .dashboard-summary__meta {
+    justify-content: flex-start;
+    max-width: none;
   }
 
   .connection-panel__head {
@@ -3185,7 +2965,7 @@ onUnmounted(() => {
     flex-direction: column;
   }
 
-  .signal-grid,
+  .overview-layout { grid-template-columns: 1fr; }
   .stats-row { grid-template-columns: repeat(2, 1fr); }
   .governance-grid { grid-template-columns: 1fr; }
   .charts-row { grid-template-columns: 1fr; }
@@ -3197,7 +2977,7 @@ onUnmounted(() => {
   .connection-facts,
   .self-check-facts,
   .journey-steps,
-  .signal-grid,
+  .overview-layout,
   .stats-row,
   .route-grid,
   .gpu-grid,
@@ -3205,8 +2985,7 @@ onUnmounted(() => {
     grid-template-columns: 1fr;
   }
 
-  .workbench-card,
-  .signal-card {
+  .workbench-card {
     padding: 18px;
   }
 }

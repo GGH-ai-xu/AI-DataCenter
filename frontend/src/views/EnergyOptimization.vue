@@ -29,7 +29,9 @@ const aiAnomaliesLoading = ref(false), aiInsightLoading = ref(false)
 const sourceState = ref({ connected: false, simulated: false, gpu_count: 0 })
 const schedulerState = ref({ budget: { enabled: false, total_power_budget: 1200, usage_pct: 0, remaining_power: 1200, is_exceeded: false } })
 const energyTabs = [
-  { key: 'overview', label: '总览', desc: '指标与优化入口' },
+  { key: 'overview', label: '总览', desc: '指标判断与分流' },
+  { key: 'analysis', label: '分析', desc: '结构、趋势与碳排' },
+  { key: 'optimize', label: '优化', desc: '策略生成与节能方案' },
   { key: 'prediction', label: '预测与对比', desc: '预测、回放、效果对比' },
   { key: 'ai', label: 'AI 洞察', desc: '趋势解读与异常诊断' },
 ]
@@ -403,13 +405,11 @@ watch(activeTab, () => {
     <header class="ink-header si" style="--d:0s">
       <div class="ink-header__left">
         <h1 class="ink-title">能耗治理</h1>
-        <p class="ink-subtitle">真实采集 · 预算联动 · 绿色治理</p>
       </div>
       <div class="ink-header__right">
-        <button class="seal-btn seal-btn--sm" :disabled="exporting" @click="doExport('markdown')">
-          <span class="seal-btn__stamp seal-btn__stamp--sm">报</span>
-          <span class="seal-btn__text seal-btn__text--sm">{{ exporting ? '...' : '导出报告' }}</span>
-        </button>
+        <span class="ink-period" style="color:#3A5F4B;background:rgba(58,95,75,0.08)">
+          {{ sourceLabel }}
+        </span>
         <span
           class="ink-period"
           :style="{
@@ -420,10 +420,6 @@ watch(activeTab, () => {
           {{ budgetLabel }}
         </span>
         <span class="ink-period" :style="{color:tp.color,background:tp.bg}">{{ tp.label }}时段</span>
-      </div>
-      <!-- 印章 -->
-      <div class="ink-seal">
-        <span>智<br/>能</span>
       </div>
     </header>
 
@@ -457,13 +453,16 @@ watch(activeTab, () => {
     </section>
 
     <div class="workspace-nav-layout">
-      <aside class="workspace-nav-layout__nav">
+      <div class="workspace-nav-layout__nav energy-nav-head">
         <WorkspaceTabs
           v-model="activeTab"
           :items="energyTabs"
-          orientation="vertical"
         />
-      </aside>
+        <button class="seal-btn seal-btn--sm" :disabled="exporting" @click="doExport('markdown')">
+          <span class="seal-btn__stamp seal-btn__stamp--sm">报</span>
+          <span class="seal-btn__text seal-btn__text--sm">{{ exporting ? '...' : '导出报告' }}</span>
+        </button>
+      </div>
 
       <section class="workspace-nav-layout__content">
     <!-- ===== KPI 六宫格 ===== -->
@@ -501,6 +500,27 @@ watch(activeTab, () => {
       </div>
     </div>
 
+    <div v-if="activeTab === 'overview'" class="overview-focus-grid si" style="--d:.18s">
+      <button type="button" class="overview-focus-card" @click="activeTab = 'analysis'">
+        <span class="overview-focus-card__eyebrow">结构与趋势</span>
+        <span class="overview-focus-card__title">进入分析工作区</span>
+        <span class="overview-focus-card__desc">查看节能仪表、碳排放、时段分布与廿四时功耗，避免总览继续向下堆完整图表。</span>
+        <span class="overview-focus-card__meta">当前 {{ tp.label }}时段 · 已减排 {{ carbon?.co2_saved_kg?.toFixed(3) || '0' }} kg</span>
+      </button>
+      <button type="button" class="overview-focus-card" @click="activeTab = 'optimize'">
+        <span class="overview-focus-card__eyebrow">策略与执行</span>
+        <span class="overview-focus-card__title">进入优化工作区</span>
+        <span class="overview-focus-card__desc">把策略生成、前后对比和建议条目集中在一个工作区，便于连续评估而不挤占总览。</span>
+        <span class="overview-focus-card__meta">{{ optimizeResult ? `当前方案预计节省 ${optimizeResult.saving_pct?.toFixed(1) || '0'}%` : '尚未生成智能优化方案' }}</span>
+      </button>
+      <button type="button" class="overview-focus-card" @click="activeTab = 'ai'">
+        <span class="overview-focus-card__eyebrow">模型辅助</span>
+        <span class="overview-focus-card__title">进入 AI 洞察</span>
+        <span class="overview-focus-card__desc">把趋势解读和异常诊断单独归类，减少总览与分析页的认知切换。</span>
+        <span class="overview-focus-card__meta">{{ hasLlm ? 'LLM 已接入，可做趋势研判与异常诊断' : '当前未接入 LLM，仅保留基础诊断能力' }}</span>
+      </button>
+    </div>
+
     <!-- ===== D2: AI 趋势洞察 ===== -->
     <div v-if="activeTab === 'ai' && hasLlm" class="ink-card ink-card--wide ink-card--ai si" style="--d:.12s">
       <div class="ink-card__hd">
@@ -529,7 +549,7 @@ watch(activeTab, () => {
     </div>
 
     <!-- ===== 三栏：节能仪表 / 碳排放 / 时段分布 ===== -->
-    <div v-if="activeTab === 'overview'" class="tri-grid si" style="--d:.2s">
+    <div v-if="activeTab === 'analysis'" class="tri-grid si" style="--d:.2s">
       <div class="ink-card">
         <div class="ink-card__hd"><span class="ink-card__title">节能仪表</span><span class="ink-stamp ink-stamp--green">节</span></div>
         <div ref="gaugeRef" style="height:190px;margin:-10px 0"></div>
@@ -561,7 +581,7 @@ watch(activeTab, () => {
     </div>
 
     <!-- ===== 功耗趋势（全宽） ===== -->
-    <div v-if="activeTab === 'overview'" class="ink-card ink-card--wide si" style="--d:.3s">
+    <div v-if="activeTab === 'analysis'" class="ink-card ink-card--wide si" style="--d:.3s">
       <div class="ink-card__hd">
         <span class="ink-card__title">廿四时功耗</span>
         <div class="trend-legend">
@@ -646,7 +666,7 @@ watch(activeTab, () => {
     </div>
 
     <!-- ===== 一键优化 ===== -->
-    <div v-if="activeTab === 'overview'" class="ink-card ink-card--wide si" style="--d:.5s">
+    <div v-if="activeTab === 'optimize'" class="ink-card ink-card--wide si" style="--d:.5s">
       <div class="ink-card__hd">
         <span class="ink-card__title">智能优化</span>
         <button class="seal-btn" :disabled="optimizing" @click="doOptimize">
@@ -830,28 +850,19 @@ watch(activeTab, () => {
 /* ===== 页头 ===== */
 .ink-header {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
-  margin-bottom: 28px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid rgba(0,0,0,0.06);
-  position: relative;
+  gap: 16px;
+  margin-bottom: 18px;
 }
 
 .ink-title {
   font-family: 'Ma Shan Zheng', cursive;
-  font-size: 2.5rem;
+  font-size: 2rem;
   font-weight: 400;
-  letter-spacing: 0.15em;
+  letter-spacing: 0.12em;
   color: #1a1a1a;
   line-height: 1;
-  margin-bottom: 6px;
-}
-
-.ink-subtitle {
-  font-size: 0.8125rem;
-  color: #999;
-  letter-spacing: 0.3em;
 }
 
 .ink-header__right {
@@ -869,25 +880,6 @@ watch(activeTab, () => {
   font-size: 0.75rem;
   font-weight: 500;
   letter-spacing: 0.1em;
-}
-
-/* 印章 */
-.ink-seal {
-  position: absolute;
-  top: -4px; right: 100px;
-  width: 42px; height: 42px;
-  border: 2.5px solid #C41E3A;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #C41E3A;
-  font-family: 'ZCOOL KuaiLe', cursive;
-  font-size: 0.8rem;
-  line-height: 1.1;
-  text-align: center;
-  transform: rotate(-8deg);
-  opacity: 0.7;
 }
 
 /* ===== KPI 六宫格 ===== */
@@ -926,11 +918,69 @@ watch(activeTab, () => {
   line-height: 1.7;
 }
 
+.energy-nav-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.energy-nav-head .workspace-tabs {
+  flex: 1;
+}
+
 .kpi-grid {
   display: grid;
   grid-template-columns: 1.5fr repeat(5, 1fr);
   gap: 14px;
   margin-bottom: 18px;
+}
+
+.overview-focus-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.overview-focus-card {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  text-align: left;
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,0.05);
+  background: rgba(255,255,255,0.62);
+  transition: transform .28s ease, box-shadow .28s ease, background .28s ease;
+}
+
+.overview-focus-card:hover {
+  transform: translateY(-2px);
+  background: rgba(255,255,255,0.78);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.04);
+}
+
+.overview-focus-card__eyebrow {
+  font-size: 0.6875rem;
+  letter-spacing: 0.14em;
+  color: #999;
+}
+
+.overview-focus-card__title {
+  font-family: 'Ma Shan Zheng', cursive;
+  font-size: 1.08rem;
+  color: #333;
+}
+
+.overview-focus-card__desc,
+.overview-focus-card__meta {
+  font-size: 0.75rem;
+  line-height: 1.75;
+  color: #666;
+}
+
+.overview-focus-card__meta {
+  color: #3A5F4B;
 }
 
 .kpi-ink {
@@ -1615,16 +1665,19 @@ watch(activeTab, () => {
 @media(max-width:1400px){
   .source-strip{grid-template-columns:1fr}
   .kpi-grid{grid-template-columns:repeat(3,1fr)}
+  .overview-focus-grid{grid-template-columns:1fr}
   .kpi-ink--hero{grid-column:span 3;flex-direction:row;gap:20px}
   .tri-grid,.duo-grid{grid-template-columns:1fr}
 }
 @media(max-width:900px){
   .ink-header{align-items:flex-start;flex-direction:column;gap:12px}
   .ink-header__right{justify-content:flex-start}
+  .energy-nav-head{align-items:flex-start;flex-direction:column}
+  .energy-nav-head .workspace-tabs{width:100%}
   .kpi-grid{grid-template-columns:repeat(2,1fr)}
   .kpi-ink--hero{grid-column:span 2}
+  .overview-focus-card{padding:16px}
   .sug-grid-ink{grid-template-columns:1fr}
   .opt-compare{flex-wrap:wrap;gap:16px}
-  .ink-seal{display:none}
 }
 </style>

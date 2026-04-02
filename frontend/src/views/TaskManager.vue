@@ -10,6 +10,7 @@ import {
   terminateTask,
 } from '../services/api'
 import { exportTextFile } from '../services/desktopExport'
+import TaskProcessLedger from '../components/tasks/TaskProcessLedger.vue'
 import WorkspacePaneLayout from '../components/workspace/WorkspacePaneLayout.vue'
 import WorkspaceSummary from '../components/workspace/WorkspaceSummary.vue'
 import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
@@ -130,10 +131,7 @@ const fairnessLevelLabel = computed(() => {
   return { balanced: '均衡', moderate: '轻度倾斜', skewed: '显著倾斜', critical: '严重不均' }[level] || level
 })
 const manageableProcessCount = computed(() => taskSummary.value.manageableCount)
-const backgroundProcessCount = computed(() => taskSummary.value.backgroundCount)
-const userCount = computed(() => taskSummary.value.userCount)
 const urgentCount = computed(() => taskSummary.value.urgentCount)
-const deferrableCount = computed(() => taskSummary.value.deferrableCount)
 const totalGpuMemory = computed(() => taskSummary.value.totalGpuMemory)
 const executionSummary = computed(() =>
   executionMode.value === 'real'
@@ -201,9 +199,27 @@ function getActionHint(proc) {
 }
 
 function getCommandPreview(proc) {
-  const command = (proc?.command || '-').trim()
-  if (command.length <= 56) return command
-  return `${command.slice(0, 53).trimEnd()}...`
+  return (proc?.command || '-').trim() || '-'
+}
+
+const ledgerHelpers = {
+  displayGpuMemory,
+  displayCpuPercent,
+  gpuMetricTitle,
+  cpuMetricTitle,
+  isManageable,
+  getManageableReason,
+  getReasonSummary,
+  getCategoryLabel,
+  getCategoryClass,
+  getCommandPreview,
+  getActionHint,
+}
+
+const ledgerHandlers = {
+  changePriority,
+  doAction,
+  isActionDisabled,
 }
 
 async function doAction(proc, action) {
@@ -323,62 +339,44 @@ async function doExportGovernance(fmt = 'markdown') {
 <template>
   <div class="task-page ink-page-shell">
     <WorkspaceSummary
-      eyebrow="任务治理中心"
-      title="把 GPU 进程从“看到”升级到“分级、让路、干预、追踪”"
-      :description="fairnessOverview.summary || '当前共享状态稳定。'"
+      title="任务治理"
     >
       <template #meta>
-        <div class="hero-card__actions">
-          <button class="btn-tech" :disabled="exporting" @click="doExportGovernance('markdown')">
-            {{ exporting ? '导出中...' : '导出治理报告' }}
-          </button>
+        <div class="ink-inline-meta">
+          <span class="status-badge status-badge--ok">{{ manageableProcessCount }} 可治理</span>
+          <span class="status-badge status-badge--warning">{{ urgentCount }} 紧急</span>
           <span class="status-badge" :class="executionMode === 'real' ? 'status-badge--warning' : 'status-badge--ok'">
             {{ executionMode === 'real' ? '真实执行' : '演练模式' }}
           </span>
         </div>
       </template>
-      <section class="stats-grid">
-        <div class="tech-card stat-card">
-          <div class="stat-card__label">可治理任务</div>
-          <div class="stat-card__value stat-value">{{ manageableProcessCount }}</div>
-          <div class="stat-card__hint">默认只展示可真正干预的 GPU 任务</div>
-        </div>
-        <div class="tech-card stat-card">
-          <div class="stat-card__label">背景 / 系统进程</div>
-          <div class="stat-card__value stat-value" style="color:#999">{{ backgroundProcessCount }}</div>
-          <div class="stat-card__hint">浏览器 GPU 子进程、桌面渲染等会自动归到这里</div>
-        </div>
-        <div class="tech-card stat-card">
-          <div class="stat-card__label">治理用户</div>
-          <div class="stat-card__value stat-value">{{ userCount }}</div>
-          <div class="stat-card__hint">真正占用治理型 GPU 任务的用户数</div>
-        </div>
-        <div class="tech-card stat-card">
-          <div class="stat-card__label">紧急任务</div>
-          <div class="stat-card__value stat-value" style="color:#C41E3A">{{ urgentCount }}</div>
-          <div class="stat-card__hint">预算紧张时优先保障</div>
-        </div>
-        <div class="tech-card stat-card">
-          <div class="stat-card__label">可延迟任务</div>
-          <div class="stat-card__value stat-value" style="color:#666">{{ deferrableCount }}</div>
-          <div class="stat-card__hint">高峰期优先让路</div>
-        </div>
-        <div class="tech-card stat-card">
-          <div class="stat-card__label">治理显存占用</div>
-          <div class="stat-card__value stat-value">{{ fmtMem(totalGpuMemory) }}</div>
-          <div class="stat-card__hint">只统计可治理任务</div>
-        </div>
-      </section>
     </WorkspaceSummary>
 
+    <section class="stats-grid workspace-summary-strip">
+      <div class="tech-card stat-card">
+        <div class="stat-card__label">可治理任务</div>
+        <div class="stat-card__value stat-value">{{ manageableProcessCount }}</div>
+        <div class="stat-card__hint">当前可直接执行治理动作的任务数</div>
+      </div>
+      <div class="tech-card stat-card">
+        <div class="stat-card__label">紧急任务</div>
+        <div class="stat-card__value stat-value" style="color:#C41E3A">{{ urgentCount }}</div>
+        <div class="stat-card__hint">预算紧张时优先保障</div>
+      </div>
+      <div class="tech-card stat-card">
+        <div class="stat-card__label">治理显存占用</div>
+        <div class="stat-card__value stat-value">{{ fmtMem(totalGpuMemory) }}</div>
+        <div class="stat-card__hint">只统计当前可治理任务</div>
+      </div>
+    </section>
+
     <div class="workspace-nav-layout">
-      <aside class="workspace-nav-layout__nav">
+      <div class="workspace-nav-layout__nav">
         <WorkspaceTabs
           v-model="activeTab"
           :items="taskTabs"
-          orientation="vertical"
         />
-      </aside>
+      </div>
 
       <section class="workspace-nav-layout__content">
         <div v-if="actionNotice" class="tech-card notice" :class="`notice--${actionNotice.tone}`">
@@ -538,93 +536,25 @@ async function doExportGovernance(fmt = 'markdown') {
               <button class="btn-tech" :class="{ 'btn-tech--primary': !showAllProcesses }" @click="showAllProcesses = false">仅治理任务</button>
               <button class="btn-tech" :class="{ 'btn-tech--primary': showAllProcesses }" @click="showAllProcesses = true">全部 GPU 相关进程</button>
             </div>
+            <button class="btn-tech" :disabled="exporting" @click="doExportGovernance('markdown')">
+              {{ exporting ? '导出中...' : '导出治理报告' }}
+            </button>
             <span class="toolbar-card__summary">当前显示 {{ filteredProcesses.length }} / {{ visibleProcesses.length }} 条</span>
           </div>
         </section>
 
-        <section class="tech-card table-card">
-          <div class="panel-scroll">
-            <table class="task-table">
-              <colgroup>
-                <col style="width: 82px" />
-                <col style="width: 76px" />
-                <col style="width: 128px" />
-                <col style="width: 118px" />
-                <col style="width: 96px" />
-                <col style="width: 78px" />
-                <col style="width: 110px" />
-                <col style="width: 110px" />
-                <col style="width: 240px" />
-                <col style="width: 300px" />
-                <col style="width: 250px" />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th>PID</th>
-                  <th>GPU</th>
-                  <th>进程名</th>
-                  <th>用户</th>
-                  <th>显存</th>
-                  <th>CPU</th>
-                  <th>优先级</th>
-                  <th>治理状态</th>
-                  <th>说明</th>
-                  <th>命令</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="proc in filteredProcesses" :key="proc.pid">
-                  <td class="stat-value">{{ proc.pid }}</td>
-                  <td>GPU {{ proc.gpu_index }}</td>
-                  <td>{{ proc.name }}</td>
-                  <td>{{ proc.username }}</td>
-                  <td class="task-table__metric" :class="{ 'task-table__metric--muted': !isManageable(proc) && Number(proc.gpu_memory_used || 0) <= 0 }" :title="gpuMetricTitle(proc)">{{ displayGpuMemory(proc) }}</td>
-                  <td class="task-table__metric" :class="{ 'task-table__metric--muted': !isManageable(proc) && Number(proc.cpu_percent || 0) <= 0 }" :title="cpuMetricTitle(proc)">{{ displayCpuPercent(proc) }}</td>
-                  <td>
-                    <select
-                      class="priority-select"
-                      :disabled="!isManageable(proc)"
-                      :value="proc.priority || 'normal'"
-                      :style="{ color: priorityColors[proc.priority || 'normal'].color, background: priorityColors[proc.priority || 'normal'].bg }"
-                      @change="changePriority(proc, $event.target.value)"
-                    >
-                      <option value="urgent">紧急</option>
-                      <option value="normal">普通</option>
-                      <option value="deferrable">可延迟</option>
-                    </select>
-                  </td>
-                  <td>
-                    <span class="status-badge" :class="getCategoryClass(proc)">{{ getCategoryLabel(proc) }}</span>
-                  </td>
-                  <td>
-                    <div class="task-table__reason" :title="getManageableReason(proc)">{{ getReasonSummary(proc) }}</div>
-                  </td>
-                  <td>
-                    <div class="task-table__command" :title="proc.command || '-'">{{ getCommandPreview(proc) }}</div>
-                  </td>
-                  <td class="task-table__ops">
-                    <div v-if="isManageable(proc)">
-                      <div class="task-table__actions">
-                        <button class="btn-tech" :disabled="isActionDisabled(proc, 'pause')" @click="doAction(proc, 'pause')">暂停</button>
-                        <button class="btn-tech" :disabled="isActionDisabled(proc, 'resume')" @click="doAction(proc, 'resume')">恢复</button>
-                        <button class="btn-tech btn-tech--danger" :disabled="isActionDisabled(proc, 'terminate')" @click="doAction(proc, 'terminate')">终止</button>
-                      </div>
-                      <div class="task-table__hint" :title="getActionHint(proc)">{{ getActionHint(proc) }}</div>
-                    </div>
-                    <div v-else class="task-table__readonly" :title="getManageableReason(proc)">
-                      该类进程只做观测，不提供暂停/终止
-                    </div>
-                  </td>
-                </tr>
-                <tr v-if="!filteredProcesses.length">
-                  <td colspan="11" class="task-table__empty">
-                    {{ showAllProcesses ? '暂无匹配的 GPU 相关进程。' : '当前没有可治理任务，可切换到“全部 GPU 相关进程”查看背景与系统进程。' }}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+        <section class="tech-card ledger-panel">
+          <div class="ledger-panel__head">
+            <div class="panel-card__title">任务账本</div>
+            <div class="ledger-panel__hint">把身份、治理说明和动作拆成独立区块，避免某个字段变长时拖拽整张表的排布。</div>
           </div>
+          <TaskProcessLedger
+            :processes="filteredProcesses"
+            :show-all-processes="showAllProcesses"
+            :priority-colors="priorityColors"
+            :helpers="ledgerHelpers"
+            :handlers="ledgerHandlers"
+          />
         </section>
       </template>
 
@@ -675,7 +605,7 @@ async function doExportGovernance(fmt = 'markdown') {
 .hero-card,
 .toolbar-card,
 .rules-panel,
-.table-card,
+.ledger-panel,
 .panel-card {
   margin-bottom: 14px;
 }
@@ -716,8 +646,7 @@ async function doExportGovernance(fmt = 'markdown') {
 .toolbar-card__right,
 .toolbar-card__switch,
 .rules-panel__head,
-.rule-card__actions,
-.task-table__actions {
+.rule-card__actions {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
@@ -776,7 +705,7 @@ async function doExportGovernance(fmt = 'markdown') {
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 14px;
 }
@@ -940,34 +869,20 @@ async function doExportGovernance(fmt = 'markdown') {
   cursor: not-allowed;
 }
 
-.table-card {
-  overflow-x: auto;
+.ledger-panel {
+  padding: 18px 20px;
 }
 
-.task-table {
-  width: 100%;
-  min-width: 1480px;
-  border-collapse: collapse;
-  table-layout: fixed;
+.ledger-panel__head {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
 }
 
-.task-table th {
-  text-align: left;
-  padding: 12px 16px;
+.ledger-panel__hint {
   font-size: 0.75rem;
   color: var(--text-muted);
-  border-bottom: 1px solid var(--border-color);
-}
-
-.task-table td {
-  padding: 12px 16px;
-  font-size: 0.8125rem;
-  border-bottom: 1px solid rgba(255,255,255,0.03);
-  vertical-align: middle;
-}
-
-.task-table tr:hover td {
-  background: rgba(58,95,75,0.03);
+  line-height: 1.7;
 }
 
 .status-badge {
@@ -992,60 +907,6 @@ async function doExportGovernance(fmt = 'markdown') {
 .status-badge--system {
   color: #7A4B14;
   background: rgba(212,175,55,0.14);
-}
-
-.task-table__reason {
-  white-space: normal;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-  line-height: 1.5;
-  color: var(--text-secondary);
-}
-
-.task-table__command {
-  white-space: normal;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-  line-height: 1.5;
-  color: var(--text-secondary);
-}
-
-.task-table__metric {
-  font-variant-numeric: tabular-nums;
-  color: var(--text-primary);
-}
-
-.task-table__metric--muted {
-  color: var(--text-muted);
-}
-
-.task-table__ops {
-  vertical-align: middle;
-}
-
-.task-table__actions--disabled {
-  opacity: 0.58;
-}
-
-.task-table__readonly,
-.task-table__hint {
-  margin-top: 8px;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-  font-size: 0.72rem;
-  line-height: 1.6;
-  color: var(--text-muted);
-}
-
-.task-table__readonly {
-  margin-top: 0;
-}
-
-.task-table__empty {
-  padding: 40px 16px;
-  text-align: center;
-  color: var(--text-muted);
 }
 
 @media (max-width: 1400px) {

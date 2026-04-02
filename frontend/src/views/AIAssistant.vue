@@ -366,9 +366,7 @@ onMounted(() => {
 <template>
   <div class="ai-page ink-page-shell">
     <WorkspaceSummary
-      eyebrow="自然语言规划 · 演练执行 · 风险确认"
-      title="AI 执行控制台第一版"
-      description="这不是直接放权给 AI 自动乱动，而是把自然语言先转成结构化动作计划，再由你先做演练。当前版本支持任务暂停/恢复/终止、优先级调整、单卡限功率、总功率预算和一次综合调度。"
+      title="AI 执行控制台"
     >
       <template #meta>
         <div class="ink-inline-meta">
@@ -382,13 +380,12 @@ onMounted(() => {
     </WorkspaceSummary>
 
     <div class="workspace-nav-layout">
-      <aside class="workspace-nav-layout__nav">
+      <div class="workspace-nav-layout__nav">
         <WorkspaceTabs
           v-model="activeTab"
           :items="assistantTabs"
-          orientation="vertical"
         />
-      </aside>
+      </div>
 
       <section class="workspace-nav-layout__content">
     <aside v-if="activeTab === 'model'" class="ai-config tech-card">

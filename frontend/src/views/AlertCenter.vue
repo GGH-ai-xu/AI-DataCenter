@@ -5,6 +5,7 @@
  */
 import { computed, ref, onMounted } from 'vue'
 import { getAlerts, acknowledgeAlert } from '../services/api'
+import AlertHistoryTable from '../components/alerts/AlertHistoryTable.vue'
 import { useAppStore } from '../stores/app'
 import AlertSummaryPanel from '../components/alerts/AlertSummaryPanel.vue'
 import WorkspacePaneLayout from '../components/workspace/WorkspacePaneLayout.vue'
@@ -63,9 +64,7 @@ onMounted(loadAlerts)
 <template>
   <div class="alert-page ink-page-shell">
     <WorkspaceSummary
-      eyebrow="实时告警 · 历史风险 · 分级确认"
-      title="先看风险数量，再处理告警明细"
-      description="把风险摘要、实时波动和历史台账拆成稳定层次，避免说明区与主表互相挤压。"
+      title="告警中心"
     >
       <template #meta>
         <div class="ink-inline-meta">
@@ -74,12 +73,15 @@ onMounted(loadAlerts)
           <span class="status-badge status-badge--ok">{{ realtimeAlerts.length }} 条实时</span>
         </div>
       </template>
+    </WorkspaceSummary>
+
+    <div class="workspace-summary-strip">
       <AlertSummaryPanel
         :critical-count="criticalCount"
         :pending-count="pendingCount"
         :realtime-count="realtimeAlerts.length"
       />
-    </WorkspaceSummary>
+    </div>
 
     <WorkspacePaneLayout>
       <template #main>
@@ -89,53 +91,23 @@ onMounted(loadAlerts)
               <div class="section-title" style="font-size: 1rem">告警簿</div>
               <div class="alert-toolbar__hint">历史记录独立占据主内容区，避免顶部说明和实时流挤压表格宽度。</div>
             </div>
-            <div style="display: flex; gap: 8px; align-items: center">
-              <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8125rem; color: var(--text-secondary); cursor: pointer">
-                <input type="checkbox" v-model="showUnackOnly" @change="loadAlerts" style="accent-color: var(--accent-primary)" />
+            <div class="alert-toolbar__actions">
+              <label class="alert-toolbar__toggle">
+                <input type="checkbox" v-model="showUnackOnly" @change="loadAlerts" />
                 仅显示未确认
               </label>
               <button class="btn-tech" @click="loadAlerts" :disabled="loading">刷新</button>
             </div>
           </div>
 
-          <div class="alert-table-wrap panel-scroll">
-            <table class="alert-table">
-              <thead>
-                <tr>
-                  <th>级别</th>
-                  <th>GPU</th>
-                  <th>类型</th>
-                  <th>告警内容</th>
-                  <th>数值</th>
-                  <th>阈值</th>
-                  <th>时间</th>
-                  <th>状态</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="alert in historyAlerts" :key="alert.id">
-                  <td>
-                    <span class="status-badge" :class="alert.severity === 'critical' ? 'status-badge--critical' : 'status-badge--warning'">
-                      {{ severityConfig[alert.severity]?.label }}
-                    </span>
-                  </td>
-                  <td><span class="gpu-tag">GPU {{ alert.gpu_index }}</span></td>
-                  <td style="color: var(--text-secondary)">{{ formatAlertType(alert.alert_type) }}</td>
-                  <td style="max-width: 300px">{{ alert.message }}</td>
-                  <td class="stat-value" :style="{ color: severityConfig[alert.severity]?.color }">{{ alert.value?.toFixed(1) }}</td>
-                  <td class="stat-value" style="color: var(--text-muted)">{{ alert.threshold }}</td>
-                  <td style="font-size: 0.75rem; color: var(--text-muted); white-space: nowrap">{{ fmtTime(alert.timestamp) }}</td>
-                  <td>
-                    <button v-if="!alert.acknowledged" class="btn-tech" style="padding: 2px 8px; font-size: 0.6875rem" @click="ackAlert(alert.id)">确认</button>
-                    <span v-else style="color: var(--text-muted); font-size: 0.75rem">已确认</span>
-                  </td>
-                </tr>
-                <tr v-if="!historyAlerts.length && !loading">
-                  <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 40px">暂无告警记录</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          <AlertHistoryTable
+            :alerts="historyAlerts"
+            :loading="loading"
+            :severity-config="severityConfig"
+            :fmt-time="fmtTime"
+            :format-alert-type="formatAlertType"
+            @ack="ackAlert"
+          />
         </section>
       </template>
 
@@ -180,6 +152,23 @@ onMounted(loadAlerts)
   margin-bottom: 16px;
 }
 
+.alert-toolbar__actions,
+.alert-toolbar__toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.alert-toolbar__toggle {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.alert-toolbar__toggle input {
+  accent-color: var(--accent-primary);
+}
+
 .alert-toolbar__hint,
 .alert-side-card__hint,
 .alert-side-card__empty {
@@ -197,24 +186,6 @@ onMounted(loadAlerts)
 }
 
 .alert-icon { font-size: 1.125rem; }
-
-.alert-table-wrap {
-  overflow-x: auto;
-}
-
-.alert-table { width: 100%; border-collapse: collapse; }
-.alert-table th {
-  text-align: left; padding: 12px 16px; font-size: 0.75rem; font-weight: 600;
-  color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;
-  border-bottom: 1px solid var(--border-color);
-}
-.alert-table td {
-  padding: 10px 16px; font-size: 0.8125rem;
-  border-bottom: 1px solid rgba(255,255,255,0.03);
-}
-.alert-table tr:hover td { background: rgba(58,95,75,0.03); }
-
-.gpu-tag { font-size: 0.6875rem; font-weight: 600; color: var(--accent-primary); background: rgba(58,95,75,0.1); padding: 2px 8px; border-radius: 4px; }
 
 @media (max-width: 820px) {
   .alert-toolbar {
