@@ -110,7 +110,7 @@ class ConnectionSettingsService:
 
     async def probe(self, target_url: str) -> dict | None:
         try:
-            async with httpx.AsyncClient(base_url=target_url, timeout=8.0) as client:
+            async with httpx.AsyncClient(base_url=target_url, timeout=8.0, trust_env=False) as client:
                 resp = await client.get("/api/health")
                 resp.raise_for_status()
                 data = resp.json()

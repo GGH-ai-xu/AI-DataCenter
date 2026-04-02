@@ -1,14 +1,21 @@
 """Token 认证中间件单元测试"""
 
 import pytest
-from app.middleware.auth import _extract_token, _resolve_role, ADMIN_TOKEN, OBSERVER_TOKEN
+from app.middleware.auth import (
+    _extract_token,
+    _is_local_request,
+    _resolve_role,
+    ADMIN_TOKEN,
+    OBSERVER_TOKEN,
+)
 
 
 class FakeRequest:
     """模拟 FastAPI Request 对象"""
-    def __init__(self, headers=None, query_params=None):
+    def __init__(self, headers=None, query_params=None, client_host=None):
         self.headers = headers or {}
         self.query_params = query_params or {}
+        self.client = type("Client", (), {"host": client_host})() if client_host else None
 
 
 class TestExtractToken:
@@ -45,3 +52,17 @@ class TestResolveRole:
 
     def test_none(self):
         assert _resolve_role(None) is None
+
+
+class TestLocalRequest:
+    def test_localhost_is_trusted(self):
+        req = FakeRequest(client_host="127.0.0.1")
+        assert _is_local_request(req) is True
+
+    def test_ipv6_localhost_is_trusted(self):
+        req = FakeRequest(client_host="::1")
+        assert _is_local_request(req) is True
+
+    def test_remote_host_is_not_trusted(self):
+        req = FakeRequest(client_host="10.0.0.8")
+        assert _is_local_request(req) is False

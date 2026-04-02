@@ -4,7 +4,8 @@
   - 请求头 Authorization: Bearer <token>
   - 管理员 token 由环境变量 ADMIN_TOKEN 配置（默认 "admin-token-change-me"）
   - 观察者 token 由环境变量 OBSERVER_TOKEN 配置（默认 "observer-token"）
-  - 未携带 token 的请求仅可访问公开 API（/api/health、/ws、静态文件等）
+  - 本机 localhost/127.0.0.1 首次使用时自动信任为 admin，避免桌面版和演示环境在没有 token UI 时卡住
+  - 其他未携带 token 的请求仅可访问公开 API（/api/health、/ws、静态文件等）
 """
 
 import os
@@ -29,6 +30,13 @@ PUBLIC_PREFIXES = (
     "/openapi.json",
     "/redoc",
 )
+
+TRUSTED_LOCAL_HOSTS = {
+    "127.0.0.1",
+    "::1",
+    "0:0:0:0:0:0:0:1",
+    "localhost",
+}
 
 # 仅管理员可执行的危险路径（POST/PUT/DELETE 操作）
 ADMIN_ONLY_PREFIXES = (
@@ -67,6 +75,12 @@ def _resolve_role(token: Optional[str]) -> Optional[str]:
     return None
 
 
+def _is_local_request(request: Request) -> bool:
+    """桌面版/本机浏览器访问默认视为受信本机请求。"""
+    host = ((request.client.host if request.client else "") or "").strip().lower()
+    return host in TRUSTED_LOCAL_HOSTS
+
+
 class TokenAuthMiddleware(BaseHTTPMiddleware):
     """简单 Token 鉴权中间件"""
 
@@ -85,6 +99,11 @@ class TokenAuthMiddleware(BaseHTTPMiddleware):
         # 解析角色
         token = _extract_token(request)
         role = _resolve_role(token)
+
+        # 本机首次使用时，允许直接完成接入与治理操作
+        if role is None and _is_local_request(request):
+            request.state.role = "admin"
+            return await call_next(request)
 
         # 未认证
         if role is None:

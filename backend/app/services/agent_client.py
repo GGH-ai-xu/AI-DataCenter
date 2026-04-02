@@ -22,7 +22,9 @@ class AgentClient:
         async with self._client_lock:
             if self._client is None or self._client.is_closed:
                 self._client = httpx.AsyncClient(
-                    base_url=self.base_url, timeout=self.timeout
+                    base_url=self.base_url,
+                    timeout=self.timeout,
+                    trust_env=False,
                 )
             return self._client
 
