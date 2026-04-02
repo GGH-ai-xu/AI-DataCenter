@@ -1,0 +1,10 @@
+为了方便协同开发，将每次push代码时的发现的问题、解决方法保存进日志
+
+示例：
+2026/4/2 12：50
+发现的问题：ui卡顿
+解决方法：字体方面，在 style.css:49 新增了稳定的 --font-ui，并把正文和通用按钮切回系统 UI 字体，见 style.css:79 和 style.css:432；同时把EnergyOptimization.vue:790 的页内远程 Google Fonts 导入彻底移除了，并把这个页面几处高成本背景云雾/卡片 blur 降掉
+
+2026/4/2 13:19
+发现的问题：告警中心原先把实时告警、今日记录和历史记录堆在同一页，主信息层级偏平，历史表格与侧栏耦合较重；今日告警继续用横向表格不利于复盘，历史告警也缺少按类型归档切换，导致空间利用率和扫描效率都偏低。
+解决方法：在 frontend/src/views/AlertCenter.vue:3-149 将页面重构为“实时流 / 今日告警簿 / 历史归档”三 tab 时间工作台；在 frontend/src/lib/alertCenterTransforms.js:1-129 抽离摘要、实时分桶、今日时间线、历史归档分组的纯函数；新增 frontend/src/components/alerts/AlertDaybookTimeline.vue:29-80 作为今日时间线账页，新增 frontend/src/components/alerts/AlertArchiveBoard.vue:71-115 和 frontend/src/components/alerts/AlertArchiveTypeTabs.vue:16-31 实现按类型归档工作台；将 frontend/src/components/alerts/AlertHistoryTable.vue:33-88 降级为归档局部明细视图，把 frontend/src/components/alerts/AlertSummaryPanel.vue:11-69 改为 items 驱动的紧凑摘要带；同时补充 tests/test_frontend_ui_structure.py:216-272 的结构测试，已验证 python -m unittest tests.test_frontend_ui_structure tests.test_frontend_performance_structure、python -m unittest discover -s tests -p 'test_*.py'、npm run build 全部通过。

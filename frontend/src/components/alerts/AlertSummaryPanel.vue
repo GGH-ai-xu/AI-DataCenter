@@ -1,70 +1,69 @@
 <script setup>
 defineProps({
-  criticalCount: {
-    type: Number,
-    default: 0,
-  },
-  pendingCount: {
-    type: Number,
-    default: 0,
-  },
-  realtimeCount: {
-    type: Number,
-    default: 0,
+  items: {
+    type: Array,
+    default: () => [],
   },
 })
 </script>
 
 <template>
-  <div class="alert-summary-panel">
-    <div class="alert-summary-card">
-      <div class="alert-summary-card__label">严重告警</div>
-      <div class="alert-summary-card__value">{{ criticalCount }}</div>
-      <div class="alert-summary-card__hint">需要优先处理的高风险信号</div>
-    </div>
-    <div class="alert-summary-card">
-      <div class="alert-summary-card__label">未确认</div>
-      <div class="alert-summary-card__value">{{ pendingCount }}</div>
-      <div class="alert-summary-card__hint">等待确认和闭环的历史记录</div>
-    </div>
-    <div class="alert-summary-card">
-      <div class="alert-summary-card__label">实时波动</div>
-      <div class="alert-summary-card__value">{{ realtimeCount }}</div>
-      <div class="alert-summary-card__hint">来自当前实时流的近期告警</div>
+  <div class="alert-summary-strip">
+    <div
+      v-for="item in items"
+      :key="item.key"
+      class="alert-summary-strip__item"
+      :class="`alert-summary-strip__item--${item.tone || 'neutral'}`"
+    >
+      <div class="alert-summary-strip__label">{{ item.label }}</div>
+      <div class="alert-summary-strip__value">{{ item.value }}</div>
+      <div class="alert-summary-strip__detail">{{ item.detail }}</div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.alert-summary-panel {
+.alert-summary-strip {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 
-.alert-summary-card {
-  padding: 14px 16px;
+.alert-summary-strip__item {
+  padding: 12px 14px;
   border-radius: 16px;
   border: 1px solid rgba(58, 95, 75, 0.08);
-  background: rgba(255, 252, 247, 0.66);
+  background: rgba(255, 252, 247, 0.74);
 }
 
-.alert-summary-card__label,
-.alert-summary-card__hint {
-  font-size: 0.74rem;
+.alert-summary-strip__item--critical {
+  border-color: rgba(196, 30, 58, 0.16);
+}
+
+.alert-summary-strip__item--warning {
+  border-color: rgba(184, 134, 11, 0.16);
+}
+
+.alert-summary-strip__item--ok {
+  border-color: rgba(46, 139, 87, 0.16);
+}
+
+.alert-summary-strip__label,
+.alert-summary-strip__detail {
+  font-size: 0.72rem;
+  line-height: 1.65;
   color: var(--text-muted);
-  line-height: 1.7;
 }
 
-.alert-summary-card__value {
-  margin: 6px 0;
-  font-size: 1.6rem;
+.alert-summary-strip__value {
+  margin: 4px 0;
+  font-size: 1.35rem;
   font-weight: 700;
   color: var(--text-primary);
 }
 
 @media (max-width: 960px) {
-  .alert-summary-panel {
+  .alert-summary-strip {
     grid-template-columns: 1fr;
   }
 }

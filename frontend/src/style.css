@@ -49,6 +49,7 @@
   --font-caoshu: 'Liu Jian Mao Cao', 'Ma Shan Zheng', 'ZCOOL XiaoWei', 'Noto Serif SC', 'PingFang SC', 'Microsoft YaHei', cursive;
   --font-xingshu: 'Ma Shan Zheng', 'ZCOOL XiaoWei', 'Noto Serif SC', 'PingFang SC', 'Microsoft YaHei', cursive;
   --font-xingcao: 'Zhi Mang Xing', 'Ma Shan Zheng', 'ZCOOL XiaoWei', 'Noto Serif SC', 'PingFang SC', 'Microsoft YaHei', cursive;
+  --font-ui: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', 'Segoe UI', sans-serif;
   --font-kaishu: 'ZCOOL XiaoWei', 'Noto Serif SC', 'PingFang SC', 'Microsoft YaHei', serif;
   --font-seal: 'ZCOOL KuaiLe', 'ZCOOL XiaoWei', 'Noto Serif SC', 'PingFang SC', 'Microsoft YaHei', cursive;
   --font-song: 'Noto Serif SC', 'Songti SC', 'STSong', 'PingFang SC', 'Microsoft YaHei', serif;
@@ -81,9 +82,9 @@ body {
   overflow-y: auto;
   background: linear-gradient(180deg, #fbf7f2 0%, #f6f1ea 100%);
   color: var(--text-primary);
-  font-family: var(--font-kaishu), 'Microsoft YaHei', serif;
+  font-family: var(--font-ui);
   -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
+  text-rendering: auto;
 }
 
 body::before,
@@ -110,7 +111,6 @@ body::after {
     radial-gradient(ellipse at 34% 92%, rgba(58, 95, 75, 0.08) 0%, rgba(58, 95, 75, 0.02) 16%, transparent 38%),
     radial-gradient(ellipse at 70% 88%, rgba(91, 140, 126, 0.08) 0%, rgba(91, 140, 126, 0.02) 20%, transparent 40%),
     linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(248, 245, 240, 0.58) 100%);
-  filter: blur(8px);
   opacity: 0.92;
 }
 
@@ -166,7 +166,6 @@ canvas {
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-color);
   background: var(--gradient-card);
-  backdrop-filter: blur(18px);
   box-shadow: var(--shadow-card);
   transition: transform 0.28s ease, box-shadow 0.28s ease, border-color 0.28s ease, background 0.28s ease;
 }
@@ -444,7 +443,7 @@ canvas {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 250, 244, 0.86));
   color: var(--accent-secondary);
   cursor: pointer;
-  font-family: var(--font-kaishu);
+  font-family: var(--font-ui);
   font-size: 0.84rem;
   letter-spacing: 0.08em;
   transition: transform 0.24s ease, box-shadow 0.24s ease, border-color 0.24s ease, color 0.24s ease, background 0.24s ease;
@@ -639,11 +638,6 @@ textarea {
     radial-gradient(circle at 82% 12%, rgba(212, 175, 55, 0.04) 0%, transparent 24%);
 }
 
-.ink-blur {
-  filter: blur(0.5px);
-  opacity: 0.92;
-}
-
 .ink-dashed {
   border-style: dashed;
   border-color: rgba(26, 26, 26, 0.1);
@@ -657,19 +651,6 @@ textarea {
   to {
     opacity: 1;
     transform: translateY(0);
-  }
-}
-
-@keyframes cloud-appear {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-    filter: blur(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-    filter: blur(0);
   }
 }
 

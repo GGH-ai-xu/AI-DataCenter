@@ -20,6 +20,10 @@ from app.services.replay_frames import (
 
 logger = logging.getLogger(__name__)
 
+SQLITE_CONNECTION_TIMEOUT_SECONDS = 30.0
+SQLITE_BUSY_TIMEOUT_MS = 30000
+SQLITE_SYNCHRONOUS_NORMAL = 1
+
 # 建表SQL
 _INIT_SQL = """
 CREATE TABLE IF NOT EXISTS gpu_history (
@@ -131,11 +135,22 @@ class DataStore:
         self.db_path = db_path
         self._db: Optional[aiosqlite.Connection] = None
 
+    async def _configure_sqlite(self):
+        if not self._db:
+            return
+        await self._db.execute("PRAGMA journal_mode=WAL;")
+        await self._db.execute(f"PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_MS};")
+        await self._db.execute(f"PRAGMA synchronous={SQLITE_SYNCHRONOUS_NORMAL};")
+
     async def init(self):
         """初始化数据库连接和表"""
         os.makedirs(os.path.dirname(self.db_path) or ".", exist_ok=True)
-        self._db = await aiosqlite.connect(self.db_path)
+        self._db = await aiosqlite.connect(
+            self.db_path,
+            timeout=SQLITE_CONNECTION_TIMEOUT_SECONDS,
+        )
         self._db.row_factory = aiosqlite.Row
+        await self._configure_sqlite()
         await self._db.executescript(_INIT_SQL)
         await self._db.commit()
         logger.info(f"数据库初始化完成: {self.db_path}")

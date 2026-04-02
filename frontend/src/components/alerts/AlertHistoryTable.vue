@@ -30,7 +30,7 @@ function severityLabel(severity = 'warning') {
 </script>
 
 <template>
-  <div class="alert-history-table">
+  <div class="alert-history-table alert-history-table--archive">
     <div class="alert-history-table__head">
       <span>级别</span>
       <span>GPU</span>
@@ -92,6 +92,10 @@ function severityLabel(severity = 'warning') {
 .alert-history-table {
   display: grid;
   gap: 10px;
+}
+
+.alert-history-table--archive {
+  align-content: start;
 }
 
 .alert-history-table__head,

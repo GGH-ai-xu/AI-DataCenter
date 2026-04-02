@@ -77,6 +77,19 @@ class DataStoreBatchTests(unittest.IsolatedAsyncioTestCase):
         await self.store.close()
         self.tempdir.cleanup()
 
+    async def test_data_store_enables_sqlite_lock_mitigation_pragmas(self):
+        journal_mode_cursor = await self.store._db.execute("PRAGMA journal_mode;")
+        busy_timeout_cursor = await self.store._db.execute("PRAGMA busy_timeout;")
+        synchronous_cursor = await self.store._db.execute("PRAGMA synchronous;")
+
+        journal_mode = (await journal_mode_cursor.fetchone())[0]
+        busy_timeout = (await busy_timeout_cursor.fetchone())[0]
+        synchronous = (await synchronous_cursor.fetchone())[0]
+
+        self.assertEqual(str(journal_mode).lower(), "wal")
+        self.assertGreaterEqual(int(busy_timeout), 30000)
+        self.assertEqual(int(synchronous), 1)
+
     async def test_save_collection_cycle_persists_snapshot_processes_and_alerts(self):
         save_collection_cycle = getattr(self.store, "save_collection_cycle")
         now = 1_700_000_000.0

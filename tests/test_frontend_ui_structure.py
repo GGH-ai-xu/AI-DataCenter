@@ -216,12 +216,60 @@ class FrontendUIStructureTests(unittest.TestCase):
         self.assertIn("activeTab === 'analysis'", text)
         self.assertIn("activeTab === 'optimize'", text)
 
-    def test_alert_center_uses_structured_history_table_component(self):
+    def test_alert_center_uses_time_workbench_tabs(self):
         text = (ROOT / "frontend/src/views/AlertCenter.vue").read_text(encoding="utf-8")
 
-        self.assertIn("AlertHistoryTable", text)
-        self.assertNotIn('style="max-width: 300px"', text)
-        self.assertNotIn('white-space: nowrap', text)
+        self.assertIn("const activeTab = ref('realtime')", text)
+        self.assertIn("WorkspaceTabs", text)
+        self.assertIn("ALERT_CENTER_TABS", text)
+        self.assertIn("activeTab === 'realtime'", text)
+        self.assertIn("activeTab === 'today'", text)
+        self.assertIn("archiveType", text)
+        self.assertIn("AlertRealtimeStream", text)
+        self.assertIn("AlertDaybookTimeline", text)
+        self.assertIn("AlertArchiveBoard", text)
+        self.assertNotIn("AlertHistoryTable", text)
+
+    def test_alert_center_time_workbench_components_exist(self):
+        for rel in [
+            "frontend/src/components/alerts/AlertRealtimeStream.vue",
+            "frontend/src/components/alerts/AlertRealtimeSidebar.vue",
+            "frontend/src/components/alerts/AlertDaybookTimeline.vue",
+            "frontend/src/components/alerts/AlertArchiveTypeTabs.vue",
+            "frontend/src/components/alerts/AlertArchiveBoard.vue",
+        ]:
+            self.assertTrue((ROOT / rel).exists(), rel)
+
+    def test_alert_realtime_components_use_bucketed_layout(self):
+        stream_text = (ROOT / "frontend/src/components/alerts/AlertRealtimeStream.vue").read_text(encoding="utf-8")
+        sidebar_text = (ROOT / "frontend/src/components/alerts/AlertRealtimeSidebar.vue").read_text(encoding="utf-8")
+
+        self.assertIn("realtime-bucket", stream_text)
+        self.assertIn("realtime-alert-card", stream_text)
+        self.assertIn("bucket.items", stream_text)
+        self.assertIn("alert-realtime-sidebar", sidebar_text)
+        self.assertIn("update:modelValue", sidebar_text)
+        self.assertNotIn("text-overflow: ellipsis", stream_text)
+
+    def test_alert_daybook_uses_timeline_sections(self):
+        text = (ROOT / "frontend/src/components/alerts/AlertDaybookTimeline.vue").read_text(encoding="utf-8")
+
+        self.assertIn("daybook-section", text)
+        self.assertIn("daybook-entry", text)
+        self.assertIn("section.items", text)
+        self.assertNotIn("grid-template-columns: minmax(88px", text)
+
+    def test_alert_archive_board_groups_history_by_type(self):
+        board_text = (ROOT / "frontend/src/components/alerts/AlertArchiveBoard.vue").read_text(encoding="utf-8")
+        tabs_text = (ROOT / "frontend/src/components/alerts/AlertArchiveTypeTabs.vue").read_text(encoding="utf-8")
+        helper_text = (ROOT / "frontend/src/lib/alertCenterTransforms.js").read_text(encoding="utf-8")
+
+        self.assertIn("AlertArchiveTypeTabs", board_text)
+        self.assertIn("AlertHistoryTable", board_text)
+        self.assertIn("archive-summary", board_text)
+        self.assertIn("update:modelValue", tabs_text)
+        self.assertIn("temperature", helper_text)
+        self.assertIn("self_check", helper_text)
 
 
 if __name__ == "__main__":

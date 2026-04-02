@@ -377,7 +377,7 @@ onUnmounted(() => {
 
           <main class="app-main">
             <router-view v-slot="{ Component }">
-              <transition name="ink-page" mode="out-in">
+              <transition name="ink-page">
                 <component :is="Component" />
               </transition>
             </router-view>
@@ -439,7 +439,6 @@ onUnmounted(() => {
   padding: 24px 18px;
   border-right: 1px solid rgba(26, 26, 26, 0.06);
   background: rgba(248, 245, 240, 0.92);
-  backdrop-filter: blur(18px);
   overflow: hidden;
 }
 
@@ -463,7 +462,6 @@ onUnmounted(() => {
   padding: 14px 16px 10px;
   border-bottom: 1px solid rgba(26, 26, 26, 0.06);
   background: rgba(248, 245, 240, 0.94);
-  backdrop-filter: blur(16px);
 }
 
 .app-mobile-nav__top {
@@ -586,7 +584,7 @@ onUnmounted(() => {
   border: 1px solid rgba(26, 26, 26, 0.06);
   background: rgba(255, 255, 255, 0.52);
   box-shadow: 0 8px 18px rgba(79, 59, 22, 0.05);
-  font-family: var(--font-kaishu);
+  font-family: var(--font-ui);
   font-size: 0.82rem;
   line-height: 1.6;
   color: var(--text-secondary);
@@ -686,21 +684,16 @@ onUnmounted(() => {
   }
 }
 
-/* ===== 页面切换 - 云雾出入 ===== */
-.ink-page-enter-active {
-  animation: cloud-appear 0.4s ease-out;
-}
+/* ===== 页面切换 - 轻量淡入出 ===== */
+.ink-page-enter-active,
 .ink-page-leave-active {
-  transition: opacity 0.2s ease, filter 0.2s ease;
-}
-.ink-page-leave-to {
-  opacity: 0;
-  filter: blur(3px);
+  transition: opacity 0.16s ease, transform 0.16s ease;
 }
 
-@keyframes cloud-appear {
-  from { opacity: 0; transform: translateY(10px); filter: blur(3px); }
-  to   { opacity: 1; transform: translateY(0); filter: blur(0); }
+.ink-page-enter-from,
+.ink-page-leave-to {
+  opacity: 0;
+  transform: translateY(6px);
 }
 
 .shell-modal {
@@ -745,7 +738,7 @@ onUnmounted(() => {
 
 .shell-modal__message {
   margin-top: 12px;
-  font-family: var(--font-kaishu);
+  font-family: var(--font-ui);
   font-size: 0.95rem;
   line-height: 1.8;
   color: var(--text-secondary);

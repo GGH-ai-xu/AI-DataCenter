@@ -9,11 +9,35 @@
  * - 虚实相生：科技与传统融合
  */
 import { ref, computed, reactive, onMounted, onUnmounted, nextTick, watch } from 'vue'
-import * as echarts from 'echarts'
+import { graphic, init, use } from 'echarts/core'
+import { CanvasRenderer } from 'echarts/renderers'
+import { GaugeChart, PieChart, LineChart, BarChart } from 'echarts/charts'
+import {
+  AxisPointerComponent,
+  GridComponent,
+  LegendComponent,
+  MarkAreaComponent,
+  MarkLineComponent,
+  TooltipComponent,
+} from 'echarts/components'
 import { runOptimize, exportEnergyReport } from '../services/api'
 import { exportTextFile } from '../services/desktopExport'
 import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
 import { useEnergyData } from '../composables/useEnergyData.js'
+
+use([
+  CanvasRenderer,
+  GaugeChart,
+  PieChart,
+  LineChart,
+  BarChart,
+  AxisPointerComponent,
+  GridComponent,
+  LegendComponent,
+  MarkAreaComponent,
+  MarkLineComponent,
+  TooltipComponent,
+])
 
 // ========== 数据 ==========
 const activeTab = ref('overview')
@@ -60,7 +84,7 @@ function updateAnimatedMetric(key, nextValue) {
 // ECharts
 const trendRef=ref(null), predRef=ref(null), effRef=ref(null), pieRef=ref(null), gaugeRef=ref(null), compRef=ref(null)
 let charts={}
-function ci(k,el){if(!el.value)return null;if(charts[k])return charts[k];charts[k]=echarts.init(el.value);return charts[k]}
+function ci(k,el){if(!el.value)return null;if(charts[k])return charts[k];charts[k]=init(el.value);return charts[k]}
 
 // 计算
 const tp = computed(()=>{
@@ -229,7 +253,7 @@ function renderGauge(){
   c.setOption({ backgroundColor:'transparent', series:[{
     type:'gauge', startAngle:225, endAngle:-45, min:0, max:100,
     pointer:{show:false},
-    progress:{show:true,roundCap:true,width:12,itemStyle:{color:new echarts.graphic.LinearGradient(0,0,1,0,[{offset:0,color:'#3A5F4B40'},{offset:1,color:'#3A5F4B'}])}},
+    progress:{show:true,roundCap:true,width:12,itemStyle:{color:new graphic.LinearGradient(0,0,1,0,[{offset:0,color:'#3A5F4B40'},{offset:1,color:'#3A5F4B'}])}},
     axisLine:{lineStyle:{width:12,color:[[1,'rgba(0,0,0,0.04)']]}},
     axisTick:{show:false},splitLine:{show:false},axisLabel:{show:false},title:{show:false},
     detail:{valueAnimation:true,fontSize:28,fontWeight:700,fontFamily:"'ZCOOL XiaoWei','Noto Serif SC',serif",color:'#2C2C2C',offsetCenter:[0,'0%'],formatter:v=>v.toFixed(1)+'%'},
@@ -269,7 +293,7 @@ function renderTrend(){
       {type:'value',name:'%',max:100,nameTextStyle:{color:'#999',fontSize:10},axisLine:{show:false},axisTick:{show:false},axisLabel:{color:'#999',fontSize:10},splitLine:{show:false}},
     ],
     series:[
-      {name:'功耗',type:'line',smooth:.4,symbol:'none',lineStyle:{width:2.5,color:'#3A5F4B'},areaStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(58,95,75,0.15)'},{offset:1,color:'transparent'}])},data:pws,markArea:{silent:true,data:areas}},
+      {name:'功耗',type:'line',smooth:.4,symbol:'none',lineStyle:{width:2.5,color:'#3A5F4B'},areaStyle:{color:new graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(58,95,75,0.15)'},{offset:1,color:'transparent'}])},data:pws,markArea:{silent:true,data:areas}},
       {name:'利用率',type:'line',smooth:.4,symbol:'none',yAxisIndex:1,lineStyle:{width:1.5,color:'#C41E3A80',type:[6,4]},data:uts},
     ],animationDuration:1500,
   })
@@ -287,7 +311,7 @@ function renderPred(){
     yAxis:{type:'value',name:'W',nameTextStyle:{color:'#999',fontSize:10},axisLine:{show:false},axisTick:{show:false},axisLabel:{color:'#999',fontSize:10},splitLine:{lineStyle:{color:'rgba(0,0,0,0.04)',type:'dashed'}}},
     series:[
       {name:'u',type:'line',smooth:.4,symbol:'none',lineStyle:{width:0},areaStyle:{color:'transparent'},data:ps.map(p=>p.upper_bound),stack:'b',z:1},
-      {name:'l',type:'line',smooth:.4,symbol:'none',lineStyle:{width:0},areaStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(91,75,140,0.12)'},{offset:1,color:'rgba(91,75,140,0.02)'}])},data:ps.map(p=>p.lower_bound),stack:'b',z:1},
+      {name:'l',type:'line',smooth:.4,symbol:'none',lineStyle:{width:0},areaStyle:{color:new graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(91,75,140,0.12)'},{offset:1,color:'rgba(91,75,140,0.02)'}])},data:ps.map(p=>p.lower_bound),stack:'b',z:1},
       {name:'预测',type:'line',smooth:.4,showSymbol:false,lineStyle:{width:2.5,color:'#5B4B8C'},itemStyle:{color:'#5B4B8C'},data:ps.map(p=>p.predicted_power),z:10},
     ],animationDuration:1800,
   })
@@ -305,7 +329,7 @@ function renderEff(){
     xAxis:{type:'value',max:100,axisLine:{show:false},axisTick:{show:false},axisLabel:{show:false},splitLine:{lineStyle:{color:'rgba(0,0,0,0.03)'}}},
     yAxis:{type:'category',data:gs.map(g=>`GPU ${g.gpu_index}`),inverse:true,axisLine:{show:false},axisTick:{show:false},axisLabel:{color:'#666',fontSize:12,fontWeight:500,fontFamily:"'ZCOOL XiaoWei',serif"}},
     series:[
-      {type:'bar',barWidth:16,z:2,data:gs.map((g,i)=>({value:g.score,itemStyle:{color:new echarts.graphic.LinearGradient(0,0,1,0,[{offset:0,color:colors[i]+'15'},{offset:1,color:colors[i]}]),borderRadius:[0,4,4,0]}})),label:{show:true,position:'right',color:'#999',fontSize:12,fontFamily:"'JetBrains Mono',monospace",fontWeight:600}},
+      {type:'bar',barWidth:16,z:2,data:gs.map((g,i)=>({value:g.score,itemStyle:{color:new graphic.LinearGradient(0,0,1,0,[{offset:0,color:colors[i]+'15'},{offset:1,color:colors[i]}]),borderRadius:[0,4,4,0]}})),label:{show:true,position:'right',color:'#999',fontSize:12,fontFamily:"'JetBrains Mono',monospace",fontWeight:600}},
       {type:'bar',barWidth:16,z:1,silent:true,data:gs.map(()=>({value:100,itemStyle:{color:'rgba(0,0,0,0.02)',borderRadius:[0,4,4,0]}}))},
     ],animationDuration:1200,
   })
@@ -328,7 +352,7 @@ function renderComp(){
     yAxis:{type:'value',name:'W',nameTextStyle:{color:'#999',fontSize:10},axisLine:{show:false},axisTick:{show:false},axisLabel:{color:'#999',fontSize:10},splitLine:{lineStyle:{color:'rgba(0,0,0,0.04)',type:'dashed'}}},
     series:[
       {name:'基线功耗',type:'line',smooth:.4,symbol:'none',lineStyle:{width:2,color:'#C41E3A',type:'dashed',opacity:0.7},data:bs.map(p=>p.power),markLine:{silent:true,symbol:'none',lineStyle:{color:'#3A5F4B',type:'dashed',width:1.5},data:markData.map(d=>({...d,label:{formatter:'优化点',color:'#3A5F4B',fontSize:10,fontFamily:"'ZCOOL XiaoWei',serif"}}))}},
-      {name:'实际功耗',type:'line',smooth:.4,symbol:'none',lineStyle:{width:2.5,color:'#2E8B57'},areaStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(46,139,87,0.1)'},{offset:1,color:'transparent'}])},data:as2.map(p=>p.power)},
+      {name:'实际功耗',type:'line',smooth:.4,symbol:'none',lineStyle:{width:2.5,color:'#2E8B57'},areaStyle:{color:new graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(46,139,87,0.1)'},{offset:1,color:'transparent'}])},data:as2.map(p=>p.power)},
       {name:'节省量',type:'bar',barWidth:4,itemStyle:{color:'rgba(46,139,87,0.35)',borderRadius:[2,2,0,0]},data:ss.map(p=>p.saved)},
     ],animationDuration:1500,
   })
@@ -785,7 +809,6 @@ watch(activeTab, () => {
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=ZCOOL+XiaoWei&family=ZCOOL+KuaiLe&family=Noto+Serif+SC:wght@300;700&display=swap');
 
 /* ===== 宣纸底色 & 水墨基调 ===== */
 .ink-page {
@@ -793,7 +816,7 @@ watch(activeTab, () => {
   margin: 0 auto;
   position: relative;
   color: #2C2C2C;
-  font-family: 'ZCOOL XiaoWei', 'Noto Serif SC', serif;
+  font-family: var(--font-ui);
 }
 
 .ink-export-feedback {
@@ -828,7 +851,6 @@ watch(activeTab, () => {
   height: 35%;
   background:
     linear-gradient(165deg, transparent 30%, rgba(58,95,75,0.03) 50%, rgba(58,95,75,0.06) 70%, rgba(58,95,75,0.04) 100%);
-  filter: blur(1px);
   mask-image: linear-gradient(to top, rgba(0,0,0,0.6), transparent);
 }
 
@@ -836,7 +858,7 @@ watch(activeTab, () => {
   position: absolute;
   width: 400px; height: 80px;
   background: radial-gradient(ellipse, rgba(58,95,75,0.04) 0%, transparent 70%);
-  filter: blur(20px);
+  opacity: 0.8;
   animation: cloud-drift 60s linear infinite;
 }
 .ink-cloud--1 { top: 15%; left: -200px; }
@@ -895,7 +917,6 @@ watch(activeTab, () => {
   background: rgba(255,255,255,0.56);
   border: 1px solid rgba(0,0,0,0.04);
   border-radius: 12px;
-  backdrop-filter: blur(8px);
 }
 
 .source-card__label {
@@ -989,7 +1010,6 @@ watch(activeTab, () => {
   background: rgba(255,255,255,0.6);
   border: 1px solid rgba(0,0,0,0.04);
   border-radius: 12px;
-  backdrop-filter: blur(8px);
   transition: all .3s;
 }
 
@@ -1075,7 +1095,6 @@ watch(activeTab, () => {
   background: rgba(255,255,255,0.55);
   border: 1px solid rgba(0,0,0,0.04);
   border-radius: 12px;
-  backdrop-filter: blur(8px);
   transition: all .3s;
 }
 
