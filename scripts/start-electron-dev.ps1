@@ -117,6 +117,8 @@ $agentProcess = Start-ManagedServiceProcess `
   -ArgumentList @(".\main.py") `
   -WorkingDirectory $agentDir `
   -Environment @{
+    PYTHONIOENCODING = "utf-8"
+    PYTHONUTF8 = "1"
     GPU_AGENT_PORT = $agentPort
   }
 Register-ProcessLogPump -ServiceName "Agent" -Process $agentProcess
@@ -129,6 +131,8 @@ $backendProcess = Start-ManagedServiceProcess `
   -ArgumentList @("-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "$backendPort") `
   -WorkingDirectory $backendDir `
   -Environment @{
+    PYTHONIOENCODING = "utf-8"
+    PYTHONUTF8 = "1"
     PORT = $backendPort
     AGENT_URL = $agentUrl
   }

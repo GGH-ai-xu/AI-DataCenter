@@ -3,7 +3,7 @@
  * Scheduler.vue - 智能调度页
  * 手动/自动调度控制、总功率预算治理、功耗限制设置、AI调度策略、能耗报告
  */
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useAppStore } from '../stores/app'
 import {
   getCarbonBudget,
@@ -18,6 +18,7 @@ import {
 } from '../services/api'
 import WorkspaceSummary from '../components/workspace/WorkspaceSummary.vue'
 import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
+import { useDomainRefresh } from '../composables/useDomainRefresh.js'
 
 const store = useAppStore()
 const activeTab = ref('control')
@@ -58,7 +59,6 @@ const carbonForm = ref({
   enabled: false,
   daily_budget_kg: 50,
 })
-let refreshTimer = null
 
 const auditLogs = ref([])
 const auditLoading = ref(false)
@@ -141,12 +141,41 @@ function ensureRiskAcknowledged(label) {
   return false
 }
 
+function applySchedulerStatus(data) {
+  autoEnabled.value = data.auto_enabled
+  timePeriod.value = data.time_period_label
+  applyBudgetState(data.budget)
+}
+
+function applyCarbonState(data) {
+  carbonBudget.value = { ...carbonBudget.value, ...data }
+  carbonForm.value = {
+    enabled: data.enabled,
+    daily_budget_kg: data.daily_budget_kg,
+  }
+}
+
+const schedulerStatusRefresh = useDomainRefresh({
+  section: 'scheduler',
+  key: 'status',
+  intervalMs: 15000,
+  staleTime: 10000,
+  loader: async () => (await getSchedulerStatus()).data,
+  applyData: applySchedulerStatus,
+})
+
+const carbonBudgetRefresh = useDomainRefresh({
+  section: 'scheduler',
+  key: 'carbon',
+  intervalMs: 15000,
+  staleTime: 10000,
+  loader: async () => (await getCarbonBudget()).data,
+  applyData: applyCarbonState,
+})
+
 async function loadStatus() {
   try {
-    const { data } = await getSchedulerStatus()
-    autoEnabled.value = data.auto_enabled
-    timePeriod.value = data.time_period_label
-    applyBudgetState(data.budget)
+    await schedulerStatusRefresh.refresh({ force: true })
   } catch (e) {}
 }
 
@@ -170,12 +199,7 @@ async function saveBudget() {
 
 async function loadCarbonBudget() {
   try {
-    const { data } = await getCarbonBudget()
-    carbonBudget.value = { ...carbonBudget.value, ...data }
-    carbonForm.value = {
-      enabled: data.enabled,
-      daily_budget_kg: data.daily_budget_kg,
-    }
+    await carbonBudgetRefresh.refresh({ force: true })
   } catch (e) {}
 }
 
@@ -324,18 +348,8 @@ async function loadEvaluation() {
 }
 
 onMounted(() => {
-  loadStatus()
-  loadCarbonBudget()
   loadAuditLogs()
   loadEvaluation()
-  refreshTimer = setInterval(() => {
-    loadStatus()
-    loadCarbonBudget()
-  }, 8000)
-})
-
-onUnmounted(() => {
-  clearInterval(refreshTimer)
 })
 </script>
 

@@ -3,74 +3,83 @@
  */
 import { ref, onUnmounted } from 'vue'
 
-export function useWebSocket() {
+const INITIAL_RETRY_DELAY = 1000
+const MAX_RETRY_DELAY = 30000
+
+function buildWebSocketUrl() {
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${location.host}/ws`
+}
+
+export function useWebSocket(options = {}) {
+  const onRealtimeMessage = options.onRealtimeMessage
+  const onConnectionChange = options.onConnectionChange
   const connected = ref(false)
-  const gpuData = ref([])
-  const systemData = ref(null)
-  const processData = ref([])
-  const realtimeAlerts = ref([])
-  let ws = null
+  let socket = null
   let reconnectTimer = null
+  let reconnectDelay = INITIAL_RETRY_DELAY
+  let manualDisconnect = false
+
+  function clearReconnectTimer() {
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer)
+      reconnectTimer = null
+    }
+  }
+
+  function notifyConnectionChange(nextState) {
+    connected.value = nextState
+    if (onConnectionChange) {
+      onConnectionChange(nextState)
+    }
+  }
 
   function connect() {
-    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const url = `${protocol}//${location.host}/ws`
+    manualDisconnect = false
+    socket = new WebSocket(buildWebSocketUrl())
 
-    ws = new WebSocket(url)
-
-    ws.onopen = () => {
-      connected.value = true
-      // 心跳
-      if (reconnectTimer) clearInterval(reconnectTimer)
-      reconnectTimer = setInterval(() => {
-        if (ws?.readyState === WebSocket.OPEN) {
-          ws.send('ping')
-        }
-      }, 30000)
+    socket.onopen = () => {
+      clearReconnectTimer()
+      reconnectDelay = INITIAL_RETRY_DELAY
+      notifyConnectionChange(true)
     }
 
-    ws.onmessage = (event) => {
+    socket.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data)
         if (data.type === 'realtime') {
-          gpuData.value = data.gpus || []
-          systemData.value = data.system || null
-          processData.value = data.processes || []
-          if (data.alerts?.length) {
-            realtimeAlerts.value = [...data.alerts, ...realtimeAlerts.value].slice(0, 50)
-          }
+          onRealtimeMessage?.(data)
         }
-      } catch (e) {
-        // pong或其他非JSON消息
+      } catch {}
+    }
+
+    socket.onclose = () => {
+      notifyConnectionChange(false)
+      if (manualDisconnect) {
+        return
       }
+      clearReconnectTimer()
+      reconnectTimer = setTimeout(connect, reconnectDelay)
+      reconnectDelay = Math.min(reconnectDelay * 2, MAX_RETRY_DELAY)
     }
 
-    ws.onclose = () => {
-      connected.value = false
-      if (reconnectTimer) clearInterval(reconnectTimer)
-      // 3秒后重连
-      setTimeout(connect, 3000)
-    }
-
-    ws.onerror = () => {
-      ws?.close()
+    socket.onerror = () => {
+      socket?.close()
     }
   }
 
   function disconnect() {
-    if (reconnectTimer) clearInterval(reconnectTimer)
-    ws?.close()
-    ws = null
+    manualDisconnect = true
+    clearReconnectTimer()
+    notifyConnectionChange(false)
+    socket?.close()
+    socket = null
   }
 
   onUnmounted(disconnect)
 
   return {
     connected,
-    gpuData,
-    systemData,
-    processData,
-    realtimeAlerts,
     connect,
     disconnect,
   }

@@ -130,6 +130,15 @@ class StartDevScriptTests(unittest.TestCase):
         self.assertIn("Initialize-ConsoleEncoding", start_dev)
         self.assertIn("Initialize-ConsoleEncoding", start_electron)
 
+    def test_python_launchers_force_utf8_stdio_for_single_terminal_logs(self):
+        start_dev = (ROOT / "scripts" / "start-dev.ps1").read_text(encoding="utf-8")
+        start_electron = (ROOT / "scripts" / "start-electron-dev.ps1").read_text(encoding="utf-8")
+
+        self.assertIn('PYTHONIOENCODING = "utf-8"', start_dev)
+        self.assertIn('PYTHONUTF8 = "1"', start_dev)
+        self.assertIn('PYTHONIOENCODING = "utf-8"', start_electron)
+        self.assertIn('PYTHONUTF8 = "1"', start_electron)
+
     def test_setup_desktop_shell_installs_desktop_dependencies(self):
         script = (ROOT / "scripts" / "setup-desktop-shell.ps1").read_text(encoding="utf-8")
 

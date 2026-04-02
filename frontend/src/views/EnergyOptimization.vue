@@ -8,11 +8,12 @@
  * - 气韵生动：数据亦有神韵
  * - 虚实相生：科技与传统融合
  */
-import { ref, computed, reactive, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, reactive, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import * as echarts from 'echarts'
-import { getEnergyMetrics, getTimeBreakdown, getGpuEfficiency, getPowerPrediction, getCarbonData, runOptimize, getScheduleHistory, getHistoryComparison, exportEnergyReport, getAiInsight, getAiAnomalies, getSchedulerStatus, healthCheck } from '../services/api'
+import { runOptimize, exportEnergyReport } from '../services/api'
 import { exportTextFile } from '../services/desktopExport'
 import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
+import { useEnergyData } from '../composables/useEnergyData.js'
 
 // ========== 数据 ==========
 const activeTab = ref('overview')
@@ -35,14 +36,28 @@ const energyTabs = [
 
 // 动画数字
 const an = reactive({power:0, kwh:0, cost:0, co2:0, saving:0, score:0})
+const ANIMATION_DELTA_FLOOR = 0.1
+const ANIMATION_DELTA_RATIO = 0.02
+
 function anim(k, t, d=1400) {
   const s=an[k], df=t-s, t0=performance.now()
   ;(function step(n){const p=Math.min((n-t0)/d,1);an[k]=s+df*(1-Math.pow(1-p,3));if(p<1)requestAnimationFrame(step)})(t0)
 }
 
+function updateAnimatedMetric(key, nextValue) {
+  const currentValue = Number(an[key] || 0)
+  const delta = Math.abs(nextValue - currentValue)
+  const ratio = delta / Math.max(Math.abs(currentValue), 1)
+  if (currentValue === 0 || delta >= ANIMATION_DELTA_FLOOR || ratio >= ANIMATION_DELTA_RATIO) {
+    anim(key, nextValue)
+    return
+  }
+  an[key] = nextValue
+}
+
 // ECharts
 const trendRef=ref(null), predRef=ref(null), effRef=ref(null), pieRef=ref(null), gaugeRef=ref(null), compRef=ref(null)
-let charts={}; let timer=null
+let charts={}
 function ci(k,el){if(!el.value)return null;if(charts[k])return charts[k];charts[k]=echarts.init(el.value);return charts[k]}
 
 // 计算
@@ -88,44 +103,77 @@ const breakdownLegendData = computed(() => {
   ]
 })
 
-// ========== 数据加载 ==========
-async function loadData() {
-  try {
-    const [a,b,c,d,e,s] = await Promise.all([getEnergyMetrics(24),getTimeBreakdown(24),getGpuEfficiency(),getPowerPrediction(24),getCarbonData(24),getSchedulerStatus()])
-    metrics.value=a.data; breakdown.value=b.data; efficiency.value=c.data; prediction.value=d.data; carbon.value=e.data
-    schedulerState.value = s.data
-  } catch(err) { console.error('能耗数据加载失败', err) }
-  // 加载调度历史和历史对比（独立try，不阻塞主数据）
-  try { scheduleHistory.value = (await getScheduleHistory(72)).data } catch {}
-  try { historyComparison.value = (await getHistoryComparison(72)).data } catch {}
-  // 检测LLM可用性 + 加载AI数据
-  try {
-    const h = await healthCheck()
-    hasLlm.value = h.data?.llm_available || false
-    sourceState.value = {
-      connected: !!h.data?.agent_connected,
-      simulated: !!h.data?.agent_info?.simulated,
-      gpu_count: Number(h.data?.agent_info?.gpu_count || 0),
-    }
-  } catch {
-    hasLlm.value = false
-    sourceState.value = { connected: false, simulated: false, gpu_count: 0 }
+const energyRefresh = useEnergyData(activeTab, {
+  onData: applyEnergyTabData,
+})
+
+function syncSourceState(health) {
+  sourceState.value = {
+    connected: !!health?.agent_connected,
+    simulated: !!health?.agent_info?.simulated,
+    gpu_count: Number(health?.agent_info?.gpu_count || 0),
   }
-  if (hasLlm.value) {
-    aiInsightLoading.value = true; aiAnomaliesLoading.value = true
-    try { aiInsight.value = (await getAiInsight()).data } catch { aiInsight.value = null }
-    aiInsightLoading.value = false
-    try { aiAnomalies.value = (await getAiAnomalies()).data } catch { aiAnomalies.value = null }
-    aiAnomaliesLoading.value = false
+  hasLlm.value = !!health?.llm_available
+}
+
+function renderOverviewCharts() {
+  renderGauge()
+  renderPie()
+  renderTrend()
+  renderEff()
+}
+
+function renderPredictionCharts() {
+  renderPred()
+  renderComp()
+}
+
+async function applyOverviewPayload(payload) {
+  metrics.value = payload.metrics
+  breakdown.value = payload.breakdown
+  efficiency.value = payload.efficiency
+  schedulerState.value = payload.scheduler
+  carbon.value = payload.carbon
+  syncSourceState(payload.health)
+  loading.value = false
+  updateAnimatedMetric('power', metrics.value?.current_total_power || 0)
+  updateAnimatedMetric('kwh', metrics.value?.kwh || 0)
+  updateAnimatedMetric('cost', (metrics.value?.cost_cny || 0) * 30)
+  updateAnimatedMetric('co2', carbon.value?.co2_kg || 0)
+  updateAnimatedMetric('saving', metrics.value?.saving_pct || 0)
+  updateAnimatedMetric('score', metrics.value?.efficiency_score || 0)
+  await nextTick()
+  renderOverviewCharts()
+}
+
+async function applyPredictionPayload(payload) {
+  prediction.value = payload.prediction
+  scheduleHistory.value = payload.scheduleHistory
+  historyComparison.value = payload.historyComparison
+  loading.value = false
+  await nextTick()
+  renderPredictionCharts()
+}
+
+function applyAiPayload(payload) {
+  syncSourceState(payload.health)
+  aiInsight.value = payload.insight
+  aiAnomalies.value = payload.anomalies
+  aiInsightLoading.value = false
+  aiAnomaliesLoading.value = false
+  loading.value = false
+}
+
+function applyEnergyTabData(tab, payload) {
+  if (tab === 'prediction') {
+    void applyPredictionPayload(payload)
+    return
   }
-  loading.value=false
-  anim('power',metrics.value?.current_total_power||0)
-  anim('kwh',metrics.value?.kwh||0)
-  anim('cost',(metrics.value?.cost_cny||0)*30)
-  anim('co2',carbon.value?.co2_kg||0)
-  anim('saving',metrics.value?.saving_pct||0)
-  anim('score',metrics.value?.efficiency_score||0)
-  await nextTick(); renderAll()
+  if (tab === 'ai') {
+    applyAiPayload(payload)
+    return
+  }
+  void applyOverviewPayload(payload)
 }
 
 async function doOptimize() {
@@ -159,8 +207,8 @@ async function doExport(fmt='markdown') {
 // AI 诊断刷新
 async function refreshAiAnomalies() {
   aiAnomaliesLoading.value = true
-  try { aiAnomalies.value = (await getAiAnomalies()).data } catch { aiAnomalies.value = null }
-  aiAnomaliesLoading.value = false
+  aiInsightLoading.value = true
+  try { await energyRefresh.refresh({ force: true }) } catch {}
 }
 
 // ========== 水墨图表配色 ==========
@@ -173,8 +221,6 @@ const inkColors = {
   gold: '#B8860B',       // 暗金
   paper: '#F8F5F0',      // 宣纸
 }
-
-function renderAll(){ renderGauge(); renderPie(); renderTrend(); renderPred(); renderEff(); renderComp() }
 
 function renderGauge(){
   const c=ci('g',gaugeRef); if(!c) return
@@ -325,8 +371,16 @@ function historyResultFail(log) {
 }
 
 function handleResize(){Object.values(charts).forEach(c=>c?.resize())}
-onMounted(()=>{loadData();timer=setInterval(loadData,30000);window.addEventListener('resize',handleResize)})
-onUnmounted(()=>{clearInterval(timer);window.removeEventListener('resize',handleResize);Object.values(charts).forEach(c=>c?.dispose());charts={}})
+onMounted(()=>{window.addEventListener('resize',handleResize)})
+onUnmounted(()=>{window.removeEventListener('resize',handleResize);Object.values(charts).forEach(c=>c?.dispose());charts={}})
+
+watch(activeTab, () => {
+  if (activeTab.value === 'ai') {
+    aiInsightLoading.value = true
+    aiAnomaliesLoading.value = true
+  }
+  void energyRefresh.refresh({ force: true })
+})
 </script>
 
 <template>

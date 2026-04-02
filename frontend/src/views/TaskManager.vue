@@ -1,11 +1,8 @@
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { useAppStore } from '../stores/app'
+import { computed, ref, watch } from 'vue'
 import {
   deleteGovernanceRule,
   exportGovernanceReport,
-  getFairnessGovernance,
-  getTasks,
   pauseTask,
   resumeTask,
   saveGovernanceRule,
@@ -16,8 +13,8 @@ import { exportTextFile } from '../services/desktopExport'
 import WorkspacePaneLayout from '../components/workspace/WorkspacePaneLayout.vue'
 import WorkspaceSummary from '../components/workspace/WorkspaceSummary.vue'
 import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
+import { useTaskManagerData } from '../composables/useTaskManagerData.js'
 
-const store = useAppStore()
 const activeTab = ref('actions')
 const keyword = ref('')
 const selectedPriority = ref('all')
@@ -29,18 +26,18 @@ const actionNotice = ref(null)
 const actionLoading = ref({})
 const ruleSaving = ref({})
 const ruleDrafts = ref({})
-const fairnessState = ref({
-  overview: { fairness_index: 100, level: 'balanced', summary: '当前共享较均衡。' },
-  users: [],
-  yield_candidates: [],
-  recommendations: [],
-})
-let refreshTimer = null
 const taskTabs = [
   { key: 'actions', label: '待处置任务', desc: '筛选与执行' },
   { key: 'fairness', label: '公平治理', desc: '占用结构与让路建议' },
   { key: 'rules', label: '规则配置', desc: '用户额度与角色' },
 ]
+const {
+  filteredProcesses,
+  visibleProcesses,
+  fairnessState,
+  taskSummary,
+  refreshTaskGovernance,
+} = useTaskManagerData(keyword, selectedPriority, showAllProcesses)
 
 const priorityColors = {
   urgent: { bg: 'rgba(196,30,58,0.12)', color: '#C41E3A', label: '紧急' },
@@ -80,14 +77,6 @@ function cpuMetricTitle(proc) {
   return `${cpu.toFixed(1)}%`
 }
 
-function sortProcesses(list) {
-  return [...list].sort((a, b) => {
-    const manageableDelta = Number(b?.manageable !== false) - Number(a?.manageable !== false)
-    if (manageableDelta) return manageableDelta
-    return (b?.gpu_memory_used || 0) - (a?.gpu_memory_used || 0)
-  })
-}
-
 function isManageable(proc) {
   return proc?.manageable !== false
 }
@@ -120,73 +109,6 @@ function setActionNotice(tone, title, detail) {
   actionNotice.value = { tone, title, detail }
 }
 
-const normalizedProcesses = computed(() =>
-  sortProcesses((store.processes || []).map((proc) => {
-    const priority = proc.priority || 'normal'
-    const manageable = proc.manageable !== false
-    const username = proc.username || 'unknown'
-    return {
-      ...proc,
-      priority,
-      manageable,
-      username,
-      gpu_memory_used: Number(proc.gpu_memory_used || 0),
-      haystack: `${proc.pid} ${proc.name || ''} ${username} ${proc.command || ''}`.toLowerCase(),
-    }
-  }))
-)
-
-const processSummary = computed(() => {
-  const stats = {
-    manageableCount: 0,
-    backgroundCount: 0,
-    usernames: new Set(),
-    urgentCount: 0,
-    deferrableCount: 0,
-    totalGpuMemory: 0,
-  }
-  for (const proc of normalizedProcesses.value) {
-    if (!proc.manageable) {
-      stats.backgroundCount += 1
-      continue
-    }
-    stats.manageableCount += 1
-    stats.usernames.add(proc.username)
-    stats.totalGpuMemory += proc.gpu_memory_used
-    if (proc.priority === 'urgent') {
-      stats.urgentCount += 1
-    }
-    if (proc.priority === 'deferrable') {
-      stats.deferrableCount += 1
-    }
-  }
-  return {
-    manageableCount: stats.manageableCount,
-    backgroundCount: stats.backgroundCount,
-    userCount: stats.usernames.size,
-    urgentCount: stats.urgentCount,
-    deferrableCount: stats.deferrableCount,
-    totalGpuMemory: stats.totalGpuMemory,
-  }
-})
-
-const manageableProcesses = computed(() =>
-  normalizedProcesses.value.filter((proc) => proc.manageable)
-)
-
-const visibleProcesses = computed(() =>
-  showAllProcesses.value ? normalizedProcesses.value : manageableProcesses.value
-)
-
-const filteredProcesses = computed(() => {
-  const term = keyword.value.trim().toLowerCase()
-  return visibleProcesses.value.filter((proc) => {
-    const matchPriority = selectedPriority.value === 'all' || selectedPriority.value === proc.priority
-    const matchKeyword = !term || proc.haystack.includes(term)
-    return matchPriority && matchKeyword
-  })
-})
-
 const fairnessOverview = computed(() => fairnessState.value.overview || {})
 const fairnessUsers = computed(() => fairnessState.value.users || [])
 const yieldCandidates = computed(() => fairnessState.value.yield_candidates || [])
@@ -207,12 +129,12 @@ const fairnessLevelLabel = computed(() => {
   const level = fairnessOverview.value.level || 'balanced'
   return { balanced: '均衡', moderate: '轻度倾斜', skewed: '显著倾斜', critical: '严重不均' }[level] || level
 })
-const manageableProcessCount = computed(() => processSummary.value.manageableCount)
-const backgroundProcessCount = computed(() => processSummary.value.backgroundCount)
-const userCount = computed(() => processSummary.value.userCount)
-const urgentCount = computed(() => processSummary.value.urgentCount)
-const deferrableCount = computed(() => processSummary.value.deferrableCount)
-const totalGpuMemory = computed(() => processSummary.value.totalGpuMemory)
+const manageableProcessCount = computed(() => taskSummary.value.manageableCount)
+const backgroundProcessCount = computed(() => taskSummary.value.backgroundCount)
+const userCount = computed(() => taskSummary.value.userCount)
+const urgentCount = computed(() => taskSummary.value.urgentCount)
+const deferrableCount = computed(() => taskSummary.value.deferrableCount)
+const totalGpuMemory = computed(() => taskSummary.value.totalGpuMemory)
 const executionSummary = computed(() =>
   executionMode.value === 'real'
     ? (riskAcknowledged.value
@@ -243,17 +165,19 @@ function syncRuleDrafts(users) {
 
 async function loadTaskGovernance() {
   try {
-    const [{ data: taskData }, { data: fairnessData }] = await Promise.all([
-      getTasks(),
-      getFairnessGovernance(),
-    ])
-    store.processes = taskData?.processes || []
-    fairnessState.value = fairnessData || fairnessState.value
-    syncRuleDrafts(fairnessData?.users || [])
+    await refreshTaskGovernance({ force: true })
   } catch (error) {
     console.error(error)
   }
 }
+
+watch(
+  fairnessUsers,
+  (users) => {
+    syncRuleDrafts(users)
+  },
+  { immediate: true },
+)
 
 function buildActionOptions() {
   const isReal = executionMode.value === 'real'
@@ -394,14 +318,6 @@ async function doExportGovernance(fmt = 'markdown') {
   exporting.value = false
 }
 
-onMounted(() => {
-  loadTaskGovernance()
-  refreshTimer = setInterval(loadTaskGovernance, 30000)
-})
-
-onUnmounted(() => {
-  clearInterval(refreshTimer)
-})
 </script>
 
 <template>

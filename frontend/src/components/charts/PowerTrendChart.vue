@@ -3,6 +3,7 @@
  * 功耗趋势图 - 实时滚动的多GPU功耗折线图
  */
 import { ref, watch } from 'vue'
+import { appendGpuHistorySample } from '../../lib/historyTransforms.js'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart } from 'echarts/charts'
@@ -66,12 +67,12 @@ const option = ref({
 })
 
 function appendHistory(gpus) {
-  gpus.forEach((gpu) => {
-    if (!history.value[gpu.index]) history.value[gpu.index] = []
-    const points = history.value[gpu.index]
-    points.push({ time: new Date(), value: gpu.power_usage })
-    if (points.length > MAX_POINTS) points.shift()
-  })
+  history.value = appendGpuHistorySample(
+    history.value,
+    gpus,
+    new Date(),
+    MAX_POINTS,
+  )
 }
 
 function updateChartOption() {

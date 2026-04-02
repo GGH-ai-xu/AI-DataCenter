@@ -6,6 +6,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '../stores/app'
 import { getGpuHistory } from '../services/api'
+import { buildGpuDetailSeries } from '../lib/historyTransforms.js'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart } from 'echarts/charts'
@@ -44,13 +45,7 @@ async function loadHistory(hours) {
   loading.value = false
 }
 
-const processedHistory = computed(() => ({
-  times: history.value.map((point) => new Date(point.timestamp * 1000)),
-  temperatures: history.value.map((point) => point.temperature),
-  powerUsage: history.value.map((point) => point.power_usage),
-  gpuUtilization: history.value.map((point) => point.gpu_utilization),
-  memoryUtilization: history.value.map((point) => point.memory_utilization),
-}))
+const processedHistory = computed(() => buildGpuDetailSeries(history.value))
 
 const chartOption = computed(() => {
   const makeStyle = (color) => ({

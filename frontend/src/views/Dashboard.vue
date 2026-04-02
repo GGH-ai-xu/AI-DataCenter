@@ -5,12 +5,13 @@
  */
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { createDemoAlert, getConnectionConfig, getFairnessGovernance, getSystemSelfCheck, healthCheck, getSchedulerStatus, testConnectionConfig, updateConnectionConfig } from '../services/api'
+import { createDemoAlert, getSystemSelfCheck, testConnectionConfig, updateConnectionConfig } from '../services/api'
 import { useAppStore } from '../stores/app'
 import PowerTrendChart from '../components/charts/PowerTrendChart.vue'
 import UtilizationChart from '../components/charts/UtilizationChart.vue'
 import WorkspaceSummary from '../components/workspace/WorkspaceSummary.vue'
 import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
+import { useDashboardData } from '../composables/useDashboardData.js'
 
 const router = useRouter()
 const store = useAppStore()
@@ -99,7 +100,6 @@ const desktopRuntime = ref({
 const desktopServiceState = ref({})
 const desktopOpsBusy = ref(false)
 const desktopOpsFeedback = ref(null)
-let refreshTimer = null
 let removeDesktopServiceListener = null
 const REMOTE_AGENT_PORT = 8001
 const REMOTE_AGENT_EXPORT_DIRNAME = 'GPU-Server-Agent'
@@ -149,15 +149,25 @@ const dashboardTabs = [
   { key: 'access', label: '接入与自检', desc: '接入、自检、桌面服务' },
   { key: 'live', label: '实时态势', desc: 'GPU、图表、告警' },
 ]
+const {
+  dashboardSummary,
+  refreshGovernance,
+  refreshConnection,
+} = useDashboardData({
+  onGovernanceData: applyGovernancePayload,
+  onConnectionData: (payload) => {
+    syncConnectionState(payload)
+  },
+})
 
 const budget = computed(() => schedulerState.value.budget || {})
 const fairnessOverview = computed(() => fairnessState.value.overview || {})
-const activeUsers = computed(() => new Set(store.processes.map(p => p.username || 'unknown')).size)
-const urgentTasks = computed(() => store.processes.filter(p => (p.priority || 'normal') === 'urgent').length)
-const deferrableTasks = computed(() => store.processes.filter(p => (p.priority || 'normal') === 'deferrable').length)
-const normalTasks = computed(() => store.processes.filter(p => (p.priority || 'normal') === 'normal').length)
-const criticalAlerts = computed(() => store.alerts.filter(alert => alert.severity === 'critical').slice(0, 4))
-const hotGpuCount = computed(() => store.gpus.filter(gpu => (gpu.temperature || 0) >= 80).length)
+const activeUsers = computed(() => dashboardSummary.value.activeUsers)
+const urgentTasks = computed(() => dashboardSummary.value.urgentTasks)
+const deferrableTasks = computed(() => dashboardSummary.value.deferrableTasks)
+const normalTasks = computed(() => dashboardSummary.value.normalTasks)
+const criticalAlerts = computed(() => dashboardSummary.value.criticalAlerts)
+const hotGpuCount = computed(() => dashboardSummary.value.hotGpuCount)
 const yieldQueue = computed(() => (fairnessState.value.yield_candidates || []).slice(0, 4))
 const memoryUsagePct = computed(() => {
   if (!store.totalMemoryTotal) return 0
@@ -591,9 +601,57 @@ function buildConnectionPayload() {
 
 async function loadConnectionConfig(force = false) {
   try {
-    const { data } = await getConnectionConfig()
-    syncConnectionState(data, force)
+    const result = await refreshConnection({ force })
+    if (result?.data) {
+      syncConnectionState(result.data, force)
+    }
   } catch {}
+}
+
+function buildSourceState(healthData) {
+  const gpuCount = Number(healthData?.agent_info?.gpu_count || 0)
+  return {
+    connected: !!healthData?.agent_connected,
+    gpu_count: gpuCount,
+    label: gpuCount > 0 ? '真实采集' : '无真实GPU',
+    detail: gpuCount > 0
+      ? `当前接入 ${connectionState.value.mode === 'remote' ? '远程服务器' : '本机'} Agent，已检测到真实 GPU`
+      : 'Agent 在线，但当前未检测到真实 GPU',
+  }
+}
+
+function resetGovernanceState() {
+  sourceState.value = {
+    connected: false,
+    gpu_count: 0,
+    label: '未连接',
+    detail: '无法获取调度与数据源状态',
+  }
+  fairnessState.value = {
+    overview: {
+      fairness_index: 0,
+      level: 'critical',
+      summary: '无法获取公平治理分析结果。',
+      active_users: 0,
+      dominant_user: null,
+      highest_share_pct: 0,
+      reclaimable_candidates: 0,
+    },
+    users: [],
+    recommendations: [],
+    yield_candidates: [],
+  }
+}
+
+function applyGovernancePayload(payload) {
+  if (!payload) {
+    return
+  }
+  schedulerState.value = payload.scheduler || schedulerState.value
+  fairnessState.value = payload.fairness || fairnessState.value
+  selfCheckState.value = payload.selfCheck || selfCheckState.value
+  syncConnectionState(payload.health?.connection)
+  sourceState.value = buildSourceState(payload.health)
 }
 
 function applyDesktopServiceState(payload = {}) {
@@ -926,57 +984,21 @@ async function openExportedAgentFolder() {
 
 async function loadGovernance() {
   try {
-    const [{ data: schedulerData }, { data: healthData }, { data: fairnessData }] = await Promise.all([
-      getSchedulerStatus(),
-      healthCheck(),
-      getFairnessGovernance(),
-    ])
-    schedulerState.value = schedulerData
-    fairnessState.value = fairnessData
-    const gpuCount = Number(healthData?.agent_info?.gpu_count || 0)
-    syncConnectionState(healthData?.connection)
-    sourceState.value = {
-      connected: !!healthData?.agent_connected,
-      gpu_count: gpuCount,
-      label: gpuCount > 0 ? '真实采集' : '无真实GPU',
-      detail: gpuCount > 0
-        ? `当前接入 ${connectionState.value.mode === 'remote' ? '远程服务器' : '本机'} Agent，已检测到真实 GPU`
-        : 'Agent 在线，但当前未检测到真实 GPU',
+    const result = await refreshGovernance({ force: true })
+    if (result?.data) {
+      applyGovernancePayload(result.data)
     }
   } catch (e) {
-    sourceState.value = {
-      connected: false,
-      gpu_count: 0,
-      label: '未连接',
-      detail: '无法获取调度与数据源状态',
-    }
+    resetGovernanceState()
     await loadConnectionConfig()
-    fairnessState.value = {
-      overview: {
-        fairness_index: 0,
-        level: 'critical',
-        summary: '无法获取公平治理分析结果。',
-        active_users: 0,
-        dominant_user: null,
-        highest_share_pct: 0,
-        reclaimable_candidates: 0,
-      },
-      users: [],
-      recommendations: [],
-      yield_candidates: [],
-    }
   }
 }
 
 onMounted(() => {
-  loadConnectionConfig(true)
-  loadGovernance()
-  runPlatformSelfCheck()
   loadDesktopOpsState()
   if (getDesktopShellBridge()?.onServiceState) {
     removeDesktopServiceListener = getDesktopShellBridge().onServiceState(applyDesktopServiceState)
   }
-  refreshTimer = setInterval(loadGovernance, 8000)
 })
 
 watch(
@@ -1012,7 +1034,6 @@ watch(
 )
 
 onUnmounted(() => {
-  clearInterval(refreshTimer)
   removeDesktopServiceListener?.()
 })
 </script>

@@ -3,12 +3,12 @@
  * MonitorCenter.vue - 观察中心
  * 四大功能：训练进度、用户统计、任务时间线、系统全貌
  */
-import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
-import { getSystemDetail, getTrainingProgress, getUserStats, getTaskHistory } from '../services/api'
+import { ref, computed, watch } from 'vue'
 import VChart from 'vue-echarts'
 import WorkspacePaneLayout from '../components/workspace/WorkspacePaneLayout.vue'
 import WorkspaceSummary from '../components/workspace/WorkspaceSummary.vue'
 import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
+import { useMonitorData } from '../composables/useMonitorData.js'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart, BarChart, CustomChart, GaugeChart } from 'echarts/charts'
@@ -17,7 +17,7 @@ import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, Ti
 use([CanvasRenderer, LineChart, BarChart, CustomChart, GaugeChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, TitleComponent])
 
 const activeTab = ref('system')
-const loading = ref(false)
+const loading = ref(true)
 const monitorTabs = [
   { key: 'system', label: '系统全貌', desc: '底盘与资源' },
   { key: 'training', label: '训练进度', desc: '训练曲线与日志' },
@@ -33,13 +33,8 @@ const taskTimeline = ref([])
 const timelineHours = ref(24)
 const prevNetwork = ref(null)
 const networkSpeed = ref({ sent: 0, recv: 0 })
-
-let refreshTimer = null
-const tabLoaders = Object.freeze({
-  system: loadSystemDetail,
-  training: loadTraining,
-  users: loadUsers,
-  timeline: loadTimeline,
+const monitorRefresh = useMonitorData(activeTab, timelineHours, {
+  onData: applyMonitorTabData,
 })
 
 // ===== 格式化工具 =====
@@ -66,63 +61,46 @@ const fmtTime = (ts) => {
 }
 
 // ===== 数据加载 =====
-async function refreshActiveTab() {
+async function refreshActiveTab(force = false) {
   loading.value = true
   try {
-    const loader = tabLoaders[activeTab.value]
-    if (loader) {
-      await loader()
-    }
+    await monitorRefresh.refresh({ force })
   } finally {
     loading.value = false
   }
 }
 
-async function loadSystemDetail() {
-  try {
-    const { data } = await getSystemDetail()
-    // 计算网络速率
-    if (data.network && prevNetwork.value) {
-      const dt = data.timestamp - (systemDetail.value?.timestamp || data.timestamp)
-      if (dt > 0) {
-        networkSpeed.value = {
-          sent: (data.network.bytes_sent - prevNetwork.value.bytes_sent) / dt,
-          recv: (data.network.bytes_recv - prevNetwork.value.bytes_recv) / dt,
-        }
+function applySystemDetail(data) {
+  if (data.network && prevNetwork.value) {
+    const dt = data.timestamp - (systemDetail.value?.timestamp || data.timestamp)
+    if (dt > 0) {
+      networkSpeed.value = {
+        sent: (data.network.bytes_sent - prevNetwork.value.bytes_sent) / dt,
+        recv: (data.network.bytes_recv - prevNetwork.value.bytes_recv) / dt,
       }
     }
-    if (data.network) prevNetwork.value = { ...data.network }
-    systemDetail.value = data
-  } catch (e) {
-    console.error(e)
   }
+  if (data.network) {
+    prevNetwork.value = { ...data.network }
+  }
+  systemDetail.value = data
 }
 
-async function loadTraining() {
-  try {
-    const { data } = await getTrainingProgress()
-    trainingData.value = data.training || []
-  } catch (e) {
-    console.error(e)
+function applyMonitorTabData(tab, payload) {
+  loading.value = false
+  if (tab === 'system') {
+    applySystemDetail(payload)
+    return
   }
-}
-
-async function loadUsers() {
-  try {
-    const { data } = await getUserStats()
-    userStats.value = data.users || []
-  } catch (e) {
-    console.error(e)
+  if (tab === 'training') {
+    trainingData.value = payload || []
+    return
   }
-}
-
-async function loadTimeline() {
-  try {
-    const { data } = await getTaskHistory(timelineHours.value)
-    taskTimeline.value = data.timeline || []
-  } catch (e) {
-    console.error(e)
+  if (tab === 'users') {
+    userStats.value = payload || []
+    return
   }
+  taskTimeline.value = payload || []
 }
 
 // ===== 图表配置 =====
@@ -240,17 +218,14 @@ const uptime = computed(() => {
   return fmtDuration(Date.now() / 1000 - systemDetail.value.boot_time)
 })
 
-onMounted(() => {
-  refreshActiveTab()
-  refreshTimer = setInterval(refreshActiveTab, 10000)
-})
-
-onUnmounted(() => {
-  clearInterval(refreshTimer)
-})
-
 watch(activeTab, () => {
-  refreshActiveTab()
+  void refreshActiveTab(true)
+})
+
+watch(timelineHours, () => {
+  if (activeTab.value === 'timeline') {
+    void refreshActiveTab(true)
+  }
 })
 </script>
 
@@ -456,7 +431,7 @@ watch(activeTab, () => {
           <div class="timeline-controls">
             <span style="color: var(--text-secondary)">时间范围:</span>
             <button v-for="h in [1, 6, 24, 72]" :key="h" class="btn-tech btn-sm" :class="{ 'btn-tech--active': timelineHours === h }"
-              @click="timelineHours = h; loadTimeline()">{{ h >= 24 ? (h/24) + '天' : h + '小时' }}</button>
+              @click="timelineHours = h">{{ h >= 24 ? (h/24) + '天' : h + '小时' }}</button>
           </div>
           <div class="tech-card timeline-chart-card" v-if="timelineOption">
             <div class="card-title">GPU任务占用时间线</div>

@@ -5,11 +5,11 @@ import { healthCheck } from './services/api'
 import { useAppStore } from './stores/app'
 import GlobalToast from './components/GlobalToast.vue'
 import { setupInterceptor } from './services/api'
+import { useWebSocket } from './composables/useWebSocket'
 
 const route = useRoute()
 const router = useRouter()
 const store = useAppStore()
-const wsConnected = ref(false)
 const currentTime = ref('')
 const workspaceStatusChecked = ref(false)
 const lockHint = ref('')
@@ -24,14 +24,19 @@ const updateBusy = ref(false)
 const closeDialog = ref(null)
 const closeBusy = ref(false)
 const toastRef = ref(null)
-let ws = null
-let reconnectTimer = null
-let wsRetryDelay = 1000  // WebSocket 指数退避初始延迟
 let clockTimer = null
 let workspaceTimer = null
 let lockHintTimer = null
 let updateStateTimer = null
 let removeCloseListener = null
+const { connected: wsConnected, connect, disconnect } = useWebSocket({
+  onRealtimeMessage: (payload) => {
+    store.applyRealtimePayload(payload)
+  },
+  onConnectionChange: (connected) => {
+    store.wsConnected = connected
+  },
+})
 
 const navItems = [
   { path: '/', label: '总览', icon: '览', desc: '接入中心与自检' },
@@ -115,33 +120,6 @@ async function refreshWorkspaceStatus() {
     workspaceStatusChecked.value = true
     enforceRouteAccess(route.path)
   }
-}
-
-function connectWs() {
-  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const url = `${protocol}//${location.host}/ws`
-  ws = new WebSocket(url)
-  ws.onopen = () => {
-    wsConnected.value = true
-    store.wsConnected = true
-    wsRetryDelay = 1000  // 连接成功后重置退避
-  }
-  ws.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data)
-      if (data.type === 'realtime') {
-        store.updateFromWs(data)
-      }
-    } catch {}
-  }
-  ws.onclose = () => {
-    wsConnected.value = false
-    store.wsConnected = false
-    // 指数退避重连：1s → 2s → 4s → 8s → ... → 30s max
-    reconnectTimer = setTimeout(connectWs, wsRetryDelay)
-    wsRetryDelay = Math.min(wsRetryDelay * 2, 30000)
-  }
-  ws.onerror = () => ws?.close()
 }
 
 function navigateTo(item) {
@@ -269,8 +247,7 @@ watch(
 onMounted(() => {
   updateClock()
   clockTimer = setInterval(updateClock, 1000)
-  connectWs()
-  // 注册 axios 全局错误拦截器
+  connect()
   setupInterceptor((msg, type) => {
     toastRef.value?.show(msg, type)
   })
@@ -284,11 +261,10 @@ onMounted(() => {
 onUnmounted(() => {
   clearInterval(clockTimer)
   clearInterval(workspaceTimer)
-  clearTimeout(reconnectTimer)
   clearTimeout(lockHintTimer)
   clearTimeout(updateStateTimer)
   removeCloseListener?.()
-  ws?.close()
+  disconnect()
 })
 </script>
 
