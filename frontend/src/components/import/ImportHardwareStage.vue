@@ -1,8 +1,10 @@
 <script setup>
 import { computed, ref } from 'vue'
 import ImportHardwareSummary from './ImportHardwareSummary.vue'
+import ImportSavedHostSummaryBar from './ImportSavedHostSummaryBar.vue'
 
 const props = defineProps({
+  savedHostSummary: { type: Object, default: null },
   providerType: { type: String, required: true },
   agentLabel: { type: String, default: '' },
   agentUrl: { type: String, default: '' },
@@ -32,6 +34,7 @@ const totalMemoryUsed = computed(() =>
   <section class="import-hardware-stage">
     <div class="import-hardware-stage__shell">
       <div class="import-hardware-stage__main">
+        <ImportSavedHostSummaryBar :saved-host-summary="props.savedHostSummary" />
         <ImportHardwareSummary
           :provider-type="props.providerType"
           :agent-label="props.agentLabel"

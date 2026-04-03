@@ -99,17 +99,33 @@ class ImportLayerStructureTests(unittest.TestCase):
     def test_saved_host_stage_uses_saved_host_api_contract(self):
         api_text = (ROOT / "frontend/src/services/api.js").read_text(encoding="utf-8")
         helper_text = (ROOT / "frontend/src/lib/importWorkbench.js").read_text(encoding="utf-8")
-        logic_text = (ROOT / "frontend/src/composables/useImportWorkspace.js").read_text(encoding="utf-8")
+        logic_text = (ROOT / "frontend/src/composables/createImportWorkspaceController.js").read_text(encoding="utf-8")
+        wrapper_text = (ROOT / "frontend/src/composables/useImportWorkspace.js").read_text(encoding="utf-8")
         stage_text = (ROOT / "frontend/src/components/import/ImportSavedHostsStage.vue").read_text(encoding="utf-8")
 
         self.assertIn("export const getSavedHosts", api_text)
         self.assertIn("export const deleteSavedHost", api_text)
         self.assertIn("{ key: 'saved'", helper_text)
         self.assertIn("saved_host_id", logic_text)
-        self.assertIn("activeStage = ref('saved')", logic_text)
+        self.assertIn("activeStage: ref('saved')", logic_text)
         self.assertIn("handleSavedHostEdit", logic_text)
+        self.assertIn("createImportWorkspaceController", wrapper_text)
         self.assertIn("@edit=\"workspace.handleSavedHostEdit\"", (ROOT / "frontend/src/views/ImportWorkspace.vue").read_text(encoding="utf-8"))
         self.assertIn("编辑连接", stage_text)
+
+    def test_saved_host_scan_continue_ui_is_wired_through_hardware_and_selection(self):
+        saved_stage = (ROOT / "frontend/src/components/import/ImportSavedHostsStage.vue").read_text(encoding="utf-8")
+        hardware_stage = (ROOT / "frontend/src/components/import/ImportHardwareStage.vue").read_text(encoding="utf-8")
+        selection_stage = (ROOT / "frontend/src/components/import/ImportSelectionStage.vue").read_text(encoding="utf-8")
+        workspace_view = (ROOT / "frontend/src/views/ImportWorkspace.vue").read_text(encoding="utf-8")
+        summary_bar = (ROOT / "frontend/src/components/import/ImportSavedHostSummaryBar.vue")
+
+        self.assertTrue(summary_bar.exists())
+        self.assertIn("扫描并继续", saved_stage)
+        self.assertIn("ImportSavedHostSummaryBar", hardware_stage)
+        self.assertIn("ImportSavedHostSummaryBar", selection_stage)
+        self.assertIn(':saved-host-summary="workspace.savedHostSummary"', workspace_view)
+        self.assertIn("当前复用主机", summary_bar.read_text(encoding="utf-8"))
 
     def test_import_workbench_keeps_tabs_body_and_footer_isolated(self):
         text = (ROOT / "frontend/src/components/import/ImportPrepWorkbench.vue").read_text(encoding="utf-8")

@@ -80,6 +80,7 @@ const workspace = proxyRefs(useImportWorkspace())
       />
       <ImportHardwareStage
         v-else-if="workspace.activeStage === 'hardware'"
+        :saved-host-summary="workspace.savedHostSummary"
         :provider-type="workspace.providerType"
         :agent-label="workspace.scanResult?.agent_label || workspace.agentLabel"
         :agent-url="workspace.currentAgentUrl"
@@ -90,6 +91,7 @@ const workspace = proxyRefs(useImportWorkspace())
       />
       <ImportSelectionStage
         v-else
+        :saved-host-summary="workspace.savedHostSummary"
         :model-value="workspace.selectedGpuIndexes"
         :gpus="workspace.scanResult?.gpus || []"
         @update:model-value="workspace.selectedGpuIndexes = $event"

@@ -2,8 +2,10 @@
 import { computed, ref } from 'vue'
 import { formatImportedGpuLabel } from '../../lib/importContext.js'
 import ImportGpuGrid from './ImportGpuGrid.vue'
+import ImportSavedHostSummaryBar from './ImportSavedHostSummaryBar.vue'
 
 const props = defineProps({
+  savedHostSummary: { type: Object, default: null },
   gpus: { type: Array, default: () => [] },
   modelValue: { type: Array, default: () => [] },
 })
@@ -31,6 +33,7 @@ function clearSelection() {
   <section class="import-selection-stage">
     <div class="import-selection-stage__shell">
       <div class="import-selection-stage__main">
+        <ImportSavedHostSummaryBar :saved-host-summary="props.savedHostSummary" />
         <section class="tech-card import-selection-stage__toolbar-card">
           <div class="import-selection-stage__toolbar-head">
             <div>

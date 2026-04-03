@@ -56,3 +56,22 @@ test('resolveSavedHostScanFailure requests manual credential recovery for unread
   assert.deepEqual(result.nextSelectedGpuIndexes, [])
   assert.match(result.feedbackText, /重新输入密码或私钥/)
 })
+
+test('resolveSavedHostScanFailure keeps saved host flow for retryable runtime errors', () => {
+  const result = resolveSavedHostScanFailure({
+    detail: 'Permission denied for user dell on host 10.151.225.108',
+    host: {
+      id: 1,
+      provider_type: 'ssh_linux',
+      label: 'ssh',
+      host: '10.151.225.108',
+      port: 22,
+      username: 'dell',
+      auth_type: 'password',
+      credential_status: 'ok',
+    },
+  })
+
+  assert.equal(result.shouldRecoverSavedHost, false)
+  assert.match(result.feedbackText, /Permission denied/)
+})

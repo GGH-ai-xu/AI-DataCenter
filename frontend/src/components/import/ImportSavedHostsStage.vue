@@ -23,7 +23,7 @@ function targetSummary(host) {
 }
 
 function scanActionLabel(host) {
-  return host.credential_status === 'unreadable' ? '补录凭据' : '直接扫描'
+  return host.credential_status === 'unreadable' ? '补录凭据' : '扫描并继续'
 }
 
 function credentialNotice(host) {
