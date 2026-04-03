@@ -40,6 +40,7 @@ class SchedulerEngine:
         data_store,
         llm_service=None,
         privacy_service=None,
+        import_context=None,
         budget_limit_watts: int = 1200,
         budget_enabled: bool = False,
     ):
@@ -47,6 +48,7 @@ class SchedulerEngine:
         self.store = data_store
         self.llm = llm_service
         self.privacy = privacy_service
+        self.import_context = import_context
         self._last_schedule_time = 0
         self._schedule_interval = 300  # 5分钟调度一次
         self._auto_enabled = False
@@ -62,6 +64,11 @@ class SchedulerEngine:
         self._carbon_budget_daily_kg = 50.0   # 默认每日50kgCO2
         self._carbon_accumulated_wh = 0.0     # 当日累计能耗(Wh)
         self._carbon_day_start = time.time()
+
+    def _selected_gpu_indexes(self) -> list[int] | None:
+        if not self.import_context:
+            return None
+        return self.import_context.selected_gpu_indexes()
 
     @property
     def auto_enabled(self) -> bool:
@@ -457,22 +464,39 @@ class SchedulerEngine:
 
             try:
                 if act == "set_power_limit":
+                    if self.import_context:
+                        self.import_context.ensure_gpu_allowed(target["gpu_index"])
                     resp = await self.agent.set_power_limit(
                         target["gpu_index"], target["power_limit"]
                     )
                     result["success"] = resp.get("success", False)
                 elif act == "pause_task":
+                    if self.import_context:
+                        current_processes = await self.agent.get_processes()
+                        self.import_context.ensure_process_allowed(
+                            target["pid"],
+                            current_processes,
+                        )
                     resp = await self.agent.pause_task(target["pid"])
                     result["success"] = resp.get("success", False)
                 elif act == "resume_task":
+                    if self.import_context:
+                        current_processes = await self.agent.get_processes()
+                        self.import_context.ensure_process_allowed(
+                            target["pid"],
+                            current_processes,
+                        )
                     resp = await self.agent.resume_task(target["pid"])
                     result["success"] = resp.get("success", False)
                 result["applied"] = bool(result["success"])
 
                 # 记录日志
                 await self.store.save_schedule_log(
-                    act, json.dumps(target), reason,
-                    "success" if result["success"] else "failed"
+                    act,
+                    json.dumps(target),
+                    reason,
+                    "success" if result["success"] else "failed",
+                    gpu_indexes=self._selected_gpu_indexes(),
                 )
 
                 if result["success"] and act == "set_power_limit":
@@ -507,8 +531,11 @@ class SchedulerEngine:
                 self._last_evaluation = result
                 # 记录评估到调度日志
                 await self.store.save_schedule_log(
-                    "ai_evaluate", json.dumps({"evaluation": result}),
-                    result.get("verdict", ""), "success"
+                    "ai_evaluate",
+                    json.dumps({"evaluation": result}),
+                    result.get("verdict", ""),
+                    "success",
+                    gpu_indexes=self._selected_gpu_indexes(),
                 )
             return result
         except Exception as e:

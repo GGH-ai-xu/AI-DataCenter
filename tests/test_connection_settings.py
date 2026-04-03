@@ -54,6 +54,29 @@ class ConnectionSettingsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(mode, "remote")
         self.assertEqual(url, "http://10.151.225.108:8001")
 
+    def test_normalize_payload_builds_ssh_linux_target(self):
+        target = self.service.normalize_payload(
+            {
+                "provider_type": "ssh_linux",
+                "label": "训练机 A",
+                "host": "10.0.0.8",
+                "port": 22,
+                "username": "gpuops",
+                "auth_type": "password",
+                "sudo_enabled": True,
+                "host_fingerprint": "SHA256:demo",
+            }
+        )
+
+        self.assertEqual(target.provider_type, "ssh_linux")
+        self.assertEqual(target.label, "训练机 A")
+        self.assertEqual(target.host, "10.0.0.8")
+        self.assertEqual(target.port, 22)
+        self.assertEqual(target.username, "gpuops")
+        self.assertEqual(target.auth_type, "password")
+        self.assertTrue(target.sudo_enabled)
+        self.assertEqual(target.host_fingerprint, "SHA256:demo")
+
     async def test_update_switches_agent_and_persists(self):
         self.service.load()
         agent = FakeAgentClient()

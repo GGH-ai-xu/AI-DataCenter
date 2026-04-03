@@ -23,8 +23,10 @@ async def chat(req: ChatRequest):
 
     # 注入实时GPU数据作为上下文（控制大小防止超token）
     gpus = await app_state.agent.get_all_gpus()
+    gpus = app_state.import_context.filter_gpus(gpus)
     system = await app_state.agent.get_system_info()
     processes = await app_state.agent.get_processes()
+    processes = app_state.import_context.filter_processes(processes)
     processes = app_state.privacy.sanitize_processes(processes)
 
     # 精简GPU数据：只保留关键字段

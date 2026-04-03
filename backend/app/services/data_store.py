@@ -1,8 +1,9 @@
 """SQLite历史数据存储 - 异步读写GPU历史指标和告警"""
 
+import json
+import logging
 import os
 import time
-import logging
 from typing import Optional
 
 import aiosqlite
@@ -23,6 +24,7 @@ logger = logging.getLogger(__name__)
 SQLITE_CONNECTION_TIMEOUT_SECONDS = 30.0
 SQLITE_BUSY_TIMEOUT_MS = 30000
 SQLITE_SYNCHRONOUS_NORMAL = 1
+EMPTY_SCOPE_JSON = "[]"
 
 # 建表SQL
 _INIT_SQL = """
@@ -69,6 +71,7 @@ CREATE TABLE IF NOT EXISTS schedule_log (
     target TEXT NOT NULL,
     reason TEXT NOT NULL,
     result TEXT,
+    scope_gpu_indexes_json TEXT NOT NULL DEFAULT '[]',
     timestamp REAL NOT NULL
 );
 
@@ -94,6 +97,7 @@ CREATE TABLE IF NOT EXISTS optimization_snapshots (
     saving_pct REAL,
     co2_saved_kg REAL,
     actions_json TEXT,
+    scope_gpu_indexes_json TEXT NOT NULL DEFAULT '[]',
     timestamp REAL NOT NULL
 );
 
@@ -152,12 +156,68 @@ class DataStore:
         self._db.row_factory = aiosqlite.Row
         await self._configure_sqlite()
         await self._db.executescript(_INIT_SQL)
+        await self._ensure_scope_columns()
         await self._db.commit()
         logger.info(f"数据库初始化完成: {self.db_path}")
 
     async def close(self):
         if self._db:
             await self._db.close()
+
+    async def _ensure_scope_columns(self):
+        if not self._db:
+            return
+        statements = (
+            "ALTER TABLE schedule_log ADD COLUMN scope_gpu_indexes_json TEXT NOT NULL DEFAULT '[]'",
+            "ALTER TABLE optimization_snapshots ADD COLUMN scope_gpu_indexes_json TEXT NOT NULL DEFAULT '[]'",
+        )
+        for statement in statements:
+            try:
+                await self._db.execute(statement)
+            except aiosqlite.OperationalError:
+                continue
+
+    @staticmethod
+    def _normalize_gpu_indexes(gpu_indexes: list[int] | None) -> list[int] | None:
+        if gpu_indexes is None:
+            return None
+        return sorted({int(item) for item in gpu_indexes})
+
+    @classmethod
+    def _scope_json(cls, gpu_indexes: list[int] | None) -> str:
+        normalized = cls._normalize_gpu_indexes(gpu_indexes)
+        if normalized is None:
+            return EMPTY_SCOPE_JSON
+        return json.dumps(normalized, ensure_ascii=False)
+
+    @classmethod
+    def _gpu_where_clause(
+        cls,
+        column: str,
+        gpu_indexes: list[int] | None,
+        prefix: str = "AND",
+    ) -> tuple[str, tuple]:
+        normalized = cls._normalize_gpu_indexes(gpu_indexes)
+        if normalized is None:
+            return "", ()
+        if not normalized:
+            return f" {prefix} 1 = 0", ()
+        placeholders = ",".join("?" for _ in normalized)
+        return f" {prefix} {column} IN ({placeholders})", tuple(normalized)
+
+    @classmethod
+    def _scope_where_clause(
+        cls,
+        column: str,
+        gpu_indexes: list[int] | None,
+        prefix: str = "AND",
+    ) -> tuple[str, tuple]:
+        normalized = cls._normalize_gpu_indexes(gpu_indexes)
+        if normalized is None:
+            return "", ()
+        if not normalized:
+            return f" {prefix} 1 = 0", ()
+        return f" {prefix} {column} = ?", (cls._scope_json(normalized),)
 
     # ========== GPU历史数据 ==========
 
@@ -198,21 +258,34 @@ class DataStore:
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
 
-    async def get_all_gpu_latest(self) -> list[dict]:
+    async def get_all_gpu_latest(
+        self,
+        gpu_indexes: list[int] | None = None,
+    ) -> list[dict]:
         """获取每张GPU最新的记录"""
+        where, params = self._gpu_where_clause("gpu_index", gpu_indexes)
         cursor = await self._db.execute(
             """SELECT * FROM gpu_history
                WHERE id IN (
                    SELECT MAX(id) FROM gpu_history GROUP BY gpu_index
                )
-               ORDER BY gpu_index"""
+            """
+            + where
+            + """
+               ORDER BY gpu_index""",
+            params,
         )
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
 
-    async def get_power_summary(self, hours: float = 24.0) -> dict:
+    async def get_power_summary(
+        self,
+        hours: float = 24.0,
+        gpu_indexes: list[int] | None = None,
+    ) -> dict:
         """获取功耗统计摘要"""
         since = time.time() - hours * 3600
+        where, scope_params = self._gpu_where_clause("gpu_index", gpu_indexes)
         cursor = await self._db.execute(
             """SELECT gpu_index,
                       AVG(power_usage) as avg_power,
@@ -221,14 +294,17 @@ class DataStore:
                       COUNT(*) as samples
                FROM gpu_history
                WHERE timestamp >= ?
+            """
+            + where
+            + """
                GROUP BY gpu_index""",
-            (since,),
+            (since, *scope_params),
         )
         rows = await cursor.fetchall()
         return {
             "hours": hours,
             "gpus": [dict(row) for row in rows],
-            "total_avg_power": sum(dict(r)["avg_power"] for r in rows) if rows else 0,
+            "total_avg_power": sum(float(row["avg_power"] or 0) for row in rows),
         }
 
     async def cleanup_old_data(self, days: int = 7):
@@ -280,15 +356,35 @@ class DataStore:
         if commit:
             await self._db.commit()
 
-    async def get_alerts(self, limit: int = 100, unack_only: bool = False) -> list[dict]:
+    async def get_alerts(
+        self,
+        limit: int = 100,
+        unack_only: bool = False,
+        gpu_indexes: list[int] | None = None,
+    ) -> list[dict]:
         """获取告警列表"""
         where = "WHERE acknowledged = 0" if unack_only else ""
+        prefix = "AND" if where else "WHERE"
+        scope_where, scope_params = self._gpu_where_clause(
+            "gpu_index",
+            gpu_indexes,
+            prefix=prefix,
+        )
         cursor = await self._db.execute(
-            f"SELECT * FROM alerts {where} ORDER BY timestamp DESC LIMIT ?",
-            (limit,),
+            f"SELECT * FROM alerts {where}{scope_where} ORDER BY timestamp DESC LIMIT ?",
+            (*scope_params, limit),
         )
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
+
+    async def get_alert_by_id(self, alert_id: int) -> dict | None:
+        """按 ID 读取单条告警。"""
+        cursor = await self._db.execute(
+            "SELECT * FROM alerts WHERE id = ?",
+            (alert_id,),
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None
 
     async def acknowledge_alert(self, alert_id: int):
         """确认告警"""
@@ -472,11 +568,26 @@ class DataStore:
 
     # ========== 调度日志 ==========
 
-    async def save_schedule_log(self, action: str, target: str, reason: str, result: str = ""):
+    async def save_schedule_log(
+        self,
+        action: str,
+        target: str,
+        reason: str,
+        result: str = "",
+        gpu_indexes: list[int] | None = None,
+    ):
         await self._db.execute(
-            """INSERT INTO schedule_log (action, target, reason, result, timestamp)
-               VALUES (?, ?, ?, ?, ?)""",
-            (action, target, reason, result, time.time()),
+            """INSERT INTO schedule_log
+               (action, target, reason, result, scope_gpu_indexes_json, timestamp)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (
+                action,
+                target,
+                reason,
+                result,
+                self._scope_json(gpu_indexes),
+                time.time(),
+            ),
         )
         await self._db.commit()
 
@@ -558,23 +669,36 @@ class DataStore:
             raise
         await self._db.commit()
 
-    async def get_process_timeline(self, hours: float = 24.0) -> list[dict]:
+    async def get_process_timeline(
+        self,
+        hours: float = 24.0,
+        gpu_indexes: list[int] | None = None,
+    ) -> list[dict]:
         """获取进程历史时间线"""
         since = time.time() - hours * 3600
+        where, scope_params = self._gpu_where_clause("gpu_index", gpu_indexes)
         cursor = await self._db.execute(
             """SELECT * FROM process_history
                WHERE last_seen >= ?
+            """
+            + where
+            + """
                ORDER BY first_seen DESC""",
-            (since,),
+            (since, *scope_params),
         )
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
 
     # ========== 能耗分析 ==========
 
-    async def get_hourly_power_aggregation(self, hours: float = 24.0) -> list[dict]:
+    async def get_hourly_power_aggregation(
+        self,
+        hours: float = 24.0,
+        gpu_indexes: list[int] | None = None,
+    ) -> list[dict]:
         """按小时聚合功耗数据，用于时段分析和预测基础"""
         since = time.time() - hours * 3600
+        where, scope_params = self._gpu_where_clause("gpu_index", gpu_indexes)
         cursor = await self._db.execute(
             """SELECT
                    CAST(strftime('%H', datetime(timestamp, 'unixepoch', 'localtime')) AS INTEGER) as hour,
@@ -587,25 +711,38 @@ class DataStore:
                    AVG(temperature) as avg_temp
                FROM gpu_history
                WHERE timestamp >= ?
+            """
+            + where
+            + """
                GROUP BY hour
                ORDER BY hour""",
-            (since,),
+            (since, *scope_params),
         )
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
 
-    async def save_optimization_snapshot(self, data: dict):
+    async def save_optimization_snapshot(
+        self,
+        data: dict,
+        gpu_indexes: list[int] | None = None,
+    ):
         """保存优化操作快照"""
+        scope_indexes = (
+            gpu_indexes
+            if gpu_indexes is not None
+            else data.get("scope_gpu_indexes")
+        )
         await self._db.execute(
             """INSERT INTO optimization_snapshots
-               (baseline_power, optimized_power, saving_pct, co2_saved_kg, actions_json, timestamp)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+               (baseline_power, optimized_power, saving_pct, co2_saved_kg, actions_json, scope_gpu_indexes_json, timestamp)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (
                 data.get("baseline_power", 0),
                 data.get("optimized_power", 0),
                 data.get("saving_pct", 0),
                 data.get("co2_saved_kg", 0),
                 data.get("actions_json", "[]"),
+                self._scope_json(scope_indexes),
                 time.time(),
             ),
         )
@@ -628,9 +765,17 @@ class DataStore:
         await self._db.commit()
         return cursor.rowcount or 0
 
-    async def get_optimization_history(self, hours: float = 72.0) -> list[dict]:
+    async def get_optimization_history(
+        self,
+        hours: float = 72.0,
+        gpu_indexes: list[int] | None = None,
+    ) -> list[dict]:
         """查询优化历史快照"""
         since = time.time() - hours * 3600
+        where, scope_params = self._scope_where_clause(
+            "scope_gpu_indexes_json",
+            gpu_indexes,
+        )
         cursor = await self._db.execute(
             """SELECT * FROM optimization_snapshots
                WHERE timestamp >= ?
@@ -643,27 +788,47 @@ class DataStore:
                         COALESCE(baseline_power, 0) < 30
                     AND COALESCE(saving_pct, 0) > 0
                  )
+            """
+            + where
+            + """
                ORDER BY timestamp DESC LIMIT 50""",
-            (since,),
+            (since, *scope_params),
         )
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
 
-    async def get_schedule_history(self, hours: float = 72.0, limit: int = 50) -> list[dict]:
+    async def get_schedule_history(
+        self,
+        hours: float = 72.0,
+        limit: int = 50,
+        gpu_indexes: list[int] | None = None,
+    ) -> list[dict]:
         """获取调度历史日志"""
         since = time.time() - hours * 3600
+        where, scope_params = self._scope_where_clause(
+            "scope_gpu_indexes_json",
+            gpu_indexes,
+        )
         cursor = await self._db.execute(
             """SELECT * FROM schedule_log
                WHERE timestamp >= ?
+            """
+            + where
+            + """
                ORDER BY timestamp DESC LIMIT ?""",
-            (since, limit),
+            (since, *scope_params, limit),
         )
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
 
-    async def get_hourly_power_series(self, hours: float = 72.0) -> list[dict]:
+    async def get_hourly_power_series(
+        self,
+        hours: float = 72.0,
+        gpu_indexes: list[int] | None = None,
+    ) -> list[dict]:
         """按小时聚合功耗时间序列（含时间戳），用于历史对比"""
         since = time.time() - hours * 3600
+        where, scope_params = self._gpu_where_clause("gpu_index", gpu_indexes)
         cursor = await self._db.execute(
             """SELECT
                    CAST((timestamp / 3600) AS INTEGER) * 3600 as hour_ts,
@@ -673,15 +838,26 @@ class DataStore:
                    COUNT(*) as samples
                FROM gpu_history
                WHERE timestamp >= ?
+            """
+            + where
+            + """
                GROUP BY hour_ts
                ORDER BY hour_ts""",
-            (since,),
+            (since, *scope_params),
         )
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
 
-    async def get_user_stats(self) -> list[dict]:
+    async def get_user_stats(
+        self,
+        gpu_indexes: list[int] | None = None,
+    ) -> list[dict]:
         """按用户统计当前资源占用"""
+        where, scope_params = self._gpu_where_clause(
+            "gpu_index",
+            gpu_indexes,
+            prefix="AND",
+        )
         cursor = await self._db.execute(
             """SELECT username,
                       COUNT(DISTINCT pid) as task_count,
@@ -691,8 +867,13 @@ class DataStore:
                       MAX(last_seen) as latest_activity
                FROM process_history
                WHERE is_active = 1
+            """
+            + where
+            + """
                GROUP BY username
                ORDER BY total_memory DESC"""
+            ,
+            scope_params,
         )
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
@@ -701,6 +882,7 @@ class DataStore:
         self,
         hours: float = 24.0,
         bucket_minutes: int = 10,
+        gpu_indexes: list[int] | None = None,
     ) -> list[dict]:
         """构建治理回放帧，按时间桶复盘功率、告警与调度动作。"""
         if not self._db:
@@ -712,6 +894,15 @@ class DataStore:
         start_bucket = int(since // bucket_seconds) * bucket_seconds
         end_bucket = int(now // bucket_seconds) * bucket_seconds
         frames = build_frame_index(start_bucket, end_bucket, bucket_seconds)
+        gpu_where, gpu_params = self._gpu_where_clause("gpu_index", gpu_indexes)
+        process_where, process_params = self._gpu_where_clause(
+            "gpu_index",
+            gpu_indexes,
+        )
+        scope_where, scope_params = self._scope_where_clause(
+            "scope_gpu_indexes_json",
+            gpu_indexes,
+        )
 
         gpu_rows = await self._fetch_rows(
             """SELECT CAST(timestamp / ? AS INTEGER) * ? AS bucket_ts,
@@ -723,9 +914,12 @@ class DataStore:
                       COUNT(DISTINCT gpu_index) AS gpu_count
                FROM gpu_history
                WHERE timestamp >= ?
+            """
+            + gpu_where
+            + """
                GROUP BY bucket_ts
                ORDER BY bucket_ts""",
-            (bucket_seconds, bucket_seconds, since),
+            (bucket_seconds, bucket_seconds, since, *gpu_params),
         )
         apply_gpu_rows(frames, gpu_rows)
 
@@ -735,9 +929,12 @@ class DataStore:
                       SUM(CASE WHEN severity = 'critical' THEN 1 ELSE 0 END) AS critical_alert_count
                FROM alerts
                WHERE timestamp >= ?
+            """
+            + gpu_where
+            + """
                GROUP BY bucket_ts
                ORDER BY bucket_ts""",
-            (bucket_seconds, bucket_seconds, since),
+            (bucket_seconds, bucket_seconds, since, *gpu_params),
         )
         apply_alert_rows(frames, alert_rows)
 
@@ -745,8 +942,11 @@ class DataStore:
             """SELECT action, reason, result, timestamp
                FROM schedule_log
                WHERE timestamp >= ?
+            """
+            + scope_where
+            + """
                ORDER BY timestamp ASC""",
-            (since,),
+            (since, *scope_params),
         )
         apply_schedule_rows(frames, schedule_rows, bucket_seconds, start_bucket)
 
@@ -754,8 +954,11 @@ class DataStore:
             """SELECT username, first_seen, last_seen
                FROM process_history
                WHERE last_seen >= ?
+            """
+            + process_where
+            + """
                ORDER BY first_seen ASC""",
-            (since,),
+            (since, *process_params),
         )
         apply_process_rows(
             frames,

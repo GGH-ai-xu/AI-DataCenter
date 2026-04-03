@@ -54,6 +54,40 @@ class StartDevScriptTests(unittest.TestCase):
         self.assertNotIn('Start-WindowProcess -Title "GPU Backend"', script)
         self.assertNotIn('Start-WindowProcess -Title "GPU Frontend"', script)
 
+    def test_start_dev_cleans_stale_managed_services_before_launch(self):
+        script = (ROOT / "scripts" / "start-dev.ps1").read_text(encoding="utf-8")
+
+        self.assertIn('. "$PSScriptRoot\\dev-managed-service-state.ps1"', script)
+        self.assertIn("Clear-StaleManagedServices -RepoRoot $root", script)
+        self.assertLess(
+            script.index("Clear-StaleManagedServices -RepoRoot $root"),
+            script.index('Write-ServiceLog -ServiceName "Launcher" -Message "Starting Agent on $agentUrl"'),
+        )
+
+    def test_start_dev_persists_managed_service_state_for_agent_backend_and_frontend(self):
+        script = (ROOT / "scripts" / "start-dev.ps1").read_text(encoding="utf-8")
+
+        self.assertIn('Save-ManagedServiceState -ServiceName "Agent"', script)
+        self.assertIn('Save-ManagedServiceState -ServiceName "Backend"', script)
+        self.assertIn('Save-ManagedServiceState -ServiceName "Frontend"', script)
+
+    def test_dev_managed_service_state_helper_tracks_runtime_state_and_precise_matches(self):
+        script_path = ROOT / "scripts" / "dev-managed-service-state.ps1"
+
+        self.assertTrue(script_path.exists(), str(script_path))
+        script = script_path.read_text(encoding="utf-8")
+        self.assertIn('Join-Path $RepoRoot "runtime\\start-dev-managed-services.json"', script)
+        self.assertIn("function Get-LiveManagedServiceEntries", script)
+        self.assertIn("Get-CimInstance Win32_Process", script)
+        self.assertIn("ConvertFrom-Json", script)
+        self.assertIn("ConvertTo-Json", script)
+        self.assertIn("StartTime", script)
+        self.assertIn("taskkill /PID $ProcessId /T /F", script)
+        self.assertIn("Repository-managed start-dev process", script)
+        self.assertIn('.\\main.py', script)
+        self.assertIn("app.main:app", script)
+        self.assertIn("$entries = @(Merge-ManagedServiceEntries", script)
+
     def test_start_electron_dev_ps1_contains_dynamic_port_and_env_injection(self):
         script = (ROOT / "scripts" / "start-electron-dev.ps1").read_text(encoding="utf-8")
         helper = (ROOT / "scripts" / "electron-dev-session.ps1").read_text(encoding="utf-8")
@@ -142,8 +176,10 @@ class StartDevScriptTests(unittest.TestCase):
 
     def test_dev_launch_helpers_define_log_prefix_and_cleanup_functions(self):
         script = (ROOT / "scripts" / "dev-launch-helpers.ps1").read_text(encoding="utf-8")
+        console_helper = (ROOT / "scripts" / "dev-console-helpers.ps1").read_text(encoding="utf-8")
 
-        self.assertIn("function Write-ServiceLog", script)
+        self.assertIn('. "$PSScriptRoot\\dev-console-helpers.ps1"', script)
+        self.assertIn("function Write-ServiceLog", console_helper)
         self.assertIn("function Start-ManagedServiceProcess", script)
         self.assertIn("function Register-ProcessLogPump", script)
         self.assertIn("function Stop-ManagedServiceProcesses", script)
@@ -151,20 +187,22 @@ class StartDevScriptTests(unittest.TestCase):
 
     def test_dev_launch_helpers_use_utf8_process_decoding_and_strip_ansi(self):
         script = (ROOT / "scripts" / "dev-launch-helpers.ps1").read_text(encoding="utf-8")
+        console_helper = (ROOT / "scripts" / "dev-console-helpers.ps1").read_text(encoding="utf-8")
 
         self.assertIn("StandardOutputEncoding = [System.Text.Encoding]::UTF8", script)
         self.assertIn("StandardErrorEncoding = [System.Text.Encoding]::UTF8", script)
-        self.assertIn("function Normalize-ServiceLogMessage", script)
-        self.assertIn("[System.Text.RegularExpressions.Regex]::Replace", script)
+        self.assertIn("function Normalize-ServiceLogMessage", console_helper)
+        self.assertIn("[System.Text.RegularExpressions.Regex]::Replace", console_helper)
 
     def test_dev_launchers_initialize_utf8_console_output(self):
-        helper = (ROOT / "scripts" / "dev-launch-helpers.ps1").read_text(encoding="utf-8")
+        helper = (ROOT / "scripts" / "dev-console-helpers.ps1").read_text(encoding="utf-8")
         start_dev = (ROOT / "scripts" / "start-dev.ps1").read_text(encoding="utf-8")
         start_electron = (ROOT / "scripts" / "start-electron-dev.ps1").read_text(encoding="utf-8")
 
         self.assertIn("function Initialize-ConsoleEncoding", helper)
-        self.assertIn("[Console]::OutputEncoding = [System.Text.Encoding]::UTF8", helper)
-        self.assertIn("$OutputEncoding = [System.Text.Encoding]::UTF8", helper)
+        self.assertIn("[Console]::InputEncoding = $utf8", helper)
+        self.assertIn("[Console]::OutputEncoding = $utf8", helper)
+        self.assertIn("$OutputEncoding = $utf8", helper)
         self.assertIn("Initialize-ConsoleEncoding", start_dev)
         self.assertIn("Initialize-ConsoleEncoding", start_electron)
 

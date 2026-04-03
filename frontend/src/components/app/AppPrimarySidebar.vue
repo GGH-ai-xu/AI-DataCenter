@@ -1,4 +1,8 @@
 <script setup>
+import SidebarBrandCard from './SidebarBrandCard.vue'
+import SidebarNavRail from './SidebarNavRail.vue'
+import SidebarInfoDock from './SidebarInfoDock.vue'
+
 const props = defineProps({
   appInfo: {
     type: Object,
@@ -12,121 +16,38 @@ const props = defineProps({
     type: String,
     required: true,
   },
-  isDesktop: {
-    type: Boolean,
-    required: true,
-  },
   navItems: {
     type: Array,
     required: true,
   },
-  updateBusy: {
-    type: Boolean,
+  summary: {
+    type: String,
     required: true,
   },
   workspaceLocked: {
     type: Boolean,
     required: true,
   },
-  wsConnected: {
-    type: Boolean,
-    required: true,
-  },
 })
 
-const emit = defineEmits(['check-updates', 'navigate'])
-
-function isActive(path) {
-  return props.currentPath === path || (path !== '/' && props.currentPath.startsWith(path))
-}
+const emit = defineEmits(['navigate'])
 </script>
 
 <template>
   <div class="app-primary-sidebar">
-    <div class="app-primary-sidebar__brand">
-      <img class="app-primary-sidebar__logo" src="/logo.svg" alt="AI-DataCenter logo" />
-      <div class="app-primary-sidebar__brand-copy">
-        <h1 class="app-primary-sidebar__title">{{ props.appInfo.name || 'GPU 共享治理平台' }}</h1>
-        <p class="app-primary-sidebar__sub">
-          {{ props.workspaceLocked ? 'CONNECT FIRST · UNLOCK LATER' : 'LAB · OPS · POWER BUDGET' }}
-        </p>
-      </div>
+    <SidebarBrandCard
+      :app-info="props.appInfo"
+      :summary="props.summary"
+    />
+    <div class="app-primary-sidebar__main">
+      <SidebarNavRail
+        :nav-items="props.navItems"
+        :current-path="props.currentPath"
+        :workspace-locked="props.workspaceLocked"
+        @navigate="emit('navigate', $event)"
+      />
     </div>
-
-    <nav class="app-primary-sidebar__nav">
-      <button
-        v-for="item in props.navItems"
-        :key="item.path"
-        type="button"
-        class="app-primary-nav__item"
-        :class="{
-          'app-primary-nav__item--active': isActive(item.path),
-          'app-primary-nav__item--locked': props.workspaceLocked && item.path !== '/',
-        }"
-        :title="props.workspaceLocked && item.path !== '/' ? `请先接入 Agent，再打开${item.label}` : item.desc"
-        @click="emit('navigate', item)"
-      >
-        <span class="app-primary-nav__seal">{{ item.icon }}</span>
-        <span class="app-primary-nav__body">
-          <strong class="app-primary-nav__label">{{ item.label }}</strong>
-          <span class="app-primary-nav__desc">{{ item.desc }}</span>
-        </span>
-      </button>
-    </nav>
-
-    <div class="app-primary-sidebar__footer">
-      <div class="app-primary-sidebar__runtime">
-        <span class="app-primary-sidebar__runtime-tag">
-          {{ props.appInfo.runtimeModeLabel || (props.isDesktop ? '桌面模式' : '网页模式') }}
-        </span>
-        <span class="app-primary-sidebar__runtime-tag app-primary-sidebar__runtime-tag--muted">
-          {{ props.appInfo.connectionModeLabel || '接入模式待识别' }}
-        </span>
-      </div>
-      <div class="app-primary-sidebar__sources">
-        <div class="app-primary-sidebar__source">
-          <span class="app-primary-sidebar__source-label">前端</span>
-          <strong class="app-primary-sidebar__source-value">
-            {{ props.appInfo.frontendSourceLabel || (props.isDesktop ? '桌面前端' : '网页前端') }}
-          </strong>
-        </div>
-        <div class="app-primary-sidebar__source">
-          <span class="app-primary-sidebar__source-label">后端</span>
-          <strong class="app-primary-sidebar__source-value">
-            {{ props.appInfo.backendSourceLabel || (props.isDesktop ? '桌面后端' : '网页后端') }}
-          </strong>
-        </div>
-        <div class="app-primary-sidebar__source">
-          <span class="app-primary-sidebar__source-label">连接</span>
-          <strong class="app-primary-sidebar__source-value">
-            {{ props.appInfo.agentSourceLabel || '由接入中心决定' }}
-          </strong>
-        </div>
-        <div v-if="props.appInfo.webReferenceEntry" class="app-primary-sidebar__source">
-          <span class="app-primary-sidebar__source-label">对照网页</span>
-          <strong class="app-primary-sidebar__source-value">{{ props.appInfo.webReferenceEntry }}</strong>
-        </div>
-      </div>
-      <div v-if="props.isDesktop" class="app-primary-sidebar__desktop">
-        <span class="app-primary-sidebar__version">v{{ props.appInfo.version || '1.1.0' }}</span>
-        <button
-          type="button"
-          class="app-primary-sidebar__action"
-          :disabled="props.updateBusy"
-          @click="emit('check-updates')"
-        >
-          {{ props.updateBusy ? '检查中...' : '检查更新' }}
-        </button>
-      </div>
-      <div
-        class="app-primary-sidebar__status"
-        :class="props.wsConnected ? 'app-primary-sidebar__status--on' : 'app-primary-sidebar__status--off'"
-      >
-        <span class="app-primary-sidebar__dot"></span>
-        {{ props.wsConnected ? '实时通道在线' : '实时通道离线' }}
-      </div>
-      <div class="app-primary-sidebar__clock">{{ props.currentTime }}</div>
-    </div>
+    <SidebarInfoDock :current-time="props.currentTime" />
   </div>
 </template>
 
@@ -134,292 +55,14 @@ function isActive(path) {
 .app-primary-sidebar {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  gap: 20px;
+  gap: 16px;
   height: 100%;
   min-height: 0;
   overflow: hidden;
 }
 
-.app-primary-sidebar__brand {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding-bottom: 18px;
-  border-bottom: 1px solid rgba(26, 26, 26, 0.06);
-}
-
-.app-primary-sidebar__logo {
-  width: 48px;
-  height: 48px;
-  flex-shrink: 0;
-  border-radius: 14px;
-  filter: drop-shadow(0 10px 18px rgba(6, 91, 83, 0.12));
-}
-
-.app-primary-sidebar__brand-copy {
-  min-width: 0;
-}
-
-.app-primary-sidebar__title {
-  font-family: var(--font-xingshu);
-  font-size: 1.22rem;
-  font-weight: 400;
-  color: #1a1a1a;
-  letter-spacing: 0.12em;
-  line-height: 1.2;
-}
-
-.app-primary-sidebar__sub {
-  margin-top: 3px;
-  font-family: var(--font-song);
-  font-size: 0.56rem;
-  color: #a8a29b;
-  letter-spacing: 0.24em;
-  line-height: 1.5;
-}
-
-.app-primary-sidebar__nav {
-  display: grid;
-  gap: 10px;
+.app-primary-sidebar__main {
   min-height: 0;
-  align-content: start;
-  overflow-y: auto;
-  padding-right: 4px;
-}
-
-.app-primary-nav__item {
-  display: grid;
-  grid-template-columns: 32px minmax(0, 1fr);
-  gap: 12px;
-  align-items: start;
-  width: 100%;
-  padding: 14px 14px 13px;
-  border-radius: 18px;
-  border: 1px solid rgba(58, 95, 75, 0.08);
-  background: rgba(255, 252, 247, 0.76);
-  color: var(--text-secondary);
-  text-align: left;
-  transition: border-color 0.24s ease, transform 0.24s ease, background 0.24s ease, box-shadow 0.24s ease;
-}
-
-.app-primary-nav__item:hover {
-  transform: translateY(-1px);
-  border-color: rgba(58, 95, 75, 0.16);
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: var(--shadow-card);
-}
-
-.app-primary-nav__item--active {
-  border-color: rgba(46, 139, 87, 0.18);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(244, 250, 247, 0.82));
-  box-shadow: 0 18px 36px rgba(46, 139, 87, 0.08);
-}
-
-.app-primary-nav__item--locked {
-  opacity: 0.56;
-}
-
-.app-primary-nav__seal {
-  width: 32px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 10px;
-  border: 1px solid rgba(196, 30, 58, 0.16);
-  color: var(--ink-vermillion);
-  background: rgba(255, 255, 255, 0.76);
-  font-family: var(--font-seal);
-  flex-shrink: 0;
-}
-
-.app-primary-nav__item--active .app-primary-nav__seal {
-  background: rgba(196, 30, 58, 0.08);
-}
-
-.app-primary-nav__body {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-
-.app-primary-nav__label {
-  font-size: 0.88rem;
-  color: var(--text-primary);
-  line-height: 1.3;
-}
-
-.app-primary-nav__desc {
-  font-size: 0.74rem;
-  color: var(--text-muted);
-  line-height: 1.6;
-  overflow-wrap: anywhere;
-}
-
-.app-primary-sidebar__footer {
-  display: grid;
-  gap: 12px;
-  padding-top: 18px;
-  border-top: 1px solid rgba(26, 26, 26, 0.06);
-  background: linear-gradient(180deg, rgba(248, 245, 240, 0), rgba(248, 245, 240, 0.9) 18%, rgba(248, 245, 240, 0.98));
-  position: relative;
-  z-index: 1;
-}
-
-.app-primary-sidebar__runtime {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.app-primary-sidebar__runtime-tag {
-  display: inline-flex;
-  align-items: center;
-  min-height: 28px;
-  padding: 4px 11px;
-  border-radius: 999px;
-  background: rgba(46, 139, 87, 0.08);
-  border: 1px solid rgba(46, 139, 87, 0.12);
-  color: #2E8B57;
-  font-size: 0.69rem;
-  font-family: var(--font-kaishu);
-  letter-spacing: 0.08em;
-}
-
-.app-primary-sidebar__runtime-tag--muted {
-  background: rgba(51, 51, 51, 0.04);
-  border-color: rgba(51, 51, 51, 0.08);
-  color: var(--text-muted);
-}
-
-.app-primary-sidebar__sources {
-  display: grid;
-  gap: 8px;
-  padding: 10px 12px;
-  border-radius: 16px;
-  border: 1px solid rgba(26, 26, 26, 0.06);
-  background: rgba(255, 252, 247, 0.78);
-}
-
-.app-primary-sidebar__source {
-  display: grid;
-  gap: 2px;
-}
-
-.app-primary-sidebar__source-label {
-  font-size: 0.68rem;
-  color: var(--text-muted);
-  letter-spacing: 0.08em;
-}
-
-.app-primary-sidebar__source-value {
-  font-size: 0.75rem;
-  line-height: 1.45;
-  color: var(--text-primary);
-  overflow-wrap: anywhere;
-}
-
-.app-primary-sidebar__desktop {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-}
-
-.app-primary-sidebar__version {
-  font-family: var(--font-song);
-  font-size: 0.75rem;
-  color: #9c968f;
-}
-
-.app-primary-sidebar__action {
-  border: 1px solid rgba(46, 139, 87, 0.14);
-  background: rgba(46, 139, 87, 0.07);
-  color: #3A5F4B;
-  border-radius: 999px;
-  padding: 5px 12px;
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
-  cursor: pointer;
-  transition: background 0.2s ease;
-}
-
-.app-primary-sidebar__action:hover:not(:disabled) {
-  background: rgba(46, 139, 87, 0.12);
-}
-
-.app-primary-sidebar__action:disabled {
-  opacity: 0.6;
-  cursor: wait;
-}
-
-.app-primary-sidebar__status {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 7px;
-  padding: 8px 12px;
-  border-radius: 14px;
-  font-size: 0.72rem;
-  font-family: var(--font-kaishu);
-  letter-spacing: 0.08em;
-  line-height: 1.5;
-}
-
-.app-primary-sidebar__status--on {
-  color: #2E8B57;
-  background: rgba(46, 139, 87, 0.06);
-}
-
-.app-primary-sidebar__status--off {
-  color: #C41E3A;
-  background: rgba(196, 30, 58, 0.06);
-}
-
-.app-primary-sidebar__dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.app-primary-sidebar__status--on .app-primary-sidebar__dot {
-  background: #2E8B57;
-  box-shadow: 0 0 6px rgba(46, 139, 87, 0.3);
-}
-
-.app-primary-sidebar__status--off .app-primary-sidebar__dot {
-  background: #C41E3A;
-}
-
-.app-primary-sidebar__clock {
-  font-family: var(--font-song);
-  font-size: 0.78rem;
-  color: #9c968f;
-  letter-spacing: 0.08em;
-}
-
-@media (max-height: 780px) {
-  .app-primary-sidebar {
-    gap: 16px;
-  }
-
-  .app-primary-sidebar__brand {
-    padding-bottom: 14px;
-  }
-
-  .app-primary-nav__item {
-    padding: 12px 13px;
-  }
-
-  .app-primary-nav__desc {
-    font-size: 0.71rem;
-    line-height: 1.5;
-  }
-
-  .app-primary-sidebar__footer {
-    gap: 10px;
-    padding-top: 14px;
-  }
+  overflow: hidden;
 }
 </style>

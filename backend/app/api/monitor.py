@@ -21,6 +21,19 @@ _LOW_SIGNAL_COMMAND_KEYWORDS = (
 _LOW_SIGNAL_MEMORY_BYTES = 64 * 1024 * 1024
 
 
+def _selected_gpu_indexes(app_state) -> list[int]:
+    return app_state.import_context.selected_gpu_indexes()
+
+
+def _filter_training_logs(logs: list[dict], gpu_indexes: list[int]) -> list[dict]:
+    allowed = set(gpu_indexes)
+    return [
+        item
+        for item in logs
+        if int(item.get("gpu_index", -1)) in allowed
+    ]
+
+
 def _is_low_signal_timeline_entry(entry: dict) -> bool:
     """过滤桌面壳、浏览器 GPU helper 等低价值陪跑历史，避免污染观察页。"""
     command = str(entry.get("command") or "").lower()
@@ -59,6 +72,7 @@ async def get_training_progress():
     """获取训练进度数据（epoch/loss/accuracy曲线）"""
     from app.main import app_state
     logs = await app_state.agent.get_training_logs()
+    logs = _filter_training_logs(logs, _selected_gpu_indexes(app_state))
     return {"training": app_state.privacy.sanitize_training_logs(logs)}
 
 
@@ -66,12 +80,14 @@ async def get_training_progress():
 async def get_user_stats():
     """按用户统计当前GPU资源占用"""
     from app.main import app_state
+    gpu_indexes = _selected_gpu_indexes(app_state)
 
     # 从数据库获取用户统计
-    db_stats = await app_state.store.get_user_stats()
+    db_stats = await app_state.store.get_user_stats(gpu_indexes=gpu_indexes)
 
     # 补充实时进程信息
     processes = await app_state.agent.get_processes()
+    processes = app_state.import_context.filter_processes(processes)
     # 按用户聚合当前实时数据
     user_live = {}
     for proc in processes:
@@ -120,7 +136,10 @@ async def get_user_stats():
 async def get_task_history(hours: float = 24):
     """获取任务历史时间线"""
     from app.main import app_state
-    timeline = await app_state.store.get_process_timeline(hours)
+    timeline = await app_state.store.get_process_timeline(
+        hours,
+        gpu_indexes=_selected_gpu_indexes(app_state),
+    )
     timeline = [item for item in timeline if not _is_low_signal_timeline_entry(item)]
     return {
         "timeline": app_state.privacy.sanitize_timeline(timeline),
@@ -136,7 +155,11 @@ async def get_monitor_replay(
     """获取治理回放帧，用于时序复盘。"""
     from app.main import app_state
 
-    frames = await app_state.store.get_replay_frames(hours, bucket_minutes)
+    frames = await app_state.store.get_replay_frames(
+        hours,
+        bucket_minutes,
+        gpu_indexes=_selected_gpu_indexes(app_state),
+    )
     return {
         "hours": hours,
         "bucket_minutes": bucket_minutes,

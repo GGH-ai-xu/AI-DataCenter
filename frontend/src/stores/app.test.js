@@ -23,3 +23,25 @@ test('applyRealtimePayload updates raw data, summaries, and capped alerts', () =
   assert.equal(store.dashboardSummary.hotGpuCount, 1)
   assert.equal(store.alerts.length, 100)
 })
+
+test('applyRealtimePayload keeps workspace ready and records reconnecting runtime state', () => {
+  setActivePinia(createPinia())
+  const store = useAppStore()
+
+  store.applyRealtimePayload({
+    import_context: {
+      valid: true,
+      imported_gpu_indexes: [0],
+      provider_type: 'ssh_linux',
+    },
+    runtime: {
+      status: 'reconnecting',
+      connected: false,
+      provider_type: 'ssh_linux',
+    },
+  })
+
+  assert.equal(store.workspaceReady, true)
+  assert.equal(store.runtimeStatus.status, 'reconnecting')
+  assert.equal(store.runtimeStatus.providerType, 'ssh_linux')
+})

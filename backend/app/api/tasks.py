@@ -7,11 +7,20 @@ from app.models.schemas import TaskActionRequest, TaskPriorityUpdate
 router = APIRouter(prefix="/api/tasks", tags=["Tasks"])
 
 
+def _ensure_process_in_scope(app_state, pid: int, processes: list[dict]):
+    try:
+        app_state.import_context.ensure_process_allowed(pid, processes)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.get("/")
 async def get_tasks():
     """获取所有GPU进程列表（含优先级信息）"""
     from app.main import app_state
+
     processes = await app_state.agent.get_processes()
+    processes = app_state.import_context.filter_processes(processes)
     priorities = await app_state.store.get_all_task_priorities()
     for proc in processes:
         proc["priority"] = priorities.get(proc["pid"], "normal")
@@ -27,6 +36,8 @@ async def _apply_task_action(req: TaskActionRequest, label: str, action_name: st
     from app.main import app_state
 
     _ensure_risk_acknowledged(req, label)
+    processes = await app_state.agent.get_processes()
+    _ensure_process_in_scope(app_state, req.pid, processes)
     action_map = {
         "pause_task": app_state.agent.pause_task,
         "resume_task": app_state.agent.resume_task,
@@ -79,6 +90,9 @@ async def terminate_task(req: TaskActionRequest):
 async def set_priority(req: TaskPriorityUpdate):
     """设置任务优先级"""
     from app.main import app_state
+
+    processes = await app_state.agent.get_processes()
+    _ensure_process_in_scope(app_state, req.pid, processes)
     await app_state.store.set_task_priority(req.pid, req.priority)
     # 记录优先级调整审计日志
     try:

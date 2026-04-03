@@ -8,6 +8,7 @@ import {
   buildTaskSummary,
   normalizeProcesses,
 } from '../lib/realtimeSummaries.js'
+import { hasValidImportContext } from '../lib/importContext.js'
 
 const ALERT_LIMIT = 100
 
@@ -51,6 +52,16 @@ function createDomainState() {
   }
 }
 
+function normalizeRuntimeStatus(payload = null) {
+  return {
+    status: payload?.status || 'idle',
+    connected: Boolean(payload?.connected),
+    providerType: payload?.provider_type || payload?.providerType || '',
+    lastError: payload?.last_error || payload?.lastError || '',
+    reconnectFailures: Number(payload?.reconnect_failures || payload?.reconnectFailures || 0),
+  }
+}
+
 export const useAppStore = defineStore('app', () => {
   const gpus = ref([])
   const system = ref(null)
@@ -58,6 +69,9 @@ export const useAppStore = defineStore('app', () => {
   const alerts = ref([])
   const wsConnected = ref(false)
   const workspaceReady = ref(false)
+  const workspaceStatusChecked = ref(false)
+  const importContext = ref(null)
+  const runtimeStatus = ref(normalizeRuntimeStatus())
   const dataSourceStatus = ref({ connected: false, gpu_count: 0 })
   const domains = ref(createDomainState())
 
@@ -137,6 +151,19 @@ export const useAppStore = defineStore('app', () => {
   }
 
   function applyRealtimePayload(data) {
+    const hasWorkspaceState = Object.prototype.hasOwnProperty.call(data, 'import_context')
+      || Object.prototype.hasOwnProperty.call(data, 'workspace_ready')
+    if (Object.prototype.hasOwnProperty.call(data, 'import_context')) {
+      setImportContext(data.import_context)
+    }
+    if (Object.prototype.hasOwnProperty.call(data, 'workspace_ready')) {
+      setWorkspaceReady(data.workspace_ready)
+    }
+    if (Object.prototype.hasOwnProperty.call(data, 'runtime')) {
+      runtimeStatus.value = normalizeRuntimeStatus(data.runtime)
+    } else if (Object.prototype.hasOwnProperty.call(data, 'connection')) {
+      runtimeStatus.value = normalizeRuntimeStatus(data.connection)
+    }
     if (data.gpus) {
       gpus.value = data.gpus
       dataSourceStatus.value.connected = true
@@ -146,6 +173,9 @@ export const useAppStore = defineStore('app', () => {
     if (data.processes) processes.value = data.processes
     if (data.alerts?.length) {
       alerts.value = [...data.alerts, ...alerts.value].slice(0, ALERT_LIMIT)
+    }
+    if (hasWorkspaceState) {
+      workspaceStatusChecked.value = true
     }
   }
 
@@ -157,13 +187,38 @@ export const useAppStore = defineStore('app', () => {
     workspaceReady.value = Boolean(value)
   }
 
+  function setImportContext(value) {
+    importContext.value = value || null
+    workspaceReady.value = hasValidImportContext(importContext.value)
+  }
+
+  function markWorkspaceStatusChecked(value = true) {
+    workspaceStatusChecked.value = Boolean(value)
+  }
+
+  function resetRuntimeState() {
+    gpus.value = []
+    system.value = null
+    processes.value = []
+    alerts.value = []
+    wsConnected.value = false
+    workspaceReady.value = false
+    workspaceStatusChecked.value = false
+    importContext.value = null
+    runtimeStatus.value = normalizeRuntimeStatus()
+    dataSourceStatus.value = { connected: false, gpu_count: 0 }
+    domains.value = createDomainState()
+  }
+
   return {
-    gpus, system, processes, alerts, wsConnected, workspaceReady,
+    gpus, system, processes, alerts, wsConnected, workspaceReady, workspaceStatusChecked,
+    importContext, runtimeStatus,
     schedulerAuto, timePeriod,
     dataSourceStatus, dataSourceLabel, domains,
     totalPower, avgTemperature, totalMemoryUsed, totalMemoryTotal, avgUtilization,
     normalizedProcesses, dashboardSummary, taskSummary,
     beginDomainRequest, completeDomainRequest, failDomainRequest,
-    replaceProcesses, applyRealtimePayload, updateFromWs, setWorkspaceReady,
+    replaceProcesses, applyRealtimePayload, updateFromWs, setWorkspaceReady, setImportContext,
+    markWorkspaceStatusChecked, resetRuntimeState,
   }
 })

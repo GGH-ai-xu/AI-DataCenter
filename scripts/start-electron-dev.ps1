@@ -3,6 +3,7 @@ param()
 $ErrorActionPreference = "Stop"
 . "$PSScriptRoot\dev-launch-helpers.ps1"
 . "$PSScriptRoot\electron-dev-session.ps1"
+. "$PSScriptRoot\runtime-master-key.ps1"
 Initialize-ConsoleEncoding
 
 $root = Split-Path -Parent $PSScriptRoot
@@ -73,6 +74,7 @@ while ($frontendPort -in @($agentPort, $backendPort)) {
 $agentUrl = "http://127.0.0.1:$agentPort"
 $backendUrl = "http://127.0.0.1:$backendPort"
 $frontendUrl = "http://127.0.0.1:$frontendPort/"
+$runtimeMasterKey = Ensure-RepoRuntimeMasterKey -RepoRoot $root
 
 Register-ManagedServiceShutdown
 
@@ -101,6 +103,7 @@ $backendProcess = Start-ManagedServiceProcess `
     PYTHONUTF8 = "1"
     PORT = $backendPort
     AGENT_URL = $agentUrl
+    GPU_GOV_MASTER_KEY = $runtimeMasterKey
   }
 Register-ProcessLogPump -ServiceName "Backend" -Process $backendProcess
 Wait-HttpReady -Name "Backend" -Url "$backendUrl/api/health" -Port $backendPort -LaunchCommand "$pythonExe -m uvicorn app.main:app"

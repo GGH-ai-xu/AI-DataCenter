@@ -134,9 +134,12 @@ const energyRefresh = useEnergyData(activeTab, {
 })
 
 function syncSourceState(health) {
+  const importedCount = Array.isArray(health?.import_context?.imported_gpu_indexes)
+    ? health.import_context.imported_gpu_indexes.length
+    : 0
   sourceState.value = {
-    connected: !!health?.agent_connected,
-    gpu_count: Number(health?.agent_info?.gpu_count || 0),
+    connected: !!health?.workspace_ready,
+    gpu_count: importedCount || Number(health?.agent_info?.gpu_count || 0),
   }
   hasLlm.value = !!health?.llm_available
 }

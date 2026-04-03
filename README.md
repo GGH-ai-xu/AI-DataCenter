@@ -1,200 +1,159 @@
 # GPU 共享治理平台
 
-面向共享 GPU 环境的治理工作台，重点不是“把数据画出来”，而是把真实采集、真实治理、真实复盘做成一个可交付的软件系统。
+面向共享 GPU 环境的治理工作台。项目重点不是“展示监控图表”，而是把真实采集、真实治理、真实复盘和受控执行做成一套可交付的软件系统。
 
-## 项目定位
+## 当前模型
 
-- 服务对象：实验室工作站、小型服务器、多用户共享 GPU 环境。
-- 核心目标：让 GPU 管理从“监控看板”升级为“治理工作台”。
-- 设计原则：只基于真实数据给结论，没有真实数据时宁可提示“数据不足”，不再回退到模拟值。
+- 平台先做用户登录，再进入独立导入准备页。
+- 导入准备页支持三种来源：本机 Agent、远程 Agent、SSH Linux。
+- 扫描通过后，用户勾选“本次纳入治理”的 GPU，再进入控制台。
+- 控制台只显示和治理本次导入选中的卡，不再承担连接切换逻辑。
+- 已保存主机会按用户隔离保存；管理员可查看全部主机记录，普通用户只能查看自己的。
 
-## 当前能力
-
-- 实时采集 GPU、系统资源和 GPU 进程数据。
-- 支持任务暂停、恢复、终止与优先级治理。
-- 支持总功率预算治理和单卡功耗上限控制。
-- 支持用户公平性分析、额度规则和建议让路任务。
-- 支持能耗分析、调度历史、治理回放和报告导出。
-- 所有治理动作只基于真实数据执行，危险操作需要显式风险确认。
-- 对外接口默认做用户名、命令行、路径脱敏，降低泄露个人信息和主机路径的风险。
-
-## 架构
-
-### `server-agent/`
-
-部署在本机或目标主机上，负责：
-
-- GPU 实时状态采集
-- 系统资源采集
-- GPU 进程扫描
-- 功耗限制、任务暂停/恢复/终止等真实执行能力
-
-### `backend/`
-
-负责：
-
-- 聚合 Agent 数据
-- 存储历史数据
-- 告警检测与调度引擎
-- 公平治理与能耗分析
-- REST API 与 WebSocket
-- 隐私脱敏与治理回放
-
-### `frontend/`
-
-负责：
-
-- 治理工作台首页
-- 任务处置台
-- 预算治理台
-- 观察台 / 回放台 / 风险台
-- AI 辅助解释与报告展示
-
-## 目录约定
+## 目录结构
 
 ```text
-backend/        FastAPI 后端
-server-agent/   本机执行与采集代理
-frontend/       Vue 3 前端
-tests/          基础单元测试
-.github/        CI 工作流
+backend/        FastAPI 后端、平台身份、导入层、治理 API
+server-agent/   本机/目标机上的采集与控制 agent
+frontend/       Vue 3 + Vite 控制台与导入层 UI
+desktop-shell/  Electron 桌面壳
+scripts/        Windows 开发、依赖安装、桌面打包脚本
+tests/          仓库级回归测试
 ```
 
-## 本地运行
+## 快速开始
 
-### 1. 安装依赖
+推荐在 Windows 开发机上使用仓库自带脚本：
 
 ```powershell
-pip install -r .\backend\requirements.txt
-pip install -r .\server-agent\requirements.txt
-cd .\frontend
-npm install
-cd ..
+.\install-deps.bat
+.\start-dev.bat
 ```
 
-### 2. 配置环境变量
+`start-dev.bat` 会自动：
 
-```powershell
-copy .\backend\.env.example .\backend\.env
-```
+- 启动本机 agent、backend、frontend
+- 清理残留的仓库托管进程
+- 为平台生成或复用本地运行主密钥 `runtime/.gpu-gov-master-key`
 
-只填写你自己的密钥与接口地址，不要提交真实 `.env`。
+启动完成后，打开启动器打印的 Frontend URL。
 
-### 3. 启动 Agent
+## 首次登录与导入流程
+
+1. 首次启动后，后端会自动创建默认管理员 `admin`。
+2. 一次性临时密码会打印在后端日志中。
+3. 首次登录必须先修改密码。
+4. 登录后进入导入准备页，选择本机 Agent、远程 Agent 或 SSH Linux。
+5. 扫描目标机器，确认 CPU / GPU 信息并勾选本次导入 GPU。
+6. 导入完成后进入控制台，后续监控和治理只作用于本次导入范围。
+
+## 接入模式
+
+### 本机 Agent
+
+适用于当前机器本地部署的 `server-agent`。
+
+### 远程 Agent
+
+适用于目标主机上已经运行 `server-agent`，平台通过 HTTP 接入。
+
+### SSH Linux
+
+适用于目标主机不运行 agent，而是由平台通过 SSH 直接读取 Linux 与 NVIDIA 数据。
+
+要求：
+
+- 目标主机可通过 SSH 登录
+- 目标主机是 Linux
+- 可执行 `nvidia-smi`
+- 需要时具备 `sudo` 能力
+
+SSH Linux 模式下，平台会保存加密后的密码或私钥引用，供后续自动重连使用。
+
+## 手动启动
+
+如果不使用 `start-dev.bat`，可以分别启动各服务。
+
+启动本机 agent：
 
 ```powershell
 cd .\server-agent
 python .\main.py
 ```
 
-### 4. 启动后端
+启动后端前，请先设置 `GPU_GOV_MASTER_KEY`，否则平台无法解密保存的 SSH 凭据：
 
 ```powershell
+copy .\backend\.env.example .\backend\.env
 cd .\backend
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-### 5. 构建前端
+启动前端：
 
 ```powershell
 cd .\frontend
-npm run build
+npm ci --include=optional
+npm run dev
 ```
 
-构建完成后，后端会自动托管 `frontend/dist/`。
+## 桌面壳与打包
 
-## 安装后怎么用
-
-### 一键开发启动
-
-本机开发模式：
-
-```powershell
-.\start-dev.bat
-```
-
-启动 Electron 桌面开发入口：
+Electron 开发入口：
 
 ```powershell
 .\start-electron-dev.bat
 ```
 
-### 接入方式切换
-
-平台首页提供“接入中心”，支持两种模式：
-
-- 本机模式：连接当前电脑上的 `server-agent`
-- 远程服务器模式：连接你指定服务器上的 `server-agent`
-
-切换方式：
-
-1. 打开首页“接入中心”
-2. 选择“本机模式”或“远程服务器模式”
-3. 远程模式下填写 `http://服务器IP:8001`
-4. 先点“测试连接”，再点“保存并切换”
-
-这样安装好之后，同一套前端和后端可以接当前电脑，也可以接某台服务器，不需要再手改 `.env`。
-
-## Windows 桌面版打包
-
-如果要生成真正的 Windows 桌面安装器：
+Windows 安装包构建：
 
 ```powershell
 .\build-windows.bat
 ```
 
-打包完成后会生成：
+## 安全说明
 
-- `dist/electron/GPUGovernanceWorkbench-Setup-1.1.0.exe`
-- `dist/electron/win-unpacked/`
+以下内容只应保留在本地，不应提交到公开仓库：
 
-说明：
+- `runtime/` 下的主密钥、导入上下文、已保存主机凭据、平台身份数据库
+- `backend/data/` 下的历史数据库
+- 任意 `.env`、真实 API Key、真实 SSH 凭据
+- 本地构建产物、日志、测试缓存
 
-- `GPUGovernanceWorkbench-Setup-1.1.0.exe` 是正式安装器
-- `win-unpacked/` 是免安装测试目录，可直接运行
+平台默认会对公开 API 返回的用户名、命令行和路径做脱敏处理，但仓库层面的密钥和运行时文件仍必须由 `.gitignore` 保护。
 
-桌面版形态：
+## 环境变量
 
-- 双击后打开独立桌面窗口，不再弹浏览器
-- 桌面壳内部会自动拉起后端和本机 Agent
-- 首页仍可切换“本机模式 / 远程服务器模式”
+公开示例位于 `backend/.env.example`。
 
-如果你只想重新生成 Python 运行时目录而不打桌面安装器：
+其中最关键的是：
 
-```powershell
-.\build-runtime-windows.bat
-```
-
-## 访问入口
-
-- 平台首页：`http://localhost:8000/`
-- 健康检查：`http://localhost:8000/api/health`
-- 接入配置：`http://localhost:8000/api/system/connection`
-- 调度状态：`http://localhost:8000/api/scheduler/status`
-- API 文档：`http://localhost:8000/docs`
-
-## 安全与隐私
-
-- 仓库已忽略 `.env`、日志、运行时目录和数据库文件。
-- 前端与公开 API 默认返回脱敏后的用户名、命令和路径。
-- 任务控制、单卡限功率、手动调度只执行真实动作。
-- 真实执行前需要明确风险确认，减少误操作。
+- `GPU_GOV_MASTER_KEY`：平台身份与已保存 SSH 凭据的解密主密钥
+- `AGENT_URL`：本机默认 agent 地址
+- `LLM_*`：可选的 OpenAI 兼容接口配置
 
 ## 开发校验
 
-### 后端语法检查
+Python 语法检查：
 
 ```powershell
 python -m compileall .\backend\app .\server-agent
 ```
 
-### 单元测试
+仓库级单元测试：
 
 ```powershell
 python -m unittest discover -s .\tests -p "test_*.py"
 ```
 
-### 前端构建
+前端测试：
+
+```powershell
+cd .\frontend
+npm test
+```
+
+前端生产构建：
 
 ```powershell
 cd .\frontend
@@ -203,15 +162,10 @@ npm run build
 
 ## CI
 
-仓库内置 GitHub Actions 工作流，会自动执行：
+GitHub Actions 会执行与当前仓库一致的最小验证链路：
 
 - Python 依赖安装
-- `compileall` 语法检查
-- 基础单元测试
-- 前端构建
-
-## 当前约束
-
-- 治理动作依赖本机真实权限；某些操作在权限不足时会被系统拒绝。
-- 治理回放依赖历史数据累积，刚启动时样本会偏少。
-- LLM 功能需要自行配置可用的兼容接口与密钥。
+- `compileall` 检查
+- 根级 `unittest`
+- 前端 `npm test`
+- 前端 `npm run build`

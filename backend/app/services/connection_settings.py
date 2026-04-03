@@ -5,14 +5,21 @@ from __future__ import annotations
 import json
 import os
 import time
+from dataclasses import asdict, replace
 from urllib.parse import urlparse
 
 import httpx
+
+from app.services.runtime_provider import RuntimeTarget
 
 
 LOCAL_MODE = "local"
 REMOTE_MODE = "remote"
 DEFAULT_AGENT_PORT = 8001
+DEFAULT_SSH_PORT = 22
+HTTP_LOCAL_PROVIDER = "http_local"
+HTTP_REMOTE_PROVIDER = "http_remote"
+SSH_LINUX_PROVIDER = "ssh_linux"
 
 
 class ConnectionSettingsService:
@@ -25,6 +32,7 @@ class ConnectionSettingsService:
             "mode": LOCAL_MODE,
             "agent_url": self.default_local_url,
             "agent_label": "本机 Agent",
+            "provider_type": HTTP_LOCAL_PROVIDER,
             "updated_at": None,
         }
 
@@ -107,6 +115,62 @@ class ConnectionSettingsService:
         if selected_mode == LOCAL_MODE:
             return selected_mode, self.default_local_url
         return selected_mode, self.normalize_agent_url(agent_url or "")
+
+    def normalize_payload(self, payload: dict) -> RuntimeTarget:
+        provider_type = str(payload.get("provider_type") or HTTP_LOCAL_PROVIDER)
+        if provider_type == SSH_LINUX_PROVIDER:
+            host = str(payload.get("host") or "").strip()
+            username = str(payload.get("username") or "").strip()
+            if not host:
+                raise ValueError("SSH 主机地址不能为空")
+            if not username:
+                raise ValueError("SSH 用户名不能为空")
+            auth_type = str(payload.get("auth_type") or "password")
+            if auth_type not in {"password", "private_key"}:
+                raise ValueError("SSH 认证方式只支持 password 或 private_key")
+            return RuntimeTarget(
+                provider_type=SSH_LINUX_PROVIDER,
+                label=str(payload.get("label") or "SSH Linux").strip() or "SSH Linux",
+                host=host,
+                port=int(payload.get("port") or DEFAULT_SSH_PORT),
+                username=username,
+                auth_type=auth_type,
+                sudo_enabled=bool(payload.get("sudo_enabled")),
+                host_fingerprint=str(payload.get("host_fingerprint") or "").strip() or None,
+                credential_id=payload.get("credential_id"),
+            )
+
+        agent_url = self.default_local_url
+        label = "本机 Agent"
+        if provider_type == HTTP_REMOTE_PROVIDER:
+            agent_url = self.normalize_agent_url(payload.get("agent_url") or "")
+            label = "远程 Agent"
+        elif provider_type == HTTP_LOCAL_PROVIDER:
+            agent_url = self.default_local_url
+        else:
+            raise ValueError("不支持的 provider_type")
+
+        provided_label = str(payload.get("label") or "").strip()
+        return RuntimeTarget(
+            provider_type=provider_type,
+            label=provided_label or label,
+            agent_url=agent_url,
+            credential_id=payload.get("credential_id"),
+        )
+
+    def update_target(self, target: RuntimeTarget, credential_id: str | None = None) -> RuntimeTarget:
+        next_target = replace(target, credential_id=credential_id or target.credential_id)
+        mode = LOCAL_MODE if next_target.provider_type == HTTP_LOCAL_PROVIDER else REMOTE_MODE
+        agent_url = next_target.agent_url or f"ssh://{next_target.username}@{next_target.host}:{next_target.port}"
+        self._state = {
+            **asdict(next_target),
+            "mode": mode,
+            "agent_url": agent_url,
+            "agent_label": next_target.label,
+            "updated_at": time.time(),
+        }
+        self._persist()
+        return next_target
 
     async def probe(self, target_url: str) -> dict | None:
         try:

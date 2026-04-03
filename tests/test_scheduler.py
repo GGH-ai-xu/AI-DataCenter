@@ -34,8 +34,15 @@ class FakeStore:
     def __init__(self):
         self.logs = []
 
-    async def save_schedule_log(self, action, target, reason, result=""):
-        self.logs.append((action, target, reason, result))
+    async def save_schedule_log(
+        self,
+        action,
+        target,
+        reason,
+        result="",
+        gpu_indexes=None,
+    ):
+        self.logs.append((action, target, reason, result, gpu_indexes))
 
     async def get_all_task_priorities(self):
         return {}

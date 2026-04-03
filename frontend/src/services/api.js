@@ -3,40 +3,65 @@
  */
 import axios from 'axios'
 
+import {
+  clearSessionToken,
+  readSessionToken,
+  writeSessionToken,
+} from '../lib/authSession.js'
+
 const api = axios.create({
   baseURL: '/api',
   timeout: 15000,
 })
 
-// Token 认证：自动附加 Authorization 头
-const AUTH_TOKEN_KEY = 'gpu_gov_token'
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem(AUTH_TOKEN_KEY)
+  const token = readSessionToken()
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
   return config
 })
 
+let interceptorInstalled = false
+const interceptorHooks = {
+  onPasswordChangeRequired: null,
+  onUnauthorized: null,
+  showToast: null,
+}
+
 /**
  * 注册全局错误拦截器（由 App.vue 在 onMounted 中调用）
- * @param {(msg: string, type: string) => void} showToast
  */
-export function setupInterceptor(showToast) {
+export function setupInterceptor(options = {}) {
+  interceptorHooks.showToast = options.showToast || interceptorHooks.showToast
+  interceptorHooks.onUnauthorized = options.onUnauthorized || interceptorHooks.onUnauthorized
+  interceptorHooks.onPasswordChangeRequired = options.onPasswordChangeRequired || interceptorHooks.onPasswordChangeRequired
+  if (interceptorInstalled) return
+
+  interceptorInstalled = true
   api.interceptors.response.use(
     (res) => res,
-    (err) => {
+    async (err) => {
       const status = err.response?.status
       const detail = err.response?.data?.detail
+      const code = err.response?.data?.code
+      const url = String(err.config?.url || '')
+      const showToast = interceptorHooks.showToast
+
       if (status === 401) {
-        showToast(detail || '认证失败，请检查 Token', 'error')
+        if (!url.endsWith('/auth/login')) {
+          await interceptorHooks.onUnauthorized?.(err)
+        }
+        showToast?.(detail || '请先登录平台', 'error')
+      } else if (status === 403 && code === 'PASSWORD_CHANGE_REQUIRED') {
+        await interceptorHooks.onPasswordChangeRequired?.(err)
+        showToast?.(detail || '首次登录后必须先修改密码', 'warning')
       } else if (status === 403) {
-        showToast(detail || '权限不足，需要管理员令牌', 'warning')
+        showToast?.(detail || '权限不足，需要管理员权限', 'warning')
       } else if (status >= 500) {
-        showToast(`服务器错误 (${status})`, 'error')
+        showToast?.(`服务器错误 (${status})`, 'error')
       } else if (!err.response && err.message) {
-        // 网络错误 / 超时
-        showToast('网络连接异常，请检查后端服务', 'error')
+        showToast?.('网络连接异常，请检查后端服务', 'error')
       }
       return Promise.reject(err)
     },
@@ -46,11 +71,21 @@ export function setupInterceptor(showToast) {
 /** 设置认证令牌 */
 export function setAuthToken(token) {
   if (token) {
-    localStorage.setItem(AUTH_TOKEN_KEY, token)
+    writeSessionToken(token)
   } else {
-    localStorage.removeItem(AUTH_TOKEN_KEY)
+    clearSessionToken()
   }
 }
+
+export const login = (payload) => api.post('/auth/login', payload)
+export const getCurrentUser = () => api.get('/auth/me')
+export const logout = () => api.post('/auth/logout')
+export const changePassword = (payload) => api.post('/auth/change-password', payload)
+export const getUsers = () => api.get('/admin/users')
+export const createUser = (payload) => api.post('/admin/users', payload)
+export const resetUserPassword = (userId, payload) => api.post(`/admin/users/${userId}/reset-password`, payload)
+export const getSavedHosts = (scope = 'mine') => api.get('/hosts', { params: { scope } })
+export const deleteSavedHost = (hostId) => api.delete(`/hosts/${hostId}`)
 
 // GPU相关
 export const getRealtimeData = () => api.get('/gpu/realtime')
@@ -91,6 +126,10 @@ export const healthCheck = () => api.get('/health')
 export const getConnectionConfig = () => api.get('/system/connection')
 export const testConnectionConfig = (payload) => api.post('/system/connection/test', payload)
 export const updateConnectionConfig = (payload) => api.post('/system/connection', payload)
+export const getImportContext = () => api.get('/system/import-context')
+export const scanImportContext = (payload) => api.post('/system/import-context/scan', payload)
+export const commitImportContext = (payload) => api.post('/system/import-context', payload)
+export const resetImportContext = () => api.delete('/system/import-context')
 export const getLlmConfig = () => api.get('/system/llm')
 export const testLlmConfig = (payload) => api.post('/system/llm/test', payload)
 export const updateLlmConfig = (payload) => api.post('/system/llm', payload)

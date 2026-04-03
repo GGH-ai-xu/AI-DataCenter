@@ -132,7 +132,9 @@ def _find_budget_value(text: str) -> int | None:
 
 async def build_control_context(app_state) -> dict:
     gpus = await app_state.agent.get_all_gpus() or []
+    gpus = app_state.import_context.filter_gpus(gpus)
     processes = await app_state.agent.get_processes() or []
+    processes = app_state.import_context.filter_processes(processes)
     priorities = await app_state.store.get_all_task_priorities()
 
     enriched_processes: list[dict] = []
@@ -432,9 +434,11 @@ async def plan_control_actions(app_state, message: str) -> dict:
 
 async def _run_schedule_once(app_state) -> dict:
     gpus = await app_state.agent.get_all_gpus()
+    gpus = app_state.import_context.filter_gpus(gpus)
     processes = await app_state.agent.get_processes()
+    processes = app_state.import_context.filter_processes(processes)
     if not gpus:
-        return {"success": False, "error": "无法获取 GPU 数据"}
+        return {"success": False, "error": "当前导入范围内无法获取 GPU 数据"}
 
     rule_actions = await app_state.scheduler.run_rules(gpus, processes)
     rule_results = await app_state.scheduler.execute_actions(rule_actions) if rule_actions else []
@@ -486,6 +490,7 @@ async def execute_control_actions(
             target = enriched["target"]
 
             if act == "set_power_limit":
+                app_state.import_context.ensure_gpu_allowed(target["gpu_index"])
                 app_state.scheduler.clear_managed_gpu(target["gpu_index"])
                 response = await app_state.agent.set_power_limit(
                     target["gpu_index"],
@@ -496,18 +501,30 @@ async def execute_control_actions(
                 if not result["success"]:
                     result["error"] = response.get("error", "设置功耗上限失败")
             elif act == "pause_task":
+                app_state.import_context.ensure_process_allowed(
+                    target["pid"],
+                    context["processes"],
+                )
                 response = await app_state.agent.pause_task(target["pid"])
                 result["success"] = bool(response.get("success"))
                 result["applied"] = result["success"]
                 if not result["success"]:
                     result["error"] = response.get("error", "暂停任务失败")
             elif act == "resume_task":
+                app_state.import_context.ensure_process_allowed(
+                    target["pid"],
+                    context["processes"],
+                )
                 response = await app_state.agent.resume_task(target["pid"])
                 result["success"] = bool(response.get("success"))
                 result["applied"] = result["success"]
                 if not result["success"]:
                     result["error"] = response.get("error", "恢复任务失败")
             elif act == "terminate_task":
+                app_state.import_context.ensure_process_allowed(
+                    target["pid"],
+                    context["processes"],
+                )
                 response = await app_state.agent.terminate_task(target["pid"])
                 result["success"] = bool(response.get("success"))
                 result["applied"] = result["success"]
@@ -515,6 +532,10 @@ async def execute_control_actions(
                 if not result["success"]:
                     result["error"] = response.get("error", "终止任务失败")
             elif act == "set_task_priority":
+                app_state.import_context.ensure_process_allowed(
+                    target["pid"],
+                    context["processes"],
+                )
                 await app_state.store.set_task_priority(
                     target["pid"],
                     target["priority"],

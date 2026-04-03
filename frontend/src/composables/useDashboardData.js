@@ -1,6 +1,5 @@
 import { computed } from 'vue'
 import {
-  getConnectionConfig,
   getFairnessGovernance,
   getSchedulerStatus,
   getSystemSelfCheck,
@@ -32,21 +31,10 @@ export function useDashboardData(options = {}) {
       options.onGovernanceData?.(payload)
     },
   })
-  const connectionRefresh = useDomainRefresh({
-    section: 'dashboard',
-    key: 'connection',
-    staleTime: 15000,
-    loader: async () => (await getConnectionConfig()).data,
-    applyData: (payload) => {
-      options.onConnectionData?.(payload)
-    },
-  })
 
   return {
     dashboardSummary: computed(() => store.dashboardSummary),
     governanceDomain: computed(() => store.domains.dashboard.governance),
-    connectionDomain: computed(() => store.domains.dashboard.connection),
     refreshGovernance: governanceRefresh.refresh,
-    refreshConnection: connectionRefresh.refresh,
   }
 }

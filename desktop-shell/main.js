@@ -245,6 +245,20 @@ const releasesPageUrl = releaseRepository
   ? `https://github.com/${releaseRepository.owner}/${releaseRepository.repo}/releases`
   : ''
 
+function updateCheckSupported() {
+  return !desktopDevModeEnabled() && Boolean(releaseRepository)
+}
+
+function updateCheckDisabledReason() {
+  if (desktopDevModeEnabled()) {
+    return '当前运行模式不提供更新检查'
+  }
+  if (!releaseRepository) {
+    return '未配置 GitHub Releases 发布源'
+  }
+  return '当前运行模式不提供更新检查'
+}
+
 function currentAppVersion() {
   return app.getVersion() || DESKTOP_PACKAGE.version || '0.0.0'
 }
@@ -1031,7 +1045,7 @@ function forceDesktopDevShutdownExit(code = 0) {
 ipcMain.handle('desktop-shell:get-app-info', async () => ({
   name: APP_TITLE,
   version: currentAppVersion(),
-  updateSupported: Boolean(releaseRepository),
+  updateSupported: updateCheckSupported(),
   releasesUrl: releasesPageUrl,
   runtimeMode: desktopRuntimeMode(),
   runtimeModeLabel: desktopRuntimeModeLabel(),
@@ -1051,11 +1065,20 @@ ipcMain.handle('desktop-shell:get-service-state', async () => ({
 ipcMain.handle('desktop-shell:get-runtime-info', async () => runtimeInfoSnapshot())
 
 ipcMain.handle('desktop-shell:check-for-updates', async () => {
+  if (!updateCheckSupported()) {
+    return {
+      ok: false,
+      error: updateCheckDisabledReason(),
+      currentVersion: currentAppVersion(),
+      updateSupported: false,
+      releasesUrl: releasesPageUrl,
+    }
+  }
   try {
     return {
       ok: true,
       ...await fetchLatestRelease(),
-      updateSupported: Boolean(releaseRepository),
+      updateSupported: true,
       releasesUrl: releasesPageUrl,
     }
   } catch (error) {
@@ -1063,7 +1086,7 @@ ipcMain.handle('desktop-shell:check-for-updates', async () => {
       ok: false,
       error: error instanceof Error ? error.message : String(error),
       currentVersion: currentAppVersion(),
-      updateSupported: Boolean(releaseRepository),
+      updateSupported: true,
       releasesUrl: releasesPageUrl,
     }
   }
