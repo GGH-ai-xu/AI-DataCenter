@@ -1,23 +1,43 @@
 # Dependencies
 node_modules/
-__pycache__/
-*.pyc
+desktop-shell/node_modules/
 .venv/
 venv/
-
-# Build
-frontend/dist/
 *.egg-info/
-dist/
-build/
-!desktop-shell/build/
-!desktop-shell/build/.gitkeep
-!desktop-shell/build/icon.ico
-!desktop-shell/build/icon.png
 
-# Data
+# Python caches and test artifacts
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+coverage/
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Frontend caches
+.eslintcache
+.cache/
+frontend/.vite/
+
+# Runtime state and local data
+runtime/
 backend/data/
 *.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+.worktrees/
+
+# Build outputs
+frontend/dist/
+dist/
+build/
+desktop-shell/dist/
+release/
+out/
 
 # Environment
 .env
@@ -35,7 +55,7 @@ backend/data/
 .DS_Store
 Thumbs.db
 
-# Claude工作文件
+# Local agent / assistant metadata
 .claude/
 .claude/context-*.json
 .claude/plan.json
@@ -43,12 +63,18 @@ Thumbs.db
 .claude/testing.md
 .claude/todo.json
 .claude/structured-request.json
+.superpowers/
 operations-log.md
 verification.md
 
-# Runtime logs
+# Logs
 *.log
-runtime/
-.superpowers
-AGENTS.md
-desktop-shell
+
+!desktop-shell/build/
+desktop-shell/build/*
+desktop-shell/build/dev-runtime/
+!desktop-shell/build/.gitkeep
+!desktop-shell/build/icon.ico
+!desktop-shell/build/icon.png
+!desktop-shell/build/logo.svg
+!desktop-shell/devSessionBinding.js

@@ -23,8 +23,10 @@ async def chat(req: ChatRequest):
 
     # 注入实时GPU数据作为上下文（控制大小防止超token）
     gpus = await app_state.agent.get_all_gpus()
+    gpus = app_state.import_context.filter_gpus(gpus)
     system = await app_state.agent.get_system_info()
     processes = await app_state.agent.get_processes()
+    processes = app_state.import_context.filter_processes(processes)
     processes = app_state.privacy.sanitize_processes(processes)
 
     # 精简GPU数据：只保留关键字段
@@ -78,12 +80,8 @@ async def control_execute(req: AIControlExecuteRequest):
 
     if not req.actions:
         raise HTTPException(status_code=400, detail="当前没有可执行动作")
-    if not req.dry_run and not req.acknowledge_risk:
-        raise HTTPException(status_code=400, detail="真实执行前请先确认风险")
+    if not req.acknowledge_risk:
+        raise HTTPException(status_code=400, detail="执行前请先确认风险")
 
     payload = [item.model_dump() for item in req.actions]
-    return await execute_control_actions(
-        app_state,
-        payload,
-        dry_run=req.dry_run,
-    )
+    return await execute_control_actions(app_state, payload)

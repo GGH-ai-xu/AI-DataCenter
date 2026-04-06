@@ -3,10 +3,11 @@
 import pytest
 from app.middleware.auth import (
     _extract_token,
-    _is_local_request,
     _resolve_role,
     ADMIN_TOKEN,
     OBSERVER_TOKEN,
+    PASSWORD_CHANGE_ALLOWED_PREFIXES,
+    SESSION_PUBLIC_PREFIXES,
 )
 
 
@@ -52,17 +53,9 @@ class TestResolveRole:
 
     def test_none(self):
         assert _resolve_role(None) is None
+class TestSessionPrefixes:
+    def test_session_public_prefixes_include_login(self):
+        assert "/api/auth/login" in SESSION_PUBLIC_PREFIXES
 
-
-class TestLocalRequest:
-    def test_localhost_is_trusted(self):
-        req = FakeRequest(client_host="127.0.0.1")
-        assert _is_local_request(req) is True
-
-    def test_ipv6_localhost_is_trusted(self):
-        req = FakeRequest(client_host="::1")
-        assert _is_local_request(req) is True
-
-    def test_remote_host_is_not_trusted(self):
-        req = FakeRequest(client_host="10.0.0.8")
-        assert _is_local_request(req) is False
+    def test_password_change_only_paths_include_change_password(self):
+        assert "/api/auth/change-password" in PASSWORD_CHANGE_ALLOWED_PREFIXES

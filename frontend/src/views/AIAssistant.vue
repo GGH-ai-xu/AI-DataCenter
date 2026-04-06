@@ -11,7 +11,7 @@ import {
 import WorkspaceSummary from '../components/workspace/WorkspaceSummary.vue'
 import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
 
-const DEFAULT_INTRO = '你好，我是 AI 治理助手。我可以解释当前 GPU 状态，也可以在上方“AI 执行控制台”里把自然语言指令转换成可审核、可演练的治理动作。'
+const DEFAULT_INTRO = '你好，我是 AI 治理助手。我可以解释当前 GPU 状态，也可以在上方“AI 执行控制台”里把自然语言指令转换成可审核、可执行的治理动作。'
 const BLOCKED_INTRO = 'AI 对话助手当前未启用。你可以继续使用上方的“AI 执行控制台”第一版，它支持规则解析；如果想获得更强的自然语言规划能力，请先在左侧接入 LLM。'
 const QUICK_CONTROLS = [
   '把 GPU 0 的功耗上限调到 220W',
@@ -23,7 +23,7 @@ const QUICK_CONTROLS = [
 ]
 const activeTab = ref('control')
 const assistantTabs = [
-  { key: 'control', label: '执行控制', desc: '规划、演练' },
+  { key: 'control', label: '执行控制', desc: '规划、执行' },
   { key: 'chat', label: '对话解释', desc: '问答与说明' },
   { key: 'model', label: '模型配置', desc: 'LLM 接入与测试' },
 ]
@@ -60,6 +60,7 @@ const controlPlanning = ref(false)
 const controlExecuting = ref(false)
 const controlPlan = ref(null)
 const controlResult = ref(null)
+const controlRiskAcknowledged = ref(false)
 
 const llmSourceLabel = computed(() => {
   const source = llmConfig.value.source
@@ -99,7 +100,11 @@ const executableActions = computed(() =>
 const hasInvalidActions = computed(() =>
   (controlPlan.value?.actions || []).some((item) => item.valid === false)
 )
-const canExecuteControl = computed(() => executableActions.value.length > 0 && !controlExecuting.value)
+const canExecuteControl = computed(() =>
+  executableActions.value.length > 0
+  && controlRiskAcknowledged.value
+  && !controlExecuting.value
+)
 const controlPlannerLabel = computed(() =>
   controlPlan.value?.planner === 'llm' ? 'LLM 规划' : '规则解析'
 )
@@ -109,7 +114,11 @@ const controlRiskLabel = computed(() => {
   if (level === 'medium') return '中风险'
   return '低风险'
 })
-const controlModeSummary = '当前为演练模式，执行后只返回模拟结果，不会改动真实设备或任务。'
+const controlExecutionSummary = computed(() =>
+  controlRiskAcknowledged.value
+    ? '风险已确认，执行计划后会立即作用于真实设备、任务或预算配置。'
+    : '未确认风险前，执行按钮保持禁用。'
+)
 
 const riskScopeGpuCount = computed(() => {
   const gpus = new Set()
@@ -269,6 +278,7 @@ async function generateControlPlan() {
 
   controlPlanning.value = true
   controlResult.value = null
+  controlRiskAcknowledged.value = false
   try {
     const { data } = await aiControlPlan(message)
     controlPlan.value = data
@@ -296,8 +306,7 @@ async function executeControlPlan() {
         target: item.target,
         reason: item.reason,
       })),
-      dry_run: true,
-      acknowledge_risk: false,
+      acknowledge_risk: controlRiskAcknowledged.value,
     })
     controlResult.value = data
   } catch (error) {
@@ -371,7 +380,7 @@ onMounted(() => {
       <template #meta>
         <div class="ink-inline-meta">
           <span class="status-badge status-badge--ok">可审核</span>
-          <span class="status-badge status-badge--warning">先演练后执行</span>
+          <span class="status-badge status-badge--warning">需风险确认</span>
           <span class="status-badge" :class="llmReady ? 'status-badge--ok' : 'status-badge--warning'">
             {{ llmReady ? 'LLM 已就绪' : '规则解析模式' }}
           </span>
@@ -481,7 +490,7 @@ onMounted(() => {
           <div class="control-console__head">
             <div>
               <div class="control-console__eyebrow">AI 执行控制台</div>
-              <div class="control-console__title">自然语言 -> 动作计划 -> 演练</div>
+              <div class="control-console__title">自然语言 -> 动作计划 -> 执行</div>
             </div>
             <div class="ink-inline-meta">
               <span class="status-badge" :class="plannerClass(controlPlan?.planner)">
@@ -514,7 +523,11 @@ onMounted(() => {
           </div>
 
           <div class="control-console__mode">
-            <div class="control-console__hint">{{ controlModeSummary }}</div>
+            <label class="ai-check">
+              <input v-model="controlRiskAcknowledged" type="checkbox" />
+              <span>我已确认执行计划会直接改动真实设备、任务或预算</span>
+            </label>
+            <div class="control-console__hint">{{ controlExecutionSummary }}</div>
           </div>
 
           <div class="control-console__actions">
@@ -526,7 +539,7 @@ onMounted(() => {
               :disabled="!canExecuteControl"
               @click="executeControlPlan"
             >
-              {{ controlExecuting ? '执行中...' : '执行演练' }}
+              {{ controlExecuting ? '执行中...' : '执行计划' }}
             </button>
           </div>
 
@@ -608,7 +621,7 @@ onMounted(() => {
             <div class="control-result__head">
               <div class="control-plan__title">执行结果</div>
               <span class="status-badge" :class="riskClass(controlResult.risk_level || 'low')">
-                {{ controlResult.dry_run ? '演练结果' : '执行结果' }}
+                执行结果
               </span>
             </div>
             <div class="control-result__summary">{{ controlResult.summary }}</div>

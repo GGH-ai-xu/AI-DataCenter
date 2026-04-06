@@ -49,6 +49,38 @@ class GovernanceService:
         self.store = store
         self.agent = agent
 
+    @staticmethod
+    def _normalize_gpu_indexes(
+        gpu_indexes: list[int] | None,
+    ) -> list[int] | None:
+        if gpu_indexes is None:
+            return None
+        return sorted({int(item) for item in gpu_indexes})
+
+    @classmethod
+    def _filter_by_gpu_index(
+        cls,
+        items: list[dict] | None,
+        key: str,
+        gpu_indexes: list[int] | None,
+    ) -> list[dict]:
+        normalized = cls._normalize_gpu_indexes(gpu_indexes)
+        if normalized is None:
+            return list(items or [])
+        selected = set(normalized)
+        return [
+            item for item in (items or [])
+            if int(item.get(key, -1)) in selected
+        ]
+
+    async def _get_user_stats(
+        self,
+        gpu_indexes: list[int] | None = None,
+    ) -> list[dict]:
+        if gpu_indexes is None:
+            return await self.store.get_user_stats()
+        return await self.store.get_user_stats(gpu_indexes=gpu_indexes)
+
     def _to_int(self, value, default: int = 0) -> int:
         try:
             return int(value)
@@ -72,11 +104,22 @@ class GovernanceService:
             "restricted": "受限用户",
         }.get(role or "", role or "未设置")
 
-    async def get_fairness_report(self) -> dict:
-        gpus = await self.agent.get_all_gpus() or []
-        processes = await self.agent.get_processes() or []
+    async def get_fairness_report(
+        self,
+        gpu_indexes: list[int] | None = None,
+    ) -> dict:
+        gpus = self._filter_by_gpu_index(
+            await self.agent.get_all_gpus() or [],
+            "index",
+            gpu_indexes,
+        )
+        processes = self._filter_by_gpu_index(
+            await self.agent.get_processes() or [],
+            "gpu_index",
+            gpu_indexes,
+        )
         priorities = await self.store.get_all_task_priorities()
-        history_stats = await self.store.get_user_stats()
+        history_stats = await self._get_user_stats(gpu_indexes=gpu_indexes)
         governance_rules = await self.store.get_user_governance_rules()
         history_by_user = {
             row.get("username") or "unknown": row
@@ -116,9 +159,13 @@ class GovernanceService:
             "recommendations": self._build_recommendations(users, overview, yield_candidates),
         }
 
-    async def generate_export_report(self, fmt: str = "markdown") -> str:
+    async def generate_export_report(
+        self,
+        fmt: str = "markdown",
+        gpu_indexes: list[int] | None = None,
+    ) -> str:
         """导出公平治理与额度规则报告"""
-        report = await self.get_fairness_report()
+        report = await self.get_fairness_report(gpu_indexes=gpu_indexes)
         overview = report["overview"]
         users = report["users"]
         yield_candidates = report["yield_candidates"]

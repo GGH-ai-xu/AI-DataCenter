@@ -50,14 +50,12 @@ class ProcessInfo(BaseModel):
 
 class TaskActionRequest(BaseModel):
     pid: int = Field(gt=0)
-    dry_run: bool = False
     acknowledge_risk: bool = False
 
 
 class PowerLimitRequest(BaseModel):
     gpu_index: int = Field(ge=0)
     power_limit: int = Field(ge=100, le=350)
-    dry_run: bool = False
     acknowledge_risk: bool = False
 
 
@@ -69,7 +67,6 @@ class PowerBudgetConfigRequest(BaseModel):
 
 
 class ScheduleRunRequest(BaseModel):
-    dry_run: bool = False
     acknowledge_risk: bool = False
 
 class ScheduleAction(BaseModel):
@@ -126,7 +123,6 @@ class AIControlAction(BaseModel):
 class AIControlExecuteRequest(BaseModel):
     message: str = Field(default="", max_length=2000)
     actions: list[AIControlAction] = Field(default_factory=list)
-    dry_run: bool = True
     acknowledge_risk: bool = False
 
 
@@ -155,6 +151,76 @@ class ConnectionConfigRequest(BaseModel):
     mode: str = Field(default="local", pattern=r"^(local|remote)$")
     agent_url: Optional[str] = Field(default=None, max_length=300)
     agent_label: str = Field(default="", max_length=120)
+
+
+class ProviderConfigRequest(BaseModel):
+    provider_type: str = Field(pattern=r"^(http_local|http_remote|ssh_linux)$")
+    label: str = Field(default="", max_length=120)
+    agent_url: Optional[str] = Field(default=None, max_length=300)
+    host: Optional[str] = Field(default=None, max_length=255)
+    port: Optional[int] = Field(default=None, ge=1, le=65535)
+    username: Optional[str] = Field(default=None, max_length=120)
+    auth_type: Optional[str] = Field(default=None, pattern=r"^(password|private_key)$")
+    sudo_enabled: bool = False
+    host_fingerprint: Optional[str] = Field(default=None, max_length=200)
+
+
+class CredentialPayloadRequest(BaseModel):
+    password: str = Field(default="", max_length=5000)
+    private_key: str = Field(default="", max_length=20000)
+    private_key_passphrase: str = Field(default="", max_length=5000)
+    sudo_password: str = Field(default="", max_length=5000)
+
+
+class LoginRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=120)
+    password: str = Field(min_length=1, max_length=500)
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=500)
+    new_password: str = Field(min_length=8, max_length=500)
+
+
+class CreateUserRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=120)
+    password: str = Field(min_length=8, max_length=500)
+    role: str = Field(default="member", pattern=r"^(admin|member)$")
+    must_change_password: bool = True
+
+
+class ResetPasswordRequest(BaseModel):
+    password: str = Field(min_length=8, max_length=500)
+    must_change_password: bool = True
+
+
+class ProviderBackedImportRequest(BaseModel):
+    mode: str = Field(default="local", pattern=r"^(local|remote)$")
+    agent_url: Optional[str] = Field(default=None, max_length=300)
+    agent_label: str = Field(default="", max_length=120)
+    saved_host_id: Optional[int] = Field(default=None, ge=1)
+    provider: Optional[ProviderConfigRequest] = None
+    credentials: CredentialPayloadRequest = Field(default_factory=CredentialPayloadRequest)
+
+    def provider_payload(self) -> dict:
+        if self.provider is not None:
+            return self.provider.model_dump(exclude_none=True)
+        return {
+            "provider_type": "http_remote" if self.mode == "remote" else "http_local",
+            "agent_url": self.agent_url,
+            "label": self.agent_label,
+        }
+
+    def credential_payload(self) -> dict:
+        return self.credentials.model_dump()
+
+
+class ImportScanRequest(ProviderBackedImportRequest):
+    pass
+
+
+class ImportCommitRequest(ProviderBackedImportRequest):
+    gpu_indexes: list[int] = Field(default_factory=list, min_length=1)
 
 
 # ========== LLM 配置 ==========

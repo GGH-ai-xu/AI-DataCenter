@@ -50,7 +50,7 @@ const exportFeedback = ref(null)
 // AI能力数据
 const hasLlm = ref(false), aiInsight = ref(null), aiAnomalies = ref(null)
 const aiAnomaliesLoading = ref(false), aiInsightLoading = ref(false)
-const sourceState = ref({ connected: false, simulated: false, gpu_count: 0 })
+const sourceState = ref({ connected: false, gpu_count: 0 })
 const schedulerState = ref({ budget: { enabled: false, total_power_budget: 1200, usage_pct: 0, remaining_power: 1200, is_exceeded: false } })
 const energyTabs = [
   { key: 'overview', label: '总览', desc: '指标判断与分流' },
@@ -96,14 +96,14 @@ const tp = computed(()=>{
 
 const sourceLabel = computed(() => {
   if (!sourceState.value.connected) return '数据源离线'
-  if (sourceState.value.simulated) return `模拟采集 · ${sourceState.value.gpu_count}卡`
+  if ((sourceState.value.gpu_count || 0) <= 0) return '无真实GPU'
   return `真实采集 · ${sourceState.value.gpu_count}卡`
 })
 
 const sourceDetail = computed(() => {
   if (!sourceState.value.connected) return '当前无法获取 Agent 数据，能耗分析可能中断。'
-  if (sourceState.value.simulated) return '当前为演示模式，适合界面联调与流程演示。'
-  if ((metrics.value?.gpu_count || 0) <= 1) return '当前为本机单卡治理演示，历史数据库已重建，统计会随采集时间逐步累积。'
+  if ((sourceState.value.gpu_count || 0) <= 0) return 'Agent 已连通，但当前没有检测到真实 GPU，暂不生成能耗结论。'
+  if ((metrics.value?.gpu_count || 0) <= 1) return '当前为本机单卡实时治理，历史数据库已重建，统计会随采集时间逐步累积。'
   return '当前为多卡真实采集，可直接用于功率预算治理和能耗统计。'
 })
 
@@ -116,7 +116,7 @@ const budgetLabel = computed(() => {
 
 const sourceHint = computed(() => {
   const gpuCount = metrics.value?.gpu_count || 0
-  if (gpuCount <= 1) return '单卡本机治理演示'
+  if (gpuCount <= 1) return '单卡本机实时治理'
   return `${gpuCount} 卡集群`
 })
 
@@ -134,10 +134,12 @@ const energyRefresh = useEnergyData(activeTab, {
 })
 
 function syncSourceState(health) {
+  const importedCount = Array.isArray(health?.import_context?.imported_gpu_indexes)
+    ? health.import_context.imported_gpu_indexes.length
+    : 0
   sourceState.value = {
-    connected: !!health?.agent_connected,
-    simulated: !!health?.agent_info?.simulated,
-    gpu_count: Number(health?.agent_info?.gpu_count || 0),
+    connected: !!health?.workspace_ready,
+    gpu_count: importedCount || Number(health?.agent_info?.gpu_count || 0),
   }
   hasLlm.value = !!health?.llm_available
 }

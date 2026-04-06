@@ -8,12 +8,18 @@ from app.models.schemas import UserGovernanceRuleUpdate
 router = APIRouter(prefix="/api/governance", tags=["Governance"])
 
 
+def _selected_gpu_indexes(app_state) -> list[int]:
+    return app_state.import_context.selected_gpu_indexes()
+
+
 @router.get("/fairness")
 async def get_fairness_governance():
     """获取用户公平治理分析结果"""
     from app.main import app_state
 
-    report = await app_state.governance.get_fairness_report()
+    report = await app_state.governance.get_fairness_report(
+        gpu_indexes=_selected_gpu_indexes(app_state),
+    )
     return app_state.privacy.sanitize_governance_report(report)
 
 
@@ -79,7 +85,10 @@ async def export_governance_report(
     """导出治理报告"""
     from app.main import app_state
 
-    content = await app_state.governance.generate_export_report(format)
+    content = await app_state.governance.generate_export_report(
+        format,
+        gpu_indexes=_selected_gpu_indexes(app_state),
+    )
     content = app_state.privacy.mask_text(
         content,
         known_usernames=await app_state.store.get_known_usernames(),
@@ -110,6 +119,7 @@ async def export_full_governance_report(
     from app.main import app_state
 
     _logger = logging.getLogger(__name__)
+    gpu_indexes = _selected_gpu_indexes(app_state)
 
     sections = []
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -118,7 +128,10 @@ async def export_full_governance_report(
 
     # 1. 能耗统计
     try:
-        energy_metrics = await app_state.energy.get_energy_metrics(hours)
+        energy_metrics = await app_state.energy.get_energy_metrics(
+            hours,
+            gpu_indexes=gpu_indexes,
+        )
         sections.append("## 一、能耗统计\n")
         sections.append(f"- 实时总功耗：**{energy_metrics.get('current_total_power', 0):.0f} W**")
         sections.append(f"- 日能耗：**{energy_metrics.get('kwh', 0):.2f} kWh**")
@@ -130,7 +143,10 @@ async def export_full_governance_report(
 
     # 2. 碳排放
     try:
-        carbon = await app_state.energy.get_carbon_data(hours)
+        carbon = await app_state.energy.get_carbon_data(
+            hours,
+            gpu_indexes=gpu_indexes,
+        )
         sections.append("## 二、碳排放\n")
         sections.append(f"- 今日碳排放：**{carbon.get('co2_kg', 0):.3f} kgCO₂**")
         sections.append(f"- 等效树木：**{carbon.get('trees_equivalent', 0):.1f}** 棵/天")
@@ -141,7 +157,9 @@ async def export_full_governance_report(
 
     # 3. 公平治理
     try:
-        fairness = await app_state.governance.get_fairness_report()
+        fairness = await app_state.governance.get_fairness_report(
+            gpu_indexes=gpu_indexes,
+        )
         fairness = app_state.privacy.sanitize_governance_report(fairness)
         overview = fairness.get("overview", {})
         sections.append("## 三、公平治理\n")
@@ -162,14 +180,21 @@ async def export_full_governance_report(
 
     # 4. 调度历史
     try:
-        logs = await app_state.store.get_audit_logs(30)
+        logs = await app_state.store.get_schedule_history(
+            hours=hours,
+            limit=30,
+            gpu_indexes=gpu_indexes,
+        )
         sections.append("## 四、治理操作记录（最近 30 条）\n")
         if logs:
-            sections.append("| 时间 | 动作 | 目标 | 结果 | 来源 |")
+            sections.append("| 时间 | 动作 | 目标 | 结果 | 原因 |")
             sections.append("| --- | --- | --- | --- | --- |")
             for log in logs[:30]:
                 ts = datetime.fromtimestamp(log.get("timestamp", 0)).strftime("%m/%d %H:%M")
-                sections.append(f"| {ts} | {log.get('action', '-')} | {log.get('target', '-')[:30]} | {log.get('status', '-')} | {log.get('operator', '-')} |")
+                sections.append(
+                    f"| {ts} | {log.get('action', '-')} | {log.get('target', '-')[:30]} | "
+                    f"{log.get('result', '-')} | {log.get('reason', '-')[:40]} |"
+                )
         else:
             sections.append("暂无治理操作记录。")
         sections.append("")
@@ -181,9 +206,16 @@ async def export_full_governance_report(
     if app_state.llm:
         try:
             gpus = await app_state.agent.get_all_gpus()
+            gpus = app_state.import_context.filter_gpus(gpus)
             if gpus:
-                summary = await app_state.store.get_power_summary(hours)
-                alerts = await app_state.store.get_alerts(limit=10)
+                summary = await app_state.store.get_power_summary(
+                    hours,
+                    gpu_indexes=gpu_indexes,
+                )
+                alerts = await app_state.store.get_alerts(
+                    limit=10,
+                    gpu_indexes=gpu_indexes,
+                )
                 ai_report = await app_state.llm.generate_report(summary, alerts)
                 sections.append("## 五、AI 分析报告\n")
                 sections.append(ai_report or "AI 分析暂未生成。")

@@ -60,7 +60,7 @@ def build_fallback_report(summary: dict, alerts: list[dict]) -> str:
             "## 4. 建议动作",
             "- 先保持 Agent 在线运行 15 到 30 分钟，积累真实功耗样本后再生成报告。",
             "- 检查采集代理与后端连接状态，确认历史数据库正在持续写入。",
-            "- 如果当前正在做真实治理演示，建议先运行一次调度演练并观察预算页是否出现动作记录。",
+            "- 如果当前正在做真实治理验证，建议手动执行一次调度，并观察预算页是否出现动作记录。",
             "",
             "## 5. 预估节能潜力",
             "- 当前数据不足，暂不输出节能估算。",
@@ -137,7 +137,7 @@ def build_fallback_report(summary: dict, alerts: list[dict]) -> str:
         estimated_saving_watts += min(50.0, imbalance_gap * 0.25)
 
     if not recommendations:
-        recommendations.append("当前集群整体较平稳，可继续保持预算治理开启，并用调度演练观察是否还能进一步压缩低价值负载。")
+        recommendations.append("当前集群整体较平稳，可继续保持预算治理开启，并通过一次真实调度观察是否还能进一步压缩低价值负载。")
         if total_avg_power > 0:
             estimated_saving_watts += min(25.0, total_avg_power * 0.05)
 
@@ -163,12 +163,37 @@ def build_fallback_report(summary: dict, alerts: list[dict]) -> str:
     return "\n".join(lines)
 
 
+async def _scoped_gpus(app_state) -> list[dict]:
+    gpus = await app_state.agent.get_all_gpus()
+    return app_state.import_context.filter_gpus(gpus)
+
+
+async def _scoped_processes(app_state) -> list[dict]:
+    processes = await app_state.agent.get_processes()
+    return app_state.import_context.filter_processes(processes)
+
+
+def _selected_gpu_indexes(app_state) -> list[int]:
+    import_context = getattr(app_state, "import_context", None)
+    if not import_context:
+        return []
+    return import_context.selected_gpu_indexes()
+
+
+def _ensure_gpu_in_scope(app_state, gpu_index: int):
+    try:
+        app_state.import_context.ensure_gpu_allowed(gpu_index)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.get("/status")
 async def get_scheduler_status():
     """获取调度器状态"""
     from app.main import app_state
     from app.services.scheduler import get_time_period, get_time_period_label
-    gpus = await app_state.agent.get_all_gpus()
+
+    gpus = await _scoped_gpus(app_state)
     return {
         "auto_enabled": app_state.scheduler.auto_enabled,
         "time_period": get_time_period(),
@@ -190,8 +215,9 @@ async def toggle_auto_schedule(enabled: bool = True):
 async def configure_power_budget(req: PowerBudgetConfigRequest):
     """配置总功率预算治理参数"""
     from app.main import app_state
+
     app_state.scheduler.configure_budget(req.enabled, req.total_power_budget)
-    gpus = await app_state.agent.get_all_gpus()
+    gpus = await _scoped_gpus(app_state)
     return {
         "success": True,
         "budget": app_state.scheduler.get_budget_status(gpus),
@@ -202,7 +228,8 @@ async def configure_power_budget(req: PowerBudgetConfigRequest):
 async def get_carbon_budget():
     """获取碳预算状态"""
     from app.main import app_state
-    gpus = await app_state.agent.get_all_gpus()
+
+    gpus = await _scoped_gpus(app_state)
     return app_state.scheduler.get_carbon_budget_status(gpus or [])
 
 
@@ -210,10 +237,11 @@ async def get_carbon_budget():
 async def set_carbon_budget(req: dict):
     """配置碳预算"""
     from app.main import app_state
+
     enabled = bool(req.get("enabled", False))
     daily_kg = float(req.get("daily_budget_kg", 50.0))
     app_state.scheduler.configure_carbon_budget(enabled, daily_kg)
-    gpus = await app_state.agent.get_all_gpus()
+    gpus = await _scoped_gpus(app_state)
     return {
         "success": True,
         "carbon_budget": app_state.scheduler.get_carbon_budget_status(gpus or []),
@@ -224,20 +252,12 @@ async def set_carbon_budget(req: dict):
 async def manual_power_limit(req: PowerLimitRequest):
     """手动设置GPU功耗上限"""
     from app.main import app_state
-    if req.dry_run:
-        return {
-            "success": True,
-            "dry_run": True,
-            "applied": False,
-            "gpu_index": req.gpu_index,
-            "power_limit": req.power_limit,
-            "message": "已生成单卡限功率演练结果，未写入真实设备",
-        }
+
     if not req.acknowledge_risk:
         raise HTTPException(status_code=400, detail="真实限功率操作需要先确认风险")
+    _ensure_gpu_in_scope(app_state, req.gpu_index)
     app_state.scheduler.clear_managed_gpu(req.gpu_index)
     result = await app_state.agent.set_power_limit(req.gpu_index, req.power_limit)
-    result["dry_run"] = False
     result["applied"] = bool(result.get("success"))
     return result
 
@@ -247,44 +267,36 @@ async def run_schedule_once(req: ScheduleRunRequest | None = Body(default=None))
     """手动触发一次AI调度"""
     from app.main import app_state
     req = req or ScheduleRunRequest()
-    if not req.dry_run and not req.acknowledge_risk:
+    if not req.acknowledge_risk:
         raise HTTPException(status_code=400, detail="真实调度执行需要先确认风险")
 
-    gpus = await app_state.agent.get_all_gpus()
-    processes = await app_state.agent.get_processes()
+    gpus = await _scoped_gpus(app_state)
+    processes = await _scoped_processes(app_state)
 
     if not gpus:
-        return {"error": "无法获取GPU数据"}
+        return {"error": "当前导入范围内无法获取GPU数据"}
 
     # 先执行规则引擎
     rule_actions = await app_state.scheduler.run_rules(gpus, processes)
     rule_results = []
     if rule_actions:
-        rule_results = await app_state.scheduler.execute_actions(rule_actions, dry_run=req.dry_run)
+        rule_results = await app_state.scheduler.execute_actions(rule_actions)
 
     # 再执行总功率预算调度
     budget_actions = await app_state.scheduler.run_budget_schedule(gpus, processes)
     budget_results = []
     if budget_actions:
-        budget_results = await app_state.scheduler.execute_actions(
-            budget_actions,
-            dry_run=req.dry_run,
-        )
+        budget_results = await app_state.scheduler.execute_actions(budget_actions)
 
     # 再执行AI调度
     ai_strategy = await app_state.scheduler.run_ai_schedule(gpus, processes)
     ai_results = []
     if ai_strategy and "actions" in ai_strategy:
-        ai_results = await app_state.scheduler.execute_actions(
-            ai_strategy["actions"],
-            dry_run=req.dry_run,
-        )
+        ai_results = await app_state.scheduler.execute_actions(ai_strategy["actions"])
 
-    latest_gpus = await app_state.agent.get_all_gpus()
+    latest_gpus = await _scoped_gpus(app_state)
 
     return {
-        "dry_run": req.dry_run,
-        "execution_mode": "dry_run" if req.dry_run else "real",
         "rule_actions": rule_actions,
         "rule_results": rule_results,
         "budget_actions": budget_actions,
@@ -315,9 +327,9 @@ async def get_schedule_evaluation():
         return {"evaluation": cached, "source": "cached"}
 
     # 尝试实时评估
-    gpus = await app_state.agent.get_all_gpus()
+    gpus = await _scoped_gpus(app_state)
     if not gpus:
-        return {"evaluation": None, "message": "暂无 GPU 数据，无法评估"}
+        return {"evaluation": None, "message": "当前导入范围内暂无 GPU 数据，无法评估"}
 
     result = await app_state.scheduler.evaluate_last_schedule(gpus)
     if result:
@@ -341,8 +353,13 @@ async def generate_report():
     """生成AI能耗分析报告"""
     from app.main import app_state
 
-    summary = await app_state.store.get_power_summary(24)
-    alerts = await app_state.store.get_alerts(limit=20)
+    gpu_indexes = _selected_gpu_indexes(app_state)
+    if gpu_indexes:
+        summary = await app_state.store.get_power_summary(24, gpu_indexes=gpu_indexes)
+        alerts = await app_state.store.get_alerts(limit=20, gpu_indexes=gpu_indexes)
+    else:
+        summary = await app_state.store.get_power_summary(24)
+        alerts = await app_state.store.get_alerts(limit=20)
 
     if app_state.llm:
         report = await app_state.llm.generate_report(summary, alerts)

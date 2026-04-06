@@ -58,6 +58,42 @@ class EnergyAnalytics:
         self.governance = governance_service
 
     @staticmethod
+    def _normalize_gpu_indexes(
+        gpu_indexes: list[int] | None,
+    ) -> list[int] | None:
+        if gpu_indexes is None:
+            return None
+        return sorted({int(item) for item in gpu_indexes})
+
+    @classmethod
+    def _filter_by_gpu_index(
+        cls,
+        items: list[dict] | None,
+        key: str,
+        gpu_indexes: list[int] | None,
+    ) -> list[dict]:
+        normalized = cls._normalize_gpu_indexes(gpu_indexes)
+        if normalized is None:
+            return list(items or [])
+        selected = set(normalized)
+        return [
+            item for item in (items or [])
+            if int(item.get(key, -1)) in selected
+        ]
+
+    async def _call_store(
+        self,
+        method_name: str,
+        *args,
+        gpu_indexes: list[int] | None = None,
+        **kwargs,
+    ):
+        method = getattr(self.store, method_name)
+        if gpu_indexes is None:
+            return await method(*args, **kwargs)
+        return await method(*args, gpu_indexes=gpu_indexes, **kwargs)
+
+    @staticmethod
     def _estimate_action_saving(action: dict) -> float:
         if not action:
             return 0.0
@@ -87,7 +123,11 @@ class EnergyAnalytics:
             return "low_load"
         return "steady_state"
 
-    async def get_strategy_benchmark(self, scheduler) -> dict:
+    async def get_strategy_benchmark(
+        self,
+        scheduler,
+        gpu_indexes: list[int] | None = None,
+    ) -> dict:
         """对比观察、规则治理、完整治理三种模式的理论结果。"""
         if not self.agent:
             return {
@@ -98,8 +138,16 @@ class EnergyAnalytics:
                 "winner_mode": None,
             }
 
-        gpus = await self.agent.get_all_gpus() or []
-        processes = await self.agent.get_processes() or []
+        gpus = self._filter_by_gpu_index(
+            await self.agent.get_all_gpus() or [],
+            "index",
+            gpu_indexes,
+        )
+        processes = self._filter_by_gpu_index(
+            await self.agent.get_processes() or [],
+            "gpu_index",
+            gpu_indexes,
+        )
         if not gpus:
             return {
                 "insufficient_data": True,
@@ -164,10 +212,21 @@ class EnergyAnalytics:
             "ai_summary": ai_strategy.get("summary"),
         }
 
-    async def get_energy_metrics(self, hours: float = 24.0) -> dict:
+    async def get_energy_metrics(
+        self,
+        hours: float = 24.0,
+        gpu_indexes: list[int] | None = None,
+    ) -> dict:
         """核心KPI指标"""
-        summary = await self.store.get_power_summary(hours)
-        latest = await self.store.get_all_gpu_latest()
+        summary = await self._call_store(
+            "get_power_summary",
+            hours,
+            gpu_indexes=gpu_indexes,
+        )
+        latest = await self._call_store(
+            "get_all_gpu_latest",
+            gpu_indexes=gpu_indexes,
+        )
         total_avg_w = summary.get("total_avg_power", 0) or 0
         current_total_w = sum(g.get("power_usage", 0) for g in latest)
         gpu_count = len(latest)
@@ -207,9 +266,17 @@ class EnergyAnalytics:
             "per_gpu": per_gpu,
         }
 
-    async def get_time_period_breakdown(self, hours: float = 24.0) -> dict:
+    async def get_time_period_breakdown(
+        self,
+        hours: float = 24.0,
+        gpu_indexes: list[int] | None = None,
+    ) -> dict:
         """峰谷平时段能耗分析"""
-        hourly = await self.store.get_hourly_power_aggregation(hours)
+        hourly = await self._call_store(
+            "get_hourly_power_aggregation",
+            hours,
+            gpu_indexes=gpu_indexes,
+        )
 
         buckets = {
             "peak": {"label": "高峰时段(9-12,14-18)", "hours": [], "total_power": 0, "avg_power": 0, "samples": 0},
@@ -248,9 +315,15 @@ class EnergyAnalytics:
             "hourly": hourly_detail,
         }
 
-    async def get_gpu_efficiency(self) -> list[dict]:
+    async def get_gpu_efficiency(
+        self,
+        gpu_indexes: list[int] | None = None,
+    ) -> list[dict]:
         """每张GPU效率评分 0-100"""
-        latest = await self.store.get_all_gpu_latest()
+        latest = await self._call_store(
+            "get_all_gpu_latest",
+            gpu_indexes=gpu_indexes,
+        )
 
         results = []
         for g in latest:
@@ -335,9 +408,17 @@ class EnergyAnalytics:
         std = rmse
         return predicted, std, rmse, r_squared
 
-    async def get_power_prediction(self, predict_hours: int = 24) -> dict:
+    async def get_power_prediction(
+        self,
+        predict_hours: int = 24,
+        gpu_indexes: list[int] | None = None,
+    ) -> dict:
         """功耗预测 - 3种算法竞争选优"""
-        hourly_7d = await self.store.get_hourly_power_aggregation(hours=168)
+        hourly_7d = await self._call_store(
+            "get_hourly_power_aggregation",
+            hours=168,
+            gpu_indexes=gpu_indexes,
+        )
         hour_history = {}
         for row in hourly_7d:
             h = row["hour"]
@@ -425,9 +506,13 @@ class EnergyAnalytics:
 
         return result
 
-    async def get_carbon_data(self, hours: float = 24.0) -> dict:
+    async def get_carbon_data(
+        self,
+        hours: float = 24.0,
+        gpu_indexes: list[int] | None = None,
+    ) -> dict:
         """碳排放详细数据"""
-        metrics = await self.get_energy_metrics(hours)
+        metrics = await self.get_energy_metrics(hours, gpu_indexes=gpu_indexes)
         co2_kg = metrics["co2_kg"]
 
         daily_tree_absorption = TREE_ANNUAL_ABSORPTION / 365
@@ -447,10 +532,22 @@ class EnergyAnalytics:
             "electricity_price": ELECTRICITY_PRICE,
         }
 
-    async def get_optimization_analysis(self) -> dict:
+    async def get_optimization_analysis(
+        self,
+        gpu_indexes: list[int] | None = None,
+    ) -> dict:
         """一键AI优化分析"""
-        latest = await self.store.get_all_gpu_latest()
-        live_gpus = await self.agent.get_all_gpus() if self.agent else []
+        latest = await self._call_store(
+            "get_all_gpu_latest",
+            gpu_indexes=gpu_indexes,
+        )
+        live_gpus = []
+        if self.agent:
+            live_gpus = self._filter_by_gpu_index(
+                await self.agent.get_all_gpus(),
+                "index",
+                gpu_indexes,
+            )
         current_gpus = live_gpus or latest
         if not current_gpus:
             return {
@@ -473,7 +570,11 @@ class EnergyAnalytics:
         if self.llm and self.agent:
             try:
                 gpus = current_gpus
-                processes = await self.agent.get_processes() or []
+                processes = self._filter_by_gpu_index(
+                    await self.agent.get_processes() or [],
+                    "gpu_index",
+                    gpu_indexes,
+                )
                 llm_processes = (
                     self.privacy.sanitize_processes(processes)
                     if self.privacy
@@ -512,13 +613,20 @@ class EnergyAnalytics:
         }
 
         try:
-            await self.store.save_optimization_snapshot({
+            payload = {
                 "baseline_power": current_total,
                 "optimized_power": optimized_power,
                 "saving_pct": saving_pct,
                 "co2_saved_kg": co2_saved,
                 "actions_json": json.dumps(ai_suggestions, ensure_ascii=False),
-            })
+            }
+            if gpu_indexes is None:
+                await self.store.save_optimization_snapshot(payload)
+            else:
+                await self.store.save_optimization_snapshot(
+                    payload,
+                    gpu_indexes=gpu_indexes,
+                )
         except Exception as e:
             logger.warning(f"保存优化快照失败: {e}")
 
@@ -619,13 +727,19 @@ class EnergyAnalytics:
 
     # ========== D2: AI趋势洞察 ==========
 
-    async def get_ai_insight(self) -> Optional[dict]:
+    async def get_ai_insight(
+        self,
+        gpu_indexes: list[int] | None = None,
+    ) -> Optional[dict]:
         """AI趋势洞察 - 有LLM时返回结构化洞察，无LLM返回None"""
         if not self.llm:
             return None
         try:
-            metrics = await self.get_energy_metrics(24)
-            latest = await self.store.get_all_gpu_latest()
+            metrics = await self.get_energy_metrics(24, gpu_indexes=gpu_indexes)
+            latest = await self._call_store(
+                "get_all_gpu_latest",
+                gpu_indexes=gpu_indexes,
+            )
             gpu_summary = "; ".join(
                 f"GPU{g.get('gpu_index',i)}: {g.get('gpu_utilization',0)}%利用率, {g.get('power_usage',0):.0f}W/{g.get('power_limit',350)}W, {g.get('temperature',0)}°C"
                 for i, g in enumerate(latest)
@@ -646,12 +760,18 @@ class EnergyAnalytics:
 
     # ========== D1: AI异常模式检测 ==========
 
-    async def get_ai_anomaly_analysis(self) -> Optional[dict]:
+    async def get_ai_anomaly_analysis(
+        self,
+        gpu_indexes: list[int] | None = None,
+    ) -> Optional[dict]:
         """AI异常模式检测 - 有LLM时返回异常列表，无LLM返回None"""
         if not self.llm:
             return None
         try:
-            latest = await self.store.get_all_gpu_latest()
+            latest = await self._call_store(
+                "get_all_gpu_latest",
+                gpu_indexes=gpu_indexes,
+            )
             gpu_data_str = json.dumps(latest, indent=2, ensure_ascii=False, default=str)
             from app.services.llm import ANOMALY_PROMPT
             prompt = ANOMALY_PROMPT.format(gpu_data=gpu_data_str)
@@ -660,13 +780,17 @@ class EnergyAnalytics:
             logger.warning(f"AI异常检测失败: {e}")
             return None
 
-    async def get_full_report(self, hours: float = 24.0) -> dict:
+    async def get_full_report(
+        self,
+        hours: float = 24.0,
+        gpu_indexes: list[int] | None = None,
+    ) -> dict:
         """全KPI增强报告"""
-        metrics = await self.get_energy_metrics(hours)
-        breakdown = await self.get_time_period_breakdown(hours)
-        efficiency = await self.get_gpu_efficiency()
-        carbon = await self.get_carbon_data(hours)
-        prediction = await self.get_power_prediction(24)
+        metrics = await self.get_energy_metrics(hours, gpu_indexes=gpu_indexes)
+        breakdown = await self.get_time_period_breakdown(hours, gpu_indexes=gpu_indexes)
+        efficiency = await self.get_gpu_efficiency(gpu_indexes=gpu_indexes)
+        carbon = await self.get_carbon_data(hours, gpu_indexes=gpu_indexes)
+        prediction = await self.get_power_prediction(24, gpu_indexes=gpu_indexes)
 
         return {
             "metrics": metrics,
@@ -679,9 +803,18 @@ class EnergyAnalytics:
 
     # ========== F4: 调度历史回放 ==========
 
-    async def get_schedule_history(self, hours: float = 72.0) -> dict:
+    async def get_schedule_history(
+        self,
+        hours: float = 72.0,
+        gpu_indexes: list[int] | None = None,
+    ) -> dict:
         """获取调度历史"""
-        logs = await self.store.get_schedule_history(hours, limit=50)
+        logs = await self._call_store(
+            "get_schedule_history",
+            hours,
+            limit=50,
+            gpu_indexes=gpu_indexes,
+        )
         action_logs = [item for item in logs if item.get("action") != "ai_evaluate"]
         evaluation_logs = [item for item in logs if item.get("action") == "ai_evaluate"]
 
@@ -705,10 +838,22 @@ class EnergyAnalytics:
 
     # ========== F2: 历史对比 ==========
 
-    async def get_history_comparison(self, hours: float = 72.0) -> dict:
+    async def get_history_comparison(
+        self,
+        hours: float = 72.0,
+        gpu_indexes: list[int] | None = None,
+    ) -> dict:
         """优化效果历史对比：基线 vs 实际"""
-        opt_history = await self.store.get_optimization_history(hours)
-        power_series = await self.store.get_hourly_power_series(hours)
+        opt_history = await self._call_store(
+            "get_optimization_history",
+            hours,
+            gpu_indexes=gpu_indexes,
+        )
+        power_series = await self._call_store(
+            "get_hourly_power_series",
+            hours,
+            gpu_indexes=gpu_indexes,
+        )
 
         if opt_history and power_series:
             first_opt = opt_history[-1]  # 最早的一条
@@ -754,9 +899,14 @@ class EnergyAnalytics:
 
     # ========== F3: 报告导出 ==========
 
-    async def generate_export_report(self, hours: float = 24.0, fmt: str = "markdown") -> str:
+    async def generate_export_report(
+        self,
+        hours: float = 24.0,
+        fmt: str = "markdown",
+        gpu_indexes: list[int] | None = None,
+    ) -> str:
         """生成可导出的能耗报告"""
-        report = await self.get_full_report(hours)
+        report = await self.get_full_report(hours, gpu_indexes=gpu_indexes)
         m = report["metrics"]
         tb = report["time_breakdown"]
         eff = report["gpu_efficiency"]
@@ -825,7 +975,7 @@ class EnergyAnalytics:
         # D5: AI分析师评语章节
         if self.llm:
             try:
-                insight = await self.get_ai_insight()
+                insight = await self.get_ai_insight(gpu_indexes=gpu_indexes)
                 if insight:
                     md += "## 七、AI 分析师评语\n\n"
                     md += f"**{insight.get('summary', '')}**\n\n"

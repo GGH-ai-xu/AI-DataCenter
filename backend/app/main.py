@@ -33,12 +33,23 @@ from app.services.collection_pipeline import (
     collect_agent_snapshot,
 )
 from app.services.connection_settings import ConnectionSettingsService
+from app.services.credential_cipher import CredentialCipher
+from app.services.credential_store import CredentialStore
+from app.services.import_context import ImportContextService
+from app.services.http_agent_provider import HttpAgentProvider
 from app.services.llm_settings import LLMSettingsService
+from app.services.platform_auth_service import PlatformAuthService
+from app.services.platform_identity_store import PlatformIdentityStore
+from app.services.runtime_provider_manager import RuntimeProviderManager
+from app.services.runtime_scope import build_realtime_scope
+from app.services.saved_host_service import SavedHostService
+from app.services.ssh_linux_provider import SshLinuxProvider
 from app.ws.realtime import ws_manager
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+RUNTIME_INVALID_REASON = "当前导入目标不可达，需要重新导入"
 
 
 class SPAStaticFiles(StaticFiles):
@@ -59,7 +70,7 @@ class SPAStaticFiles(StaticFiles):
 
 class AppState:
     """应用全局状态，存储共享服务实例"""
-    agent: AgentClient
+    agent: object
     store: DataStore
     llm: LLMService | None
     alert_engine: AlertEngine
@@ -68,10 +79,15 @@ class AppState:
     governance: GovernanceService
     privacy: PrivacyService
     connection: ConnectionSettingsService
+    identity: PlatformIdentityStore
+    platform_auth: PlatformAuthService
+    credentials: CredentialStore
+    saved_hosts: SavedHostService
+    import_context: ImportContextService
     llm_settings: LLMSettingsService
+    runtime: RuntimeProviderManager
     _collect_task: asyncio.Task | None = None
     _cleanup_task: asyncio.Task | None = None
-    _agent_fail_count: int = 0
 
 
 app_state = AppState()
@@ -95,6 +111,44 @@ def bind_llm_service(llm_service: LLMService | None):
         app_state.energy.llm = llm_service
 
 
+async def build_runtime_provider(target, secret):
+    if target.provider_type in {"http_local", "http_remote"}:
+        return HttpAgentProvider(target)
+    if target.provider_type == "ssh_linux":
+        return SshLinuxProvider(target, secret)
+    raise ValueError(f"unsupported provider type: {target.provider_type}")
+
+
+def assign_active_provider(provider):
+    app_state.agent = provider
+    for attr in ("scheduler", "governance", "energy"):
+        service = getattr(app_state, attr, None)
+        if service is not None and hasattr(service, "agent"):
+            service.agent = provider
+
+
+def build_runtime_target_payload(connection_state: dict) -> dict:
+    provider_type = connection_state.get("provider_type")
+    if provider_type:
+        return {
+            "provider_type": provider_type,
+            "label": connection_state.get("agent_label") or connection_state.get("label"),
+            "agent_url": connection_state.get("agent_url"),
+            "host": connection_state.get("host"),
+            "port": connection_state.get("port"),
+            "username": connection_state.get("username"),
+            "auth_type": connection_state.get("auth_type"),
+            "sudo_enabled": connection_state.get("sudo_enabled", False),
+            "host_fingerprint": connection_state.get("host_fingerprint"),
+            "credential_id": connection_state.get("credential_id"),
+        }
+    return {
+        "provider_type": "http_remote" if connection_state.get("mode") == "remote" else "http_local",
+        "label": connection_state.get("agent_label"),
+        "agent_url": connection_state.get("agent_url"),
+    }
+
+
 async def cleanup_loop():
     """定期清理过期历史数据（每24小时）"""
     while True:
@@ -104,6 +158,50 @@ async def cleanup_loop():
             logger.info("数据库过期数据清理完成")
         except Exception as e:
             logger.error(f"数据库清理失败: {e}")
+
+
+async def runtime_status_payload() -> dict:
+    return await app_state.runtime.status()
+
+
+async def broadcast_runtime_state(import_context: dict) -> None:
+    await ws_manager.broadcast({
+        "type": "runtime",
+        "runtime": await runtime_status_payload(),
+        "import_context": import_context,
+        "workspace_ready": bool(import_context.get("valid")),
+    })
+
+
+async def handle_runtime_failure(reason: str) -> tuple[dict, dict]:
+    logger.warning("运行时故障，准备重连: %s", reason)
+    runtime_status = await app_state.runtime.reconnect()
+    if runtime_status["status"] == "connected":
+        assign_active_provider(await app_state.runtime.current_provider())
+        logger.warning("运行时已恢复连接，provider=%s", runtime_status.get("provider_type") or "unknown")
+        import_context = app_state.import_context.snapshot()
+        await broadcast_runtime_state(import_context)
+        return runtime_status, import_context
+
+    if runtime_status["status"] == "invalid":
+        import_context = app_state.import_context.mark_invalid(RUNTIME_INVALID_REASON)
+    else:
+        import_context = app_state.import_context.snapshot()
+    await broadcast_runtime_state(import_context)
+    return runtime_status, import_context
+
+
+def resolve_import_context_snapshot(
+    runtime_status: dict,
+    agent_health: dict | None,
+    gpus: list[dict],
+) -> dict:
+    status = runtime_status.get("status")
+    if status == "connected":
+        return app_state.import_context.validate_runtime(agent_health, gpus)
+    if status == "invalid":
+        return app_state.import_context.mark_invalid(RUNTIME_INVALID_REASON)
+    return app_state.import_context.snapshot()
 
 
 async def collect_loop():
@@ -120,38 +218,61 @@ async def collect_loop():
             gpus = snapshot["gpus"]
             system = snapshot["system"]
             processes = snapshot["processes"]
+            runtime_online = bool(gpus) or bool(processes) or system is not None
+            import_context = app_state.import_context.validate_runtime(
+                {"status": "ok"} if runtime_online else None,
+                gpus,
+            )
 
-            if gpus:
-                app_state._agent_fail_count = 0
+            if runtime_online:
+                runtime_status = await app_state.runtime.record_success()
                 enriched_processes = apply_task_priorities(processes, priorities)
-                alerts = app_state.alert_engine.check_all_gpus(gpus)
+                scoped = build_realtime_scope(
+                    import_context=app_state.import_context,
+                    privacy=app_state.privacy,
+                    system=system,
+                    gpus=gpus,
+                    processes=enriched_processes,
+                )
+                alerts = app_state.alert_engine.check_all_gpus(scoped["gpus"])
 
                 await app_state.store.save_collection_cycle(
-                    gpus,
-                    enriched_processes,
+                    scoped["gpus"],
+                    scoped["processes"],
                     alerts,
                 )
 
-                public_processes = app_state.privacy.sanitize_processes(enriched_processes)
                 await asyncio.gather(
-                    app_state.scheduler.tick(gpus, enriched_processes),
+                    app_state.scheduler.tick(scoped["gpus"], scoped["processes"]),
                     ws_manager.broadcast({
                         "type": "realtime",
-                        "gpus": gpus,
-                        "system": system,
-                        "processes": public_processes,
+                        "gpus": scoped["gpus"],
+                        "system": scoped["system"],
+                        "processes": scoped["public_processes"],
                         "alerts": alerts,
+                        "runtime": runtime_status,
+                        "import_context": import_context,
+                        "workspace_ready": bool(import_context.get("valid")),
                     }),
                 )
             else:
-                app_state._agent_fail_count += 1
-                if app_state._agent_fail_count == 10:
-                    logger.critical("Agent连续10次无数据，可能已断开连接")
-                elif app_state._agent_fail_count % 50 == 0:
-                    logger.critical(f"Agent持续不可用，已连续{app_state._agent_fail_count}次失败")
+                runtime_status, _ = await handle_runtime_failure("runtime returned no data")
+                if runtime_status["status"] != "connected":
+                    logger.warning(
+                        "运行时当前不可用，status=%s failures=%s",
+                        runtime_status["status"],
+                        runtime_status["reconnect_failures"],
+                    )
 
         except Exception as e:
             logger.exception(f"数据采集异常: {e}")
+            runtime_status, _ = await handle_runtime_failure(str(e))
+            if runtime_status["status"] != "connected":
+                logger.warning(
+                    "运行时重连未恢复，status=%s failures=%s",
+                    runtime_status["status"],
+                    runtime_status["reconnect_failures"],
+                )
 
         await asyncio.sleep(interval)
 
@@ -171,12 +292,51 @@ async def lifespan(app: FastAPI):
         "LLM_CONFIG_PATH",
         os.path.join(runtime_dir, "llm.json"),
     )
+    import_config_path = os.getenv(
+        "IMPORT_CONTEXT_PATH",
+        os.path.join(runtime_dir, "import-context.json"),
+    )
+    credential_config_path = os.getenv(
+        "CREDENTIAL_STORE_PATH",
+        os.path.join(runtime_dir, "credentials.json"),
+    )
+    identity_db_path = os.getenv(
+        "PLATFORM_IDENTITY_DB_PATH",
+        os.path.join(runtime_dir, "platform_identity.db"),
+    )
+    master_key = os.getenv("GPU_GOV_MASTER_KEY", "").strip()
 
     app_state.connection = ConnectionSettingsService(connection_config_path, default_agent_url)
     app_state.llm_settings = LLMSettingsService(llm_config_path)
     connection_settings = app_state.connection.load()
     app_state.llm_settings.load()
-    app_state.agent = AgentClient(connection_settings["agent_url"])
+    cipher = CredentialCipher(master_key) if master_key else None
+    app_state.identity = PlatformIdentityStore(identity_db_path)
+    await app_state.identity.init()
+    app_state.platform_auth = PlatformAuthService(app_state.identity)
+    bootstrap_notice = await app_state.platform_auth.ensure_default_admin()
+    if bootstrap_notice:
+        logger.warning(
+            "默认管理员已创建: username=%s temporary_password=%s",
+            bootstrap_notice["username"],
+            bootstrap_notice["generated_password"],
+        )
+    app_state.credentials = CredentialStore(credential_config_path, cipher)
+    app_state.saved_hosts = SavedHostService(app_state.identity, app_state.credentials)
+    app_state.import_context = ImportContextService(
+        import_config_path,
+        app_state.connection.default_local_url,
+    )
+    app_state.import_context.load()
+    app_state.runtime = RuntimeProviderManager(build_runtime_provider)
+    bootstrap_target = app_state.connection.normalize_payload(
+        build_runtime_target_payload(connection_settings)
+    )
+    bootstrap_secret = {}
+    if bootstrap_target.credential_id:
+        bootstrap_secret = app_state.credentials.read(bootstrap_target.credential_id)
+    bootstrap_provider = await app_state.runtime.switch(bootstrap_target, bootstrap_secret)
+    assign_active_provider(bootstrap_provider)
     app_state.store = DataStore(db_path)
     await app_state.store.init()
     app_state.privacy = PrivacyService()
@@ -208,6 +368,7 @@ async def lifespan(app: FastAPI):
         app_state.store,
         app_state.llm,
         app_state.privacy,
+        app_state.import_context,
         budget_limit_watts=int(os.getenv("POWER_BUDGET_WATTS", "1200")),
         budget_enabled=os.getenv("POWER_BUDGET_ENABLED", "false").lower() in {"1", "true", "yes", "on"},
     )
@@ -239,6 +400,7 @@ async def lifespan(app: FastAPI):
         app_state._cleanup_task.cancel()
     await app_state.agent.close()
     await app_state.store.close()
+    await app_state.identity.close()
     logger.info("后端服务已关闭")
 
 
@@ -271,7 +433,12 @@ from app.api.monitor import router as monitor_router
 from app.api.energy import router as energy_router
 from app.api.governance import router as governance_router
 from app.api.system import router as system_router
+from app.api.system_diagnostics import router as system_diagnostics_router
+from app.api.system_import import router as system_import_router
 from app.api.audit import router as audit_router
+from app.api.auth import router as auth_router
+from app.api.admin_users import router as admin_users_router
+from app.api.hosts import router as hosts_router
 
 app.include_router(gpu_router)
 app.include_router(tasks_router)
@@ -282,13 +449,30 @@ app.include_router(monitor_router)
 app.include_router(energy_router)
 app.include_router(governance_router)
 app.include_router(system_router)
+app.include_router(system_diagnostics_router)
+app.include_router(system_import_router)
 app.include_router(audit_router)
+app.include_router(auth_router)
+app.include_router(admin_users_router)
+app.include_router(hosts_router)
 
 
 @app.get("/api/health")
 async def health():
     """健康检查"""
-    agent_health = await app_state.agent.health_check()
+    runtime_status = await runtime_status_payload()
+    try:
+        agent_health = await app_state.agent.health_check()
+        gpus = await app_state.agent.get_all_gpus() if agent_health else []
+        import_context = resolve_import_context_snapshot(runtime_status, agent_health, gpus)
+    except Exception as exc:
+        logger.warning("健康检查读取运行时失败: %s", exc)
+        agent_health = None
+        gpus = []
+        if runtime_status.get("status") == "invalid":
+            import_context = app_state.import_context.mark_invalid(RUNTIME_INVALID_REASON)
+        else:
+            import_context = app_state.import_context.snapshot()
     return {
         "status": "ok",
         "agent_connected": agent_health is not None,
@@ -296,6 +480,9 @@ async def health():
         "ws_connections": ws_manager.connection_count,
         "llm_available": app_state.llm is not None,
         "connection": app_state.connection.snapshot(agent_health),
+        "runtime": runtime_status,
+        "import_context": import_context,
+        "workspace_ready": bool(import_context.get("valid")),
         "llm": app_state.llm_settings.snapshot(app_state.llm is not None),
     }
 
@@ -303,6 +490,14 @@ async def health():
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     """WebSocket连接端点 - 实时数据推送"""
+    token = ws.query_params.get("token", "")
+    user = await app_state.platform_auth.resolve_session(token)
+    if not user:
+        await ws.close(code=4401, reason="UNAUTHORIZED")
+        return
+    if user["must_change_password"]:
+        await ws.close(code=4403, reason="PASSWORD_CHANGE_REQUIRED")
+        return
     await ws_manager.connect(ws)
     try:
         while True:

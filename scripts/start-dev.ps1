@@ -2,6 +2,8 @@ param()
 
 $ErrorActionPreference = "Stop"
 . "$PSScriptRoot\dev-launch-helpers.ps1"
+. "$PSScriptRoot\dev-managed-service-state.ps1"
+. "$PSScriptRoot\runtime-master-key.ps1"
 Initialize-ConsoleEncoding
 
 $root = Split-Path -Parent $PSScriptRoot
@@ -45,7 +47,9 @@ while ($frontendPort -in @($agentPort, $backendPort)) {
 $agentUrl = "http://127.0.0.1:$agentPort"
 $backendUrl = "http://127.0.0.1:$backendPort"
 $frontendUrl = "http://127.0.0.1:$frontendPort/"
+$runtimeMasterKey = Ensure-RepoRuntimeMasterKey -RepoRoot $root
 
+Clear-StaleManagedServices -RepoRoot $root
 Register-ManagedServiceShutdown
 
 Write-ServiceLog -ServiceName "Launcher" -Message "Starting Agent on $agentUrl"
@@ -59,6 +63,7 @@ $agentProcess = Start-ManagedServiceProcess `
     PYTHONUTF8 = "1"
     GPU_AGENT_PORT = $agentPort
   }
+Save-ManagedServiceState -ServiceName "Agent" -Process $agentProcess -ExecutablePath $pythonExe -Signature @(".\main.py")
 Register-ProcessLogPump -ServiceName "Agent" -Process $agentProcess
 Wait-HttpReady -Name "Agent" -Url "$agentUrl/api/health" -Port $agentPort -LaunchCommand "$pythonExe .\main.py"
 
@@ -73,7 +78,9 @@ $backendProcess = Start-ManagedServiceProcess `
     PYTHONUTF8 = "1"
     PORT = $backendPort
     AGENT_URL = $agentUrl
+    GPU_GOV_MASTER_KEY = $runtimeMasterKey
   }
+Save-ManagedServiceState -ServiceName "Backend" -Process $backendProcess -ExecutablePath $pythonExe -Signature @("-m", "uvicorn", "app.main:app")
 Register-ProcessLogPump -ServiceName "Backend" -Process $backendProcess
 Wait-HttpReady -Name "Backend" -Url "$backendUrl/api/health" -Port $backendPort -LaunchCommand "$pythonExe -m uvicorn app.main:app"
 
@@ -87,6 +94,7 @@ $frontendProcess = Start-ManagedServiceProcess `
     DEV_BACKEND_URL = $backendUrl
     DEV_BACKEND_WS_URL = "ws://127.0.0.1:$backendPort"
   }
+Save-ManagedServiceState -ServiceName "Frontend" -Process $frontendProcess -ExecutablePath $nodeCmd -Signature @($npmCliPath, "run", "dev")
 Register-ProcessLogPump -ServiceName "Frontend" -Process $frontendProcess
 Wait-HttpReady -Name "Frontend" -Url $frontendUrl -Port $frontendPort -LaunchCommand "$nodeCmd $npmCliPath run dev"
 

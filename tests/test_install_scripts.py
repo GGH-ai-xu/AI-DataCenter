@@ -22,6 +22,28 @@ class InstallScriptTests(unittest.TestCase):
         self.assertIn('Join-Path $root "backend\\requirements.txt"', script)
         self.assertIn('Join-Path $root "server-agent\\requirements.txt"', script)
 
+    def test_setup_uv_env_checks_for_repo_python_processes_before_install(self):
+        script = (ROOT / "scripts" / "setup-uv-env.ps1").read_text(encoding="utf-8")
+
+        self.assertIn('. "$PSScriptRoot\\repo-python-process-cleanup.ps1"', script)
+        self.assertIn("Stop-RepoVenvPythonProcesses -RepoRoot $root -RepoVenvDir $venvDir", script)
+        self.assertIn("Repository virtual environment is in use", script)
+        self.assertIn("start-dev.bat", script)
+        self.assertIn(".venv", script)
+
+    def test_repo_python_cleanup_helper_targets_managed_and_test_processes(self):
+        script_path = ROOT / "scripts" / "repo-python-process-cleanup.ps1"
+
+        self.assertTrue(script_path.exists(), str(script_path))
+        script = script_path.read_text(encoding="utf-8")
+        self.assertIn("function Stop-RepoVenvPythonProcesses", script)
+        self.assertIn("Get-CimInstance Win32_Process", script)
+        self.assertIn(".\\main.py", script)
+        self.assertIn("app.main:app", script)
+        self.assertIn("-m unittest", script)
+        self.assertIn("-m pytest", script)
+        self.assertIn("taskkill /PID $ProcessId /T /F", script)
+
     def test_setup_frontend_installs_with_npm_ci(self):
         script = (ROOT / "scripts" / "setup-frontend.ps1").read_text(encoding="utf-8")
 
@@ -47,6 +69,27 @@ class InstallScriptTests(unittest.TestCase):
         self.assertIn("@rolldown/binding-win32-x64-msvc@1.0.0-rc.11", script)
         self.assertIn("@rolldown/binding-linux-x64-gnu@1.0.0-rc.11", script)
         self.assertIn('@("npm", "install", "--no-save"', script)
+
+    def test_frontend_dev_and_build_run_rolldown_preflight(self):
+        package_json = json.loads((ROOT / "frontend" / "package.json").read_text(encoding="utf-8"))
+        scripts = package_json.get("scripts", {})
+
+        self.assertIn("ensure-rolldown-binding.mjs", scripts.get("dev", ""))
+        self.assertIn("vite", scripts.get("dev", ""))
+        self.assertIn("ensure-rolldown-binding.mjs", scripts.get("build", ""))
+        self.assertIn("vite build", scripts.get("build", ""))
+
+    def test_frontend_contains_rolldown_binding_preflight_script(self):
+        script_path = ROOT / "frontend" / "scripts" / "ensure-rolldown-binding.mjs"
+
+        self.assertTrue(script_path.exists(), str(script_path))
+        script = script_path.read_text(encoding="utf-8")
+        self.assertIn("process.platform", script)
+        self.assertIn("process.arch", script)
+        self.assertIn("@rolldown/binding-win32-x64-msvc", script)
+        self.assertIn("@rolldown/binding-linux-x64-gnu", script)
+        self.assertIn("--no-save", script)
+        self.assertIn("--package-lock=false", script)
 
 
 if __name__ == "__main__":

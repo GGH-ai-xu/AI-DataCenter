@@ -6,14 +6,17 @@ import { ref, onUnmounted } from 'vue'
 const INITIAL_RETRY_DELAY = 1000
 const MAX_RETRY_DELAY = 30000
 
-function buildWebSocketUrl() {
+function buildWebSocketUrl(token) {
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${protocol}//${location.host}/ws`
+  const search = token ? `?token=${encodeURIComponent(token)}` : ''
+  return `${protocol}//${location.host}/ws${search}`
 }
 
 export function useWebSocket(options = {}) {
   const onRealtimeMessage = options.onRealtimeMessage
   const onConnectionChange = options.onConnectionChange
+  const getToken = options.getToken || (() => '')
+  const shouldReconnect = options.shouldReconnect || (() => true)
   const connected = ref(false)
   let socket = null
   let reconnectTimer = null
@@ -35,8 +38,14 @@ export function useWebSocket(options = {}) {
   }
 
   function connect() {
+    const token = String(getToken() || '').trim()
+    if (!token) {
+      manualDisconnect = true
+      notifyConnectionChange(false)
+      return
+    }
     manualDisconnect = false
-    socket = new WebSocket(buildWebSocketUrl())
+    socket = new WebSocket(buildWebSocketUrl(token))
 
     socket.onopen = () => {
       clearReconnectTimer()
@@ -47,7 +56,7 @@ export function useWebSocket(options = {}) {
     socket.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data)
-        if (data.type === 'realtime') {
+        if (data.type === 'realtime' || data.type === 'runtime') {
           onRealtimeMessage?.(data)
         }
       } catch {}
@@ -55,7 +64,7 @@ export function useWebSocket(options = {}) {
 
     socket.onclose = () => {
       notifyConnectionChange(false)
-      if (manualDisconnect) {
+      if (manualDisconnect || !shouldReconnect()) {
         return
       }
       clearReconnectTimer()

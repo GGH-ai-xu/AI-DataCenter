@@ -31,7 +31,10 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     gpu_monitor.init()
-    logger.info(f"Agent启动，检测到 {gpu_monitor.device_count} 张GPU")
+    if gpu_monitor.device_count > 0:
+        logger.info("Agent启动，检测到 %s 张GPU", gpu_monitor.device_count)
+    else:
+        logger.warning("Agent启动，但当前未检测到可采集的真实 GPU")
     yield
     gpu_monitor.shutdown()
     logger.info("Agent已关闭")
@@ -69,7 +72,6 @@ def health_check():
     return {
         "status": "ok",
         "gpu_count": gpu_monitor.device_count,
-        "simulated": gpu_monitor.is_simulated,
     }
 
 
@@ -103,20 +105,14 @@ def get_system_full():
 @app.get("/api/processes")
 def get_processes():
     """获取所有GPU上的进程列表"""
-    procs = get_cached_gpu_processes(
-        gpu_monitor.device_count,
-        simulate=gpu_monitor.is_simulated,
-    )
+    procs = get_cached_gpu_processes(gpu_monitor.device_count)
     return {"processes": procs}
 
 
 @app.get("/api/training/logs")
 def get_training():
     """获取GPU训练进程的日志和指标"""
-    procs = get_cached_gpu_processes(
-        gpu_monitor.device_count,
-        simulate=gpu_monitor.is_simulated,
-    )
+    procs = get_cached_gpu_processes(gpu_monitor.device_count)
     logs = get_training_logs(procs)
     return {"training": logs}
 
@@ -126,7 +122,7 @@ def api_set_power_limit(req: PowerLimitRequest):
     """设置GPU功耗上限"""
     if req.gpu_index >= gpu_monitor.device_count:
         raise HTTPException(status_code=404, detail=f"GPU {req.gpu_index} 不存在")
-    result = set_power_limit(req.gpu_index, req.power_limit, simulate=gpu_monitor.is_simulated)
+    result = set_power_limit(req.gpu_index, req.power_limit)
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result["error"])
     return result
@@ -135,7 +131,7 @@ def api_set_power_limit(req: PowerLimitRequest):
 @app.post("/api/task/pause")
 def api_pause_task(req: TaskActionRequest):
     """暂停进程"""
-    result = pause_task(req.pid, simulate=gpu_monitor.is_simulated)
+    result = pause_task(req.pid)
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result["error"])
     return result
@@ -144,7 +140,7 @@ def api_pause_task(req: TaskActionRequest):
 @app.post("/api/task/resume")
 def api_resume_task(req: TaskActionRequest):
     """恢复进程"""
-    result = resume_task(req.pid, simulate=gpu_monitor.is_simulated)
+    result = resume_task(req.pid)
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result["error"])
     return result
@@ -153,7 +149,7 @@ def api_resume_task(req: TaskActionRequest):
 @app.post("/api/task/terminate")
 def api_terminate_task(req: TaskActionRequest):
     """终止进程"""
-    result = terminate_task(req.pid, simulate=gpu_monitor.is_simulated)
+    result = terminate_task(req.pid)
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result["error"])
     return result

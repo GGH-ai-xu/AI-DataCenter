@@ -39,9 +39,9 @@ class AgentSamplingTests(unittest.TestCase):
         fake_processes = [{"pid": 1, "gpu_index": 0}]
         with mock.patch.object(task_monitor, "get_all_gpu_processes", return_value=fake_processes) as mocked_scan:
             with mock.patch.object(task_monitor.time, "time", side_effect=[100.0, 101.0, 103.5]):
-                first = get_cached_gpu_processes(1, simulate=False)
-                second = get_cached_gpu_processes(1, simulate=False)
-                third = get_cached_gpu_processes(1, simulate=False)
+                first = get_cached_gpu_processes(1)
+                second = get_cached_gpu_processes(1)
+                third = get_cached_gpu_processes(1)
 
         self.assertEqual(mocked_scan.call_count, 2)
         self.assertEqual(first, second)

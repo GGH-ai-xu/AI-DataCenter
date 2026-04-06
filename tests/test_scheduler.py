@@ -34,8 +34,15 @@ class FakeStore:
     def __init__(self):
         self.logs = []
 
-    async def save_schedule_log(self, action, target, reason, result=""):
-        self.logs.append((action, target, reason, result))
+    async def save_schedule_log(
+        self,
+        action,
+        target,
+        reason,
+        result="",
+        gpu_indexes=None,
+    ):
+        self.logs.append((action, target, reason, result, gpu_indexes))
 
     async def get_all_task_priorities(self):
         return {}
@@ -63,7 +70,7 @@ class FakeReportStore:
 
 
 class SchedulerEngineTests(unittest.IsolatedAsyncioTestCase):
-    async def test_execute_actions_dry_run_does_not_call_agent(self):
+    async def test_execute_actions_calls_agent_and_logs_without_rehearsal_mode(self):
         agent = FakeAgent()
         store = FakeStore()
         scheduler = SchedulerEngine(agent, store)
@@ -75,14 +82,13 @@ class SchedulerEngineTests(unittest.IsolatedAsyncioTestCase):
                     "target": {"gpu_index": 0, "power_limit": 200},
                     "reason": "test",
                 }
-            ],
-            dry_run=True,
+            ]
         )
 
         self.assertTrue(results[0]["success"])
-        self.assertTrue(results[0]["dry_run"])
-        self.assertEqual(agent.calls, [])
-        self.assertEqual(store.logs, [])
+        self.assertNotIn("dry_run", results[0])
+        self.assertEqual(agent.calls, [("set_power_limit", 0, 200)])
+        self.assertEqual(len(store.logs), 1)
 
     async def test_execute_actions_real_calls_agent_and_logs(self):
         agent = FakeAgent()

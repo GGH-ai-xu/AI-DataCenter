@@ -1,4 +1,5 @@
 Set-StrictMode -Version Latest
+. "$PSScriptRoot\dev-console-helpers.ps1"
 
 $script:ManagedServiceProcesses = @()
 $script:ProcessLogPumpRegistrations = @()
@@ -7,7 +8,6 @@ $script:ManagedServiceStopRequested = $false
 $script:HttpReadyPollMilliseconds = 500
 $script:EventSourcePrefix = "gpu-dev-launch"
 $script:ConsoleCancelHandler = $null
-$script:AnsiEscapePattern = [string][char]27 + '\[[0-9;?]*[ -/]*[@-~]'
 
 function Resolve-CommandPath {
   param([string]$CommandName)
@@ -44,22 +44,6 @@ function Get-FreePort {
   } finally {
     $listener.Stop()
   }
-}
-
-function Initialize-ConsoleEncoding {
-  [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-  $OutputEncoding = [System.Text.Encoding]::UTF8
-}
-
-function Write-ServiceLog {
-  param(
-    [string]$ServiceName,
-    [string]$Message
-  )
-
-  $timestamp = Get-Date -Format "HH:mm:ss"
-  $normalizedMessage = Normalize-ServiceLogMessage -Message $Message
-  Write-Host "$timestamp [$ServiceName] $normalizedMessage"
 }
 
 function Wait-HttpReady {
@@ -102,20 +86,6 @@ function ConvertTo-ProcessArgumentString {
   return ($ArgumentList | ForEach-Object {
     Format-ProcessArgument -Value ([string]$_)
   }) -join " "
-}
-
-function Normalize-ServiceLogMessage {
-  param([string]$Message)
-
-  if ([string]::IsNullOrEmpty($Message)) {
-    return ""
-  }
-
-  return [System.Text.RegularExpressions.Regex]::Replace(
-    $Message,
-    $script:AnsiEscapePattern,
-    ''
-  )
 }
 
 function New-ManagedProcessStartInfo {
@@ -286,6 +256,10 @@ function Stop-ManagedServiceProcesses {
     [Console].GetEvent("CancelKeyPress").RemoveEventHandler($null, $script:ConsoleCancelHandler)
     $script:ConsoleCancelHandler = $null
   }
+
+  if (Get-Command Remove-ManagedServiceStateFile -ErrorAction SilentlyContinue) {
+    Remove-ManagedServiceStateFile
+  }
   $script:ManagedServiceProcesses = @()
 }
 
@@ -294,7 +268,7 @@ function Register-ManagedServiceShutdown {
     return
   }
 
-  $null = Register-EngineEvent -SourceIdentifier "$($script:EventSourcePrefix).shutdown" -Action {
+  $null = Register-EngineEvent -SourceIdentifier PowerShell.Exiting -Action {
     Stop-ManagedServiceProcesses
   }
 
