@@ -50,13 +50,49 @@
 - 观察台 / 回放台 / 风险台
 - AI 辅助解释与报告展示
 
+## 核心算法
+
+平台内置多个治理与分析算法，详细的数学公式、参数选择依据与对比实验见 [`docs/algorithm-report.md`](docs/algorithm-report.md)。
+
+| 算法 | 用途 |
+|------|------|
+| EWA 指数加权平均 | 功耗与利用率短期趋势预测 |
+| 线性回归 | 中期功耗趋势拟合 |
+| 二次多项式拟合 | 非线性趋势捕捉（含防发散保护） |
+| 自动择优 | 逐小时 RMSE 竞选，自动选择最佳预测方法 |
+| 公平性评分（6 因子） | 量化多用户资源占用均衡度 |
+| 让路评分（5 因子） | 综合优先级、份额、内存、运行时和违规排序候选任务 |
+| 效率评分 | 利用率-功率比 + 温度惩罚 |
+| 碳排放核算 | 基于国网 2023 碳因子 0.5703 kgCO₂/kWh |
+
+## 前端组件架构
+
+前端采用 Vue 3 Composition API，视图层通过 composable 共享跨页面逻辑，业务组件按领域拆分：
+
+```text
+frontend/src/
+  composables/           跨视图共享逻辑
+    useExecutionMode.js    执行模式（演练/真实）
+    useActionFeedback.js   操作反馈通知
+    useDashboardData.js    首页数据聚合
+    useTaskManagerData.js  任务治理数据
+    ...
+  components/
+    dashboard/           首页组件
+    tasks/               任务治理组件
+    workspace/           布局壳组件
+    alerts/              告警组件
+  views/                 页面视图（6 个主视图）
+```
+
 ## 目录约定
 
 ```text
 backend/        FastAPI 后端
 server-agent/   本机执行与采集代理
 frontend/       Vue 3 前端
-tests/          基础单元测试
+tests/          单元测试与算法基准（213 项）
+docs/           算法报告与测试报告
 .github/        CI 工作流
 ```
 
@@ -191,8 +227,19 @@ python -m compileall .\backend\app .\server-agent
 ### 单元测试
 
 ```powershell
-python -m unittest discover -s .\tests -p "test_*.py"
+python -m pytest tests/ -v
 ```
+
+213 项测试覆盖：
+
+- **核心算法基准**（35 项）：EWA/线性/多项式预测精度、公平性评分边界、让路评分单调性、碳排放计算
+- **调度引擎**（22 项）：温度规则、功率预算、碳预算、tick 编排、参数校验
+- **公平治理**（33 项）：6 因子评分、分布差距、规则违规、让路排序、可治理判定
+- **能耗预测**（30 项）：三种预测算法行为、效率评分、规则建议、时段分类
+- **数据统计**（9 项）：聚合查询、采集时长、吞吐率计算
+- **工程质量**（84 项）：前端结构、启动脚本、性能热路径、隐私脱敏
+
+详细测试报告见 [`docs/test-report.md`](docs/test-report.md)。
 
 ### 前端构建
 

@@ -770,3 +770,44 @@ class DataStore:
         cursor = await self._db.execute(query, params)
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
+
+    async def get_data_statistics(self) -> dict:
+        """聚合各表记录数、采集时间范围与吞吐率，用于展示大数据处理规模"""
+        if not self._db:
+            return {"total_records": 0, "tables": {}, "collection_start": None,
+                    "collection_duration_hours": 0, "avg_records_per_hour": 0}
+
+        tables = {
+            "gpu_history": "GPU 功耗快照",
+            "process_history": "进程追踪记录",
+            "alerts": "告警事件",
+            "schedule_log": "调度动作日志",
+            "optimization_snapshots": "优化快照",
+            "governance_audit_log": "治理审计日志",
+        }
+        counts = {}
+        total = 0
+        for table_name, label in tables.items():
+            cursor = await self._db.execute(f"SELECT COUNT(*) AS cnt FROM {table_name}")
+            row = await cursor.fetchone()
+            cnt = row["cnt"] if row else 0
+            counts[table_name] = {"label": label, "count": cnt}
+            total += cnt
+
+        # 采集起始时间: gpu_history 中最早的 timestamp
+        cursor = await self._db.execute(
+            "SELECT MIN(timestamp) AS earliest FROM gpu_history"
+        )
+        row = await cursor.fetchone()
+        earliest = row["earliest"] if row else None
+        now = time.time()
+        duration_hours = (now - earliest) / 3600 if earliest else 0
+        avg_per_hour = total / duration_hours if duration_hours > 0 else 0
+
+        return {
+            "total_records": total,
+            "tables": counts,
+            "collection_start": earliest,
+            "collection_duration_hours": round(duration_hours, 1),
+            "avg_records_per_hour": round(avg_per_hour, 1),
+        }

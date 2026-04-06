@@ -19,6 +19,8 @@ import {
 import WorkspaceSummary from '../components/workspace/WorkspaceSummary.vue'
 import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
 import { useDomainRefresh } from '../composables/useDomainRefresh.js'
+import { useExecutionMode } from '../composables/useExecutionMode.js'
+import { useActionFeedback } from '../composables/useActionFeedback.js'
 
 const store = useAppStore()
 const activeTab = ref('control')
@@ -27,9 +29,8 @@ const timePeriod = ref('')
 const powerInputs = ref({})
 const scheduleResult = ref(null)
 const scheduleLoading = ref(false)
-const executionMode = ref('dry_run')
-const riskAcknowledged = ref(false)
-const actionNotice = ref(null)
+const { executionMode, riskAcknowledged, isDryRun, isReal, canExecute, modeLabel, modeBadgeClass, buildExecutionParams } = useExecutionMode()
+const { actionNotice, showNotice, clearNotice } = useActionFeedback()
 const budget = ref({
   enabled: false,
   total_power_budget: 1200,
@@ -82,7 +83,7 @@ const combinedResults = computed(() =>
 )
 
 const executionSummary = computed(() =>
-  executionMode.value === 'real'
+  isReal.value
     ? '当前为真实执行模式，调度与单卡限功率会立即作用于真实设备。'
     : '当前为演练模式，只输出动作预演，不会执行真实控制。'
 )
@@ -122,22 +123,10 @@ function applyBudgetState(nextBudget) {
   }
 }
 
-function setActionNotice(tone, title, detail) {
-  actionNotice.value = { tone, title, detail, ts: Date.now() }
-}
-
-function buildExecutionOptions() {
-  const isReal = executionMode.value === 'real'
-  return {
-    dry_run: !isReal,
-    acknowledge_risk: isReal && riskAcknowledged.value,
-  }
-}
-
 function ensureRiskAcknowledged(label) {
-  if (executionMode.value !== 'real') return true
+  if (!isReal.value) return true
   if (riskAcknowledged.value) return true
-  setActionNotice('warning', '尚未确认风险', `${label}前请先勾选风险确认。`)
+  showNotice('warning', '尚未确认风险', `${label}前请先勾选风险确认。`)
   return false
 }
 
@@ -222,19 +211,19 @@ async function setPower(gpuIndex) {
   const val = parseInt(powerInputs.value[gpuIndex])
   if (!val || val < 100 || val > 350) return
   if (!ensureRiskAcknowledged('单卡限功率')) return
-  if (executionMode.value === 'real' && !window.confirm(`将把 GPU ${gpuIndex} 的功耗上限设为 ${val}W，是否继续？`)) {
+  if (isReal.value && !window.confirm(`将把 GPU ${gpuIndex} 的功耗上限设为 ${val}W，是否继续？`)) {
     return
   }
   try {
-    const { data } = await setManualPowerLimit(gpuIndex, val, buildExecutionOptions())
-    setActionNotice(
+    const { data } = await setManualPowerLimit(gpuIndex, val, buildExecutionParams())
+    showNotice(
       data?.dry_run ? 'warning' : 'ok',
       data?.dry_run ? '已生成限功率预演' : '限功率已写入',
       data?.message || `GPU ${gpuIndex} 目标功耗上限 ${val}W。`,
     )
     await loadStatus()
   } catch (e) {
-    setActionNotice(
+    showNotice(
       'critical',
       '限功率失败',
       e?.response?.data?.detail || e?.message || '单卡功耗控制失败',
@@ -244,15 +233,15 @@ async function setPower(gpuIndex) {
 
 async function runOnce() {
   if (!ensureRiskAcknowledged('调度执行')) return
-  if (executionMode.value === 'real' && !window.confirm('将执行真实调度动作，是否继续？')) {
+  if (isReal.value && !window.confirm('将执行真实调度动作，是否继续？')) {
     return
   }
   scheduleLoading.value = true
   try {
-    const { data } = await runScheduleOnce(buildExecutionOptions())
+    const { data } = await runScheduleOnce(buildExecutionParams())
     scheduleResult.value = data
     applyBudgetState(data.budget)
-    setActionNotice(
+    showNotice(
       data?.dry_run ? 'warning' : 'ok',
       data?.dry_run ? '已生成调度预演' : '调度已执行',
       data?.dry_run
@@ -263,7 +252,7 @@ async function runOnce() {
     await loadEvaluation()
   } catch (e) {
     scheduleResult.value = { error: '调度执行失败' }
-    setActionNotice(
+    showNotice(
       'critical',
       '调度执行失败',
       e?.response?.data?.detail || e?.message || '调度执行失败',
@@ -366,8 +355,8 @@ onMounted(() => {
           <span class="status-badge" :class="budget.is_exceeded ? 'status-badge--critical' : 'status-badge--ok'">
             {{ budget.is_exceeded ? '预算紧张' : '预算平稳' }}
           </span>
-          <span class="status-badge" :class="executionMode === 'real' ? 'status-badge--warning' : 'status-badge--ok'">
-            {{ executionMode === 'real' ? '真实执行' : '演练模式' }}
+          <span class="status-badge" :class="modeBadgeClass">
+            {{ modeLabel }}
           </span>
         </div>
       </template>
@@ -580,20 +569,20 @@ onMounted(() => {
           <div class="execution-panel__switch">
             <button
               class="btn-tech"
-              :class="{ 'btn-tech--primary': executionMode === 'dry_run' }"
+              :class="{ 'btn-tech--primary': isDryRun }"
               @click="executionMode = 'dry_run'"
             >
               演练模式
             </button>
             <button
               class="btn-tech"
-              :class="{ 'btn-tech--primary': executionMode === 'real' }"
+              :class="{ 'btn-tech--primary': isReal }"
               @click="executionMode = 'real'"
             >
               真实执行
             </button>
           </div>
-          <label v-if="executionMode === 'real'" class="execution-panel__ack">
+          <label v-if="isReal" class="execution-panel__ack">
             <input v-model="riskAcknowledged" type="checkbox" />
             我已确认会直接改动真实任务与功耗限制
           </label>
@@ -602,7 +591,7 @@ onMounted(() => {
           {{ executionSummary }}
         </div>
         <button class="btn-tech btn-tech--primary" @click="runOnce" :disabled="scheduleLoading">
-          {{ scheduleLoading ? '执行中...' : executionMode === 'real' ? '执行一次真实调度' : '演练一次调度' }}
+          {{ scheduleLoading ? '执行中...' : isReal ? '执行一次真实调度' : '演练一次调度' }}
         </button>
       </div>
 

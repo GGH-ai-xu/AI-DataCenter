@@ -7,6 +7,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { createDemoAlert, getSystemSelfCheck, testConnectionConfig, updateConnectionConfig } from '../services/api'
 import DashboardLiveWorkspace from '../components/dashboard/DashboardLiveWorkspace.vue'
+import DataStatisticsCard from '../components/dashboard/DataStatisticsCard.vue'
 import WorkspaceSummary from '../components/workspace/WorkspaceSummary.vue'
 import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
 import { useAppStore } from '../stores/app'
@@ -1601,6 +1602,10 @@ onUnmounted(() => {
           </div>
         </div>
       </section>
+
+      <section class="data-stats-row">
+        <DataStatisticsCard />
+      </section>
     </template>
 
     <template v-if="workspaceReady && activeTab === 'live'">
@@ -2286,6 +2291,11 @@ onUnmounted(() => {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 14px;
+}
+
+.data-stats-row {
+  margin-top: 14px;
+  max-width: 480px;
 }
 
 .workbench-card {

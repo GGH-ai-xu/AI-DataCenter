@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import {
   deleteGovernanceRule,
   exportGovernanceReport,
@@ -11,22 +11,23 @@ import {
 } from '../services/api'
 import { exportTextFile } from '../services/desktopExport'
 import TaskProcessLedger from '../components/tasks/TaskProcessLedger.vue'
+import FairnessGaugeCard from '../components/tasks/FairnessGaugeCard.vue'
+import UserRulesGrid from '../components/tasks/UserRulesGrid.vue'
 import WorkspacePaneLayout from '../components/workspace/WorkspacePaneLayout.vue'
 import WorkspaceSummary from '../components/workspace/WorkspaceSummary.vue'
 import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
 import { useTaskManagerData } from '../composables/useTaskManagerData.js'
+import { useExecutionMode } from '../composables/useExecutionMode.js'
+import { useActionFeedback } from '../composables/useActionFeedback.js'
 
 const activeTab = ref('actions')
 const keyword = ref('')
 const selectedPriority = ref('all')
 const showAllProcesses = ref(false)
-const executionMode = ref('dry_run')
-const riskAcknowledged = ref(false)
+const { executionMode, riskAcknowledged, isDryRun, isReal, canExecute, modeLabel, modeBadgeClass, buildExecutionParams } = useExecutionMode()
+const { actionNotice, showNotice, clearNotice } = useActionFeedback()
 const exporting = ref(false)
-const actionNotice = ref(null)
 const actionLoading = ref({})
-const ruleSaving = ref({})
-const ruleDrafts = ref({})
 const taskTabs = [
   { key: 'actions', label: '待处置任务', desc: '筛选与执行' },
   { key: 'fairness', label: '公平治理', desc: '占用结构与让路建议' },
@@ -46,12 +47,6 @@ const priorityColors = {
   urgent: { bg: 'rgba(196,30,58,0.12)', color: '#C41E3A', label: '紧急' },
   normal: { bg: 'rgba(58,95,75,0.12)', color: '#3A5F4B', label: '普通' },
   deferrable: { bg: 'rgba(148,163,184,0.12)', color: '#666666', label: '可延迟' },
-}
-
-const roleOptions = {
-  protected: '保护用户',
-  member: '普通用户',
-  restricted: '受限用户',
 }
 
 const fmtMem = (bytes) => `${((bytes || 0) / 1073741824).toFixed(1)} GB`
@@ -108,60 +103,20 @@ function getCategoryClass(proc) {
   return 'status-badge--ok'
 }
 
-function setActionNotice(tone, title, detail) {
-  actionNotice.value = { tone, title, detail }
-}
-
 const fairnessOverview = computed(() => fairnessState.value.overview || {})
 const fairnessUsers = computed(() => fairnessState.value.users || [])
 const yieldCandidates = computed(() => fairnessState.value.yield_candidates || [])
 
-const fairnessGaugeColor = computed(() => {
-  const idx = fairnessOverview.value.fairness_index ?? 100
-  if (idx >= 70) return '#2E8B57'
-  if (idx >= 40) return '#B8860B'
-  return '#C41E3A'
-})
-const fairnessGaugeBg = computed(() => {
-  const idx = fairnessOverview.value.fairness_index ?? 100
-  if (idx >= 70) return 'rgba(46,139,87,0.08)'
-  if (idx >= 40) return 'rgba(184,134,11,0.08)'
-  return 'rgba(196,30,58,0.08)'
-})
-const fairnessLevelLabel = computed(() => {
-  const level = fairnessOverview.value.level || 'balanced'
-  return { balanced: '均衡', moderate: '轻度倾斜', skewed: '显著倾斜', critical: '严重不均' }[level] || level
-})
 const manageableProcessCount = computed(() => processSummary.value.manageableCount)
 const urgentCount = computed(() => processSummary.value.urgentCount)
 const totalGpuMemory = computed(() => processSummary.value.totalGpuMemory)
 const executionSummary = computed(() =>
-  executionMode.value === 'real'
+  isReal.value
     ? (riskAcknowledged.value
       ? '当前为真实执行模式，操作会直接作用于可治理 GPU 任务。'
       : '当前为真实执行模式，但还未确认风险，按钮会保持禁用。')
     : '当前为演练模式，只生成预演结果，不会改动真实进程。'
 )
-
-function buildRuleDraft(user) {
-  const rule = user.governance_rule || {}
-  return {
-    role: rule.role || 'member',
-    max_tasks: rule.max_tasks ?? 4,
-    max_gpu_count: rule.max_gpu_count ?? 1,
-    max_memory_gb: rule.max_memory_gb ?? 8,
-    allow_preempt: rule.allow_preempt ?? true,
-    note: rule.note || '',
-  }
-}
-
-function syncRuleDrafts(users) {
-  const next = { ...ruleDrafts.value }
-  for (const user of users || []) {
-    next[user.username] = buildRuleDraft(user)
-  }
-  ruleDrafts.value = next
-}
 
 async function loadTaskGovernance() {
   try {
@@ -171,31 +126,15 @@ async function loadTaskGovernance() {
   }
 }
 
-watch(
-  fairnessUsers,
-  (users) => {
-    syncRuleDrafts(users)
-  },
-  { immediate: true },
-)
-
-function buildActionOptions() {
-  const isReal = executionMode.value === 'real'
-  return {
-    dry_run: !isReal,
-    acknowledge_risk: isReal && riskAcknowledged.value,
-  }
-}
-
 function isActionDisabled(proc, action) {
   if (!isManageable(proc)) return true
-  if (executionMode.value === 'real' && !riskAcknowledged.value) return true
+  if (isReal.value && !riskAcknowledged.value) return true
   return Boolean(actionLoading.value[`${proc.pid}-${action}`])
 }
 
 function getActionHint(proc) {
   if (!isManageable(proc)) return '仅观察，不开放治理动作'
-  if (executionMode.value === 'dry_run') return '演练模式，不改动真实进程'
+  if (isDryRun.value) return '演练模式，不改动真实进程'
   if (!riskAcknowledged.value) return '确认风险后才会真实执行'
   return '将直接作用于真实进程'
 }
@@ -226,20 +165,20 @@ const ledgerHandlers = {
 
 async function doAction(proc, action) {
   if (!isManageable(proc)) {
-    setActionNotice('warning', '当前进程不可治理', getManageableReason(proc))
+    showNotice('warning', '当前进程不可治理', getManageableReason(proc))
     return
   }
-  if (executionMode.value === 'real' && !riskAcknowledged.value) {
-    setActionNotice('warning', '尚未确认风险', '真实执行前请先勾选风险确认。')
+  if (isReal.value && !riskAcknowledged.value) {
+    showNotice('warning', '尚未确认风险', '真实执行前请先勾选风险确认。')
     return
   }
-  if (executionMode.value === 'real' && action === 'terminate' && !window.confirm(`将终止真实进程 PID ${proc.pid}，是否继续？`)) {
+  if (isReal.value && action === 'terminate' && !window.confirm(`将终止真实进程 PID ${proc.pid}，是否继续？`)) {
     return
   }
 
   actionLoading.value[`${proc.pid}-${action}`] = true
   try {
-    const options = buildActionOptions()
+    const options = buildExecutionParams()
     let response = null
     if (action === 'pause') response = await pauseTask(proc.pid, options)
     else if (action === 'resume') response = await resumeTask(proc.pid, options)
@@ -247,16 +186,16 @@ async function doAction(proc, action) {
 
     const data = response?.data || {}
     if (data.dry_run) {
-      setActionNotice('warning', '已生成演练结果', data.message || `已完成 PID ${proc.pid} 的动作预演。`)
+      showNotice('warning', '已生成演练结果', data.message || `已完成 PID ${proc.pid} 的动作预演。`)
     } else {
       const actionLabel = action === 'pause' ? '暂停' : action === 'resume' ? '恢复' : '终止'
       const detail = data.message || `${actionLabel}指令已发送到 PID ${proc.pid}`
       const suffix = action === 'terminate' && data.forced ? '，进程对普通终止无响应，已执行强制结束。' : '。'
-      setActionNotice('ok', '真实动作已执行', `${detail}${suffix}`)
+      showNotice('ok', '真实动作已执行', `${detail}${suffix}`)
     }
   } catch (error) {
     console.error(error)
-    setActionNotice(
+    showNotice(
       'critical',
       '动作执行失败',
       error?.response?.data?.detail || error?.message || '任务动作执行失败',
@@ -269,7 +208,7 @@ async function doAction(proc, action) {
 
 async function changePriority(proc, priority) {
   if (!isManageable(proc)) {
-    setActionNotice('warning', '当前进程不可分级', getManageableReason(proc))
+    showNotice('warning', '当前进程不可分级', getManageableReason(proc))
     return
   }
   try {
@@ -280,37 +219,22 @@ async function changePriority(proc, priority) {
   }
 }
 
-async function saveRuleForUser(user) {
-  const draft = ruleDrafts.value[user.username]
-  if (!draft) return
-  ruleSaving.value[user.username] = true
+async function handleSaveRule(ruleData) {
   try {
-    await saveGovernanceRule({
-      username: user.username,
-      role: draft.role,
-      max_tasks: Number(draft.max_tasks),
-      max_gpu_count: Number(draft.max_gpu_count),
-      max_memory_gb: Number(draft.max_memory_gb),
-      allow_preempt: !!draft.allow_preempt,
-      note: draft.note || '',
-    })
+    await saveGovernanceRule(ruleData)
     await loadTaskGovernance()
   } catch (error) {
     console.error(error)
   }
-  ruleSaving.value[user.username] = false
 }
 
-async function resetRuleForUser(user) {
-  if (!user?.governance_rule) return
-  ruleSaving.value[user.username] = true
+async function handleResetRule(username) {
   try {
-    await deleteGovernanceRule(user.username)
+    await deleteGovernanceRule(username)
     await loadTaskGovernance()
   } catch (error) {
     console.error(error)
   }
-  ruleSaving.value[user.username] = false
 }
 
 async function doExportGovernance(fmt = 'markdown') {
@@ -320,14 +244,14 @@ async function doExportGovernance(fmt = 'markdown') {
     const filename = fmt === 'html' ? 'governance-report.html' : 'governance-report.md'
     const mime = fmt === 'html' ? 'text/html; charset=utf-8' : 'text/markdown; charset=utf-8'
     const saved = await exportTextFile(res.data, { filename, mime })
-    setActionNotice(
+    showNotice(
       'ok',
       '治理报告已导出',
       saved.path ? `已保存到 ${saved.path}` : `已开始下载 ${saved.filename}`,
     )
   } catch (error) {
     console.error(error)
-    setActionNotice(
+    showNotice(
       'critical',
       '治理报告导出失败',
       error?.message || '治理报告导出失败',
@@ -347,8 +271,8 @@ async function doExportGovernance(fmt = 'markdown') {
         <div class="ink-inline-meta">
           <span class="status-badge status-badge--ok">{{ manageableProcessCount }} 可治理</span>
           <span class="status-badge status-badge--warning">{{ urgentCount }} 紧急</span>
-          <span class="status-badge" :class="executionMode === 'real' ? 'status-badge--warning' : 'status-badge--ok'">
-            {{ executionMode === 'real' ? '真实执行' : '演练模式' }}
+          <span class="status-badge" :class="modeBadgeClass">
+            {{ modeLabel }}
           </span>
         </div>
       </template>
@@ -387,56 +311,7 @@ async function doExportGovernance(fmt = 'markdown') {
         </div>
 
         <section v-if="activeTab === 'fairness'" class="fairness-dashboard">
-      <div class="tech-card fairness-gauge-card">
-        <div class="fairness-gauge-card__head">
-          <div>
-            <div class="fairness-gauge-card__eyebrow">多用户资源公平度量化</div>
-            <div class="panel-card__title">公平治理仪表盘</div>
-          </div>
-          <div class="fairness-gauge-card__seal">衡</div>
-        </div>
-        <div class="fairness-gauge">
-          <div class="fairness-gauge__ring">
-            <svg viewBox="0 0 120 120" class="fairness-gauge__svg">
-              <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(0,0,0,0.04)" stroke-width="8" />
-              <circle cx="60" cy="60" r="52" fill="none"
-                :stroke="fairnessGaugeColor"
-                stroke-width="8"
-                stroke-linecap="round"
-                :stroke-dasharray="`${(fairnessOverview.fairness_index || 0) * 3.267} 326.7`"
-                stroke-dashoffset="0"
-                transform="rotate(-90 60 60)"
-                style="transition: stroke-dasharray 1.2s ease"
-              />
-            </svg>
-            <div class="fairness-gauge__value">
-              <span class="fairness-gauge__number stat-value" :style="{ color: fairnessGaugeColor }">{{ fairnessOverview.fairness_index ?? 0 }}</span>
-              <span class="fairness-gauge__label">公平指数</span>
-            </div>
-          </div>
-          <div class="fairness-gauge__info">
-            <div class="fairness-gauge__level" :style="{ color: fairnessGaugeColor, background: fairnessGaugeBg }">
-              {{ fairnessLevelLabel }}
-            </div>
-            <div class="fairness-gauge__summary">{{ fairnessOverview.summary || '当前共享状态稳定。' }}</div>
-          </div>
-        </div>
-        <div v-if="fairnessUsers.length" class="fairness-users-dist">
-          <div class="fairness-users-dist__title">用户资源占比</div>
-          <div class="fairness-bar-list">
-            <div v-for="user in fairnessUsers.slice(0, 6)" :key="user.username" class="fairness-bar-item">
-              <div class="fairness-bar-item__head">
-                <span class="fairness-bar-item__name">{{ user.username }}</span>
-                <span class="fairness-bar-item__pct">{{ user.memory_share_pct || 0 }}%</span>
-              </div>
-              <div class="fairness-bar-item__track">
-                <div class="fairness-bar-item__fill" :style="{ width: Math.min(user.memory_share_pct || 0, 100) + '%', background: (user.memory_share_pct || 0) > 60 ? '#C41E3A' : (user.memory_share_pct || 0) > 35 ? '#B8860B' : '#3A5F4B' }"></div>
-              </div>
-              <div class="fairness-bar-item__meta">{{ user.task_count }}任务 · {{ user.gpu_count }}卡</div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <FairnessGaugeCard :overview="fairnessOverview" :users="fairnessUsers" />
 
       <div class="fairness-side">
         <div class="tech-card panel-card">
@@ -469,57 +344,12 @@ async function doExportGovernance(fmt = 'markdown') {
       </div>
     </section>
 
-    <section v-if="activeTab === 'rules' && fairnessUsers.length" class="tech-card rules-panel">
-      <div class="rules-panel__head">
-        <div class="panel-card__title">用户额度规则</div>
-        <div class="rules-panel__hint">为活跃用户设置任务数、GPU数、显存额度与是否允许让路</div>
-      </div>
-      <div class="rules-grid">
-        <div v-for="user in fairnessUsers" :key="user.username" class="rule-card">
-          <div class="rule-card__top">
-            <div>
-              <div class="rule-card__name">{{ user.username }}</div>
-              <div class="rule-card__meta">
-                当前 {{ user.task_count }} 个任务 · {{ user.gpu_count }} 张GPU · {{ user.memory_share_pct }}%
-              </div>
-            </div>
-            <span class="rule-card__status" :class="user.violation_count ? 'rule-card__status--warn' : 'rule-card__status--ok'">
-              {{ user.violation_count ? `违规 ${user.violation_count}` : '规则内' }}
-            </span>
-          </div>
-
-          <div v-if="ruleDrafts[user.username]" class="rule-card__form">
-            <select v-model="ruleDrafts[user.username].role" class="task-select">
-              <option value="protected">{{ roleOptions.protected }}</option>
-              <option value="member">{{ roleOptions.member }}</option>
-              <option value="restricted">{{ roleOptions.restricted }}</option>
-            </select>
-            <input v-model.number="ruleDrafts[user.username].max_tasks" class="task-input" type="number" min="1" max="64" placeholder="最多任务" />
-            <input v-model.number="ruleDrafts[user.username].max_gpu_count" class="task-input" type="number" min="1" max="16" placeholder="最多GPU" />
-            <input v-model.number="ruleDrafts[user.username].max_memory_gb" class="task-input" type="number" min="1" step="0.5" max="1024" placeholder="显存额度(GB)" />
-            <select v-model="ruleDrafts[user.username].allow_preempt" class="task-select">
-              <option :value="true">允许让路</option>
-              <option :value="false">保护任务</option>
-            </select>
-            <input v-model="ruleDrafts[user.username].note" class="task-input" type="text" placeholder="备注" />
-          </div>
-
-          <div class="rule-card__actions">
-            <button class="btn-tech" :disabled="ruleSaving[user.username]" @click="saveRuleForUser(user)">
-              {{ ruleSaving[user.username] ? '保存中...' : '保存规则' }}
-            </button>
-            <button class="btn-tech" :disabled="ruleSaving[user.username] || !user.governance_rule" @click="resetRuleForUser(user)">
-              恢复默认
-            </button>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section v-else-if="activeTab === 'rules'" class="tech-card rules-panel rules-panel--empty">
-      <div class="panel-card__title">用户额度规则</div>
-      <div class="panel-card__item">当前没有活跃用户需要配置规则。</div>
-    </section>
+    <UserRulesGrid
+      v-if="activeTab === 'rules'"
+      :users="fairnessUsers"
+      @save="handleSaveRule"
+      @reset="handleResetRule"
+    />
 
     <WorkspacePaneLayout v-if="activeTab === 'actions'">
       <template #main>
@@ -565,10 +395,10 @@ async function doExportGovernance(fmt = 'markdown') {
           <div class="panel-card__title">执行模式</div>
           <div class="mode-box">
             <div class="mode-box__switch">
-              <button class="btn-tech" :class="{ 'btn-tech--primary': executionMode === 'dry_run' }" @click="executionMode = 'dry_run'">演练模式</button>
-              <button class="btn-tech" :class="{ 'btn-tech--primary': executionMode === 'real' }" @click="executionMode = 'real'">真实执行</button>
+              <button class="btn-tech" :class="{ 'btn-tech--primary': isDryRun }" @click="executionMode = 'dry_run'">演练模式</button>
+              <button class="btn-tech" :class="{ 'btn-tech--primary': isReal }" @click="executionMode = 'real'">真实执行</button>
             </div>
-            <label v-if="executionMode === 'real'" class="mode-box__ack">
+            <label v-if="isReal" class="mode-box__ack">
               <input v-model="riskAcknowledged" type="checkbox" />
               我已确认会直接作用于真实进程
             </label>
@@ -784,58 +614,6 @@ async function doExportGovernance(fmt = 'markdown') {
   font-weight: 700;
 }
 
-.rules-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
-  margin-top: 12px;
-}
-
-.rule-card {
-  padding: 14px;
-  border-radius: 12px;
-  background: rgba(91,75,140,0.03);
-  border: 1px solid rgba(91,75,140,0.08);
-}
-
-.rule-card__top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-
-.rule-card__name {
-  font-size: 0.92rem;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.rule-card__status {
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 0.6875rem;
-  font-weight: 700;
-}
-
-.rule-card__status--ok {
-  color: #2E8B57;
-  background: rgba(46,139,87,0.08);
-}
-
-.rule-card__status--warn {
-  color: #C41E3A;
-  background: rgba(196,30,58,0.08);
-}
-
-.rule-card__form {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
 .toolbar-card {
   display: flex;
   align-items: center;
@@ -916,8 +694,7 @@ async function doExportGovernance(fmt = 'markdown') {
     grid-template-columns: repeat(3, 1fr);
   }
 
-  .fairness-dashboard,
-  .rules-grid {
+  .fairness-dashboard {
     grid-template-columns: 1fr;
   }
 }
@@ -928,9 +705,7 @@ async function doExportGovernance(fmt = 'markdown') {
   .toolbar-card,
   .toolbar-card__left,
   .toolbar-card__right,
-  .toolbar-card__switch,
-  .rule-card__top,
-  .rule-card__actions {
+  .toolbar-card__switch {
     flex-direction: column;
     align-items: stretch;
   }
@@ -938,170 +713,6 @@ async function doExportGovernance(fmt = 'markdown') {
   .stats-grid {
     grid-template-columns: 1fr;
   }
-
-  .rule-card__form {
-    grid-template-columns: 1fr;
-  }
 }
 
-/* ===== 公平治理仪表盘 ===== */
-.fairness-dashboard {
-  display: grid;
-  grid-template-columns: 1.2fr 1fr;
-  gap: 14px;
-  margin-bottom: 14px;
-}
-
-.fairness-side {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.fairness-gauge-card {
-  padding: 20px 22px;
-}
-
-.fairness-gauge-card__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 18px;
-}
-
-.fairness-gauge-card__eyebrow {
-  font-size: 0.6875rem;
-  color: var(--text-muted);
-  letter-spacing: 0.12em;
-  margin-bottom: 4px;
-}
-
-.fairness-gauge-card__seal {
-  width: 36px;
-  height: 36px;
-  border: 2.5px solid var(--ink-vermillion, #C41E3A);
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-seal);
-  font-size: 0.85rem;
-  color: var(--ink-vermillion, #C41E3A);
-  transform: rotate(-5deg);
-  opacity: 0.6;
-}
-
-.fairness-gauge {
-  display: flex;
-  align-items: center;
-  gap: 24px;
-  margin-bottom: 20px;
-}
-
-.fairness-gauge__ring {
-  position: relative;
-  width: 120px;
-  height: 120px;
-  flex-shrink: 0;
-}
-
-.fairness-gauge__svg {
-  width: 100%;
-  height: 100%;
-}
-
-.fairness-gauge__value {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
-
-.fairness-gauge__number {
-  font-size: 2rem;
-  line-height: 1;
-}
-
-.fairness-gauge__label {
-  font-size: 0.625rem;
-  color: var(--text-muted);
-  margin-top: 4px;
-  letter-spacing: 0.1em;
-}
-
-.fairness-gauge__info {
-  flex: 1;
-}
-
-.fairness-gauge__level {
-  display: inline-block;
-  padding: 3px 12px;
-  border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 700;
-  margin-bottom: 8px;
-}
-
-.fairness-gauge__summary {
-  font-size: 0.84rem;
-  color: var(--text-secondary);
-  line-height: 1.7;
-}
-
-.fairness-users-dist {
-  padding-top: 16px;
-  border-top: 1px solid var(--border-color);
-}
-
-.fairness-users-dist__title {
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin-bottom: 12px;
-}
-
-.fairness-bar-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.fairness-bar-item__head {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 4px;
-}
-
-.fairness-bar-item__name {
-  font-size: 0.75rem;
-  color: var(--text-primary);
-  font-weight: 600;
-}
-
-.fairness-bar-item__pct {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-  font-variant-numeric: tabular-nums;
-}
-
-.fairness-bar-item__track {
-  height: 6px;
-  border-radius: 3px;
-  background: rgba(0,0,0,0.04);
-  overflow: hidden;
-}
-
-.fairness-bar-item__fill {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 1s ease;
-}
-
-.fairness-bar-item__meta {
-  margin-top: 2px;
-  font-size: 0.625rem;
-  color: var(--text-muted);
-}
 </style>

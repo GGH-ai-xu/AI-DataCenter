@@ -252,6 +252,14 @@ async def self_check():
     }
 
 
+@router.get("/data-statistics")
+async def get_data_statistics():
+    """聚合各数据表记录数，展示平台数据采集规模"""
+    from app.main import app_state
+
+    return await app_state.store.get_data_statistics()
+
+
 @router.post("/demo-alert")
 async def create_demo_alert():
     """写入一条可安全忽略的测试告警，便于验证风险台链路"""
