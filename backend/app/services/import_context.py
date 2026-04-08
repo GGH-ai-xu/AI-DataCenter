@@ -145,11 +145,24 @@ class ImportContextService:
         if not agent_health:
             return self.mark_invalid("当前导入目标不可达，需要重新导入")
 
-        available = {int(item.get("index", -1)) for item in gpus or []}
-        missing = [index for index in selected if index not in available]
+        found = {int(item.get("index", -1)) for item in gpus or []}
+        missing = [index for index in selected if index not in found]
         if missing:
             labels = ", ".join(f"GPU {index}" for index in missing)
             return self.mark_invalid(f"已导入的 {labels} 不再存在")
+        unavailable = [
+            index
+            for index in selected
+            if any(
+                int(item.get("index", -1)) == index and not item.get("available", True)
+                for item in gpus or []
+            )
+        ]
+        if unavailable:
+            if len(unavailable) == 1:
+                return self.mark_invalid(f"已导入的 GPU {unavailable[0]} 当前不可用")
+            labels = ", ".join(f"GPU {index}" for index in unavailable)
+            return self.mark_invalid(f"已导入的 {labels} 当前不可用")
 
         was_valid = bool(self._state.get("valid"))
         had_reason = bool(self._state.get("invalid_reason"))

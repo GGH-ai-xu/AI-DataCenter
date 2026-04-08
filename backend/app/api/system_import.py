@@ -145,8 +145,22 @@ async def scan_import_context_route(request: Request, req: ImportScanRequest):
 
 
 def _missing_gpu_indexes(req: ImportCommitRequest, gpus: list[dict]) -> list[int]:
-    available = {int(item.get("index", -1)) for item in gpus}
-    return [index for index in req.gpu_indexes if int(index) not in available]
+    found = {int(item.get("index", -1)) for item in gpus}
+    return [index for index in req.gpu_indexes if int(index) not in found]
+
+
+def _unavailable_gpu_indexes(req: ImportCommitRequest, gpus: list[dict]) -> list[int]:
+    available = {
+        int(item.get("index", -1))
+        for item in gpus
+        if item.get("available", True)
+    }
+    found = {int(item.get("index", -1)) for item in gpus}
+    return [
+        index
+        for index in req.gpu_indexes
+        if int(index) in found and int(index) not in available
+    ]
 
 
 def _raise_for_missing_gpus(missing: list[int]) -> None:
@@ -154,6 +168,13 @@ def _raise_for_missing_gpus(missing: list[int]) -> None:
         return
     missing_text = ", ".join(f"GPU {index}" for index in missing)
     raise HTTPException(status_code=400, detail=f"{missing_text} 当前不存在，无法导入")
+
+
+def _raise_for_unavailable_gpus(unavailable: list[int]) -> None:
+    if not unavailable:
+        return
+    unavailable_text = ", ".join(f"GPU {index}" for index in unavailable)
+    raise HTTPException(status_code=400, detail=f"{unavailable_text} 当前不可用，无法导入")
 
 
 def _resolve_active_credentials(target, credentials: dict, credential_id: str | None):
@@ -208,6 +229,7 @@ async def commit_import_context(request_or_req, req: ImportCommitRequest | None 
 
     gpus = list(probe.get("gpus") or [])
     _raise_for_missing_gpus(_missing_gpu_indexes(req, gpus))
+    _raise_for_unavailable_gpus(_unavailable_gpu_indexes(req, gpus))
     try:
         credential_id = _resolve_active_credentials(target, credentials, target.credential_id)
         saved_target = await _activate_import_target(target, credentials, credential_id)

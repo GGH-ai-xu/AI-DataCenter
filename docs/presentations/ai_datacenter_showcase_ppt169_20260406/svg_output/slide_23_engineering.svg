@@ -1,0 +1,63 @@
+<?xml version="1.0" ?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <linearGradient id="titleGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#17313A"/>
+      <stop offset="100%" stop-color="#19A38C"/>
+    </linearGradient>
+    <radialGradient id="bgDecor" cx="80%" cy="12%" r="42%">
+      <stop offset="0%" stop-color="#5B8DEF" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#5B8DEF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="0" y="0" width="1280" height="720" rx="0" fill="#F7F9FB"/>
+  <rect x="0" y="0" width="1280" height="720" rx="0" fill="url(#bgDecor)"/>
+  <rect x="0" y="0" width="1280" height="6" rx="0" fill="url(#titleGradient)"/>
+  <text x="56" y="45" font-family="Microsoft YaHei, Arial, sans-serif" font-size="29" font-weight="bold" fill="#17313A" text-anchor="start">工程化链路让系统可交付</text>
+  <rect x="56" y="64" width="1168" height="44" rx="10" fill="#17313A"/>
+  <text x="78" y="92" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="bold" fill="#FFFFFF" text-anchor="start">脚本、测试和桌面化运行能力共同提高了系统的稳定性和展示完成度。</text>
+  <line x1="0" y1="694" x2="1280" y2="694" stroke="#D8E0E8" stroke-width="1"/>
+  <text x="40" y="711" font-family="Microsoft YaHei, Arial, sans-serif" font-size="10" font-weight="normal" fill="#8A94A3" text-anchor="start">Source: AI DataCenter repository and implemented product features</text>
+  <text x="640" y="711" font-family="Microsoft YaHei, Arial, sans-serif" font-size="10" font-weight="normal" fill="#8A94A3" text-anchor="middle">STRICTLY CONFIDENTIAL  |  AI DATACENTER SHOWCASE</text>
+  <text x="1240" y="711" font-family="Microsoft YaHei, Arial, sans-serif" font-size="10" font-weight="normal" fill="#8A94A3" text-anchor="end">23</text>
+  <rect x="88" y="190" width="250" height="390" rx="12" fill="#17313A" fill-opacity="0.05"/>
+  <rect x="84" y="184" width="250" height="390" rx="12" fill="#FFFFFF" stroke="#D8E0E8" stroke-width="1"/>
+  <rect x="84" y="184" width="250" height="6" rx="12" fill="#17313A"/>
+  <use data-icon="cog" x="106" y="214" width="28" height="28" fill="#17313A"/>
+  <text x="146" y="236" font-family="Microsoft YaHei, Arial, sans-serif" font-size="22" font-weight="bold" fill="#17313A" text-anchor="start">启动治理</text>
+  <circle cx="116" cy="280" r="5" fill="#17313A"/>
+  <text x="132" y="286" font-family="Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="normal" fill="#1F2937" text-anchor="start">start-dev 清理旧进程</text>
+  <circle cx="116" cy="314" r="5" fill="#17313A"/>
+  <text x="132" y="320" font-family="Microsoft YaHei, Arial, sans-serif" font-size="10" font-weight="normal" fill="#1F2937" text-anchor="start">重新拉起 agent/backend/frontend</text>
+  <rect x="366" y="190" width="250" height="390" rx="12" fill="#17313A" fill-opacity="0.05"/>
+  <rect x="362" y="184" width="250" height="390" rx="12" fill="#FFFFFF" stroke="#D8E0E8" stroke-width="1"/>
+  <rect x="362" y="184" width="250" height="6" rx="12" fill="#5B8DEF"/>
+  <use data-icon="key" x="384" y="214" width="28" height="28" fill="#5B8DEF"/>
+  <text x="424" y="236" font-family="Microsoft YaHei, Arial, sans-serif" font-size="22" font-weight="bold" fill="#17313A" text-anchor="start">依赖治理</text>
+  <circle cx="394" cy="280" r="5" fill="#5B8DEF"/>
+  <text x="410" y="286" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" font-weight="normal" fill="#1F2937" text-anchor="start">install-deps 处理 .venv 占用</text>
+  <circle cx="394" cy="314" r="5" fill="#5B8DEF"/>
+  <text x="410" y="320" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" font-weight="normal" fill="#1F2937" text-anchor="start">修复 Windows optional binding</text>
+  <rect x="644" y="190" width="250" height="390" rx="12" fill="#17313A" fill-opacity="0.05"/>
+  <rect x="640" y="184" width="250" height="390" rx="12" fill="#FFFFFF" stroke="#D8E0E8" stroke-width="1"/>
+  <rect x="640" y="184" width="250" height="6" rx="12" fill="#19A38C"/>
+  <use data-icon="chart-bar" x="662" y="214" width="28" height="28" fill="#19A38C"/>
+  <text x="702" y="236" font-family="Microsoft YaHei, Arial, sans-serif" font-size="22" font-weight="bold" fill="#17313A" text-anchor="start">验证链路</text>
+  <circle cx="672" cy="280" r="5" fill="#19A38C"/>
+  <text x="688" y="286" font-family="Microsoft YaHei, Arial, sans-serif" font-size="15" font-weight="normal" fill="#1F2937" text-anchor="start">npm test / npm run build</text>
+  <circle cx="672" cy="314" r="5" fill="#19A38C"/>
+  <text x="688" y="320" font-family="Microsoft YaHei, Arial, sans-serif" font-size="15" font-weight="normal" fill="#1F2937" text-anchor="start">根级 unittest</text>
+  <rect x="922" y="190" width="250" height="390" rx="12" fill="#17313A" fill-opacity="0.05"/>
+  <rect x="918" y="184" width="250" height="390" rx="12" fill="#FFFFFF" stroke="#D8E0E8" stroke-width="1"/>
+  <rect x="918" y="184" width="250" height="6" rx="12" fill="#1F9D68"/>
+  <use data-icon="server" x="940" y="214" width="28" height="28" fill="#1F9D68"/>
+  <text x="980" y="236" font-family="Microsoft YaHei, Arial, sans-serif" font-size="22" font-weight="bold" fill="#17313A" text-anchor="start">交付形态</text>
+  <circle cx="950" cy="280" r="5" fill="#1F9D68"/>
+  <text x="966" y="286" font-family="Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="normal" fill="#1F2937" text-anchor="start">Electron 桌面壳</text>
+  <circle cx="950" cy="314" r="5" fill="#1F9D68"/>
+  <text x="966" y="320" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" font-weight="normal" fill="#1F2937" text-anchor="start">Windows 开发与打包脚本</text>
+  <rect x="88" y="602" width="1112" height="52" rx="12" fill="#17313A" fill-opacity="0.05"/>
+  <rect x="84" y="596" width="1112" height="52" rx="12" fill="#FFFFFF" stroke="#D8E0E8" stroke-width="1"/>
+  <rect x="84" y="596" width="1112" height="6" rx="12" fill="#17313A"/>
+  <text x="114" y="629" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="bold" fill="#17313A" text-anchor="start">这些脚本和校验链路的意义，是把项目从“能跑起来”提升到“可持续开发和可稳定展示”。</text>
+</svg>

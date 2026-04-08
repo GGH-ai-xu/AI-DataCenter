@@ -92,6 +92,53 @@ test('saved host scan keeps binding and advances to hardware', async () => {
   assert.equal(controller.savedHostSummary.value.target, 'dell@10.151.225.108:22')
 })
 
+test('saved host scan selects only available gpu indexes by default', async () => {
+  const controller = createImportWorkspaceController({
+    router: createRouterStub(),
+    store: createStoreStub(),
+    auth: { currentUser: { role: 'admin' } },
+    savedHosts: createSavedHostsStub([
+      {
+        id: 1,
+        label: 'ssh',
+        provider_type: 'ssh_linux',
+        host: '10.151.225.108',
+        port: 22,
+        username: 'dell',
+        auth_type: 'password',
+        credential_status: 'ok',
+      },
+    ]),
+    api: {
+      getImportContext: async () => ({ data: { imported_gpu_indexes: [] } }),
+      scanImportContext: async () => ({
+        data: {
+          success: true,
+          message: '扫描成功',
+          provider: {
+            provider_type: 'ssh_linux',
+            label: 'ssh',
+            host: '10.151.225.108',
+            port: 22,
+            username: 'dell',
+            auth_type: 'password',
+          },
+          gpus: [
+            { index: 0, available: true },
+            { index: 1, available: false, error: 'Unknown Error' },
+            { index: 2, available: true },
+          ],
+        },
+      }),
+      commitImportContext: async () => ({ data: {} }),
+    },
+  })
+
+  await controller.handleSavedHostScan(1)
+
+  assert.deepEqual(controller.selectedGpuIndexes.value, [0, 2])
+})
+
 test('saved host import continues to commit saved_host_id only', async () => {
   const commitPayloads = []
   const router = createRouterStub()

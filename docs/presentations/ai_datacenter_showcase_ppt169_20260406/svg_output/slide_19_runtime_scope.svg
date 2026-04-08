@@ -1,0 +1,81 @@
+<?xml version="1.0" ?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <linearGradient id="titleGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#17313A"/>
+      <stop offset="100%" stop-color="#19A38C"/>
+    </linearGradient>
+    <radialGradient id="bgDecor" cx="80%" cy="12%" r="42%">
+      <stop offset="0%" stop-color="#5B8DEF" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#5B8DEF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="0" y="0" width="1280" height="720" rx="0" fill="#F7F9FB"/>
+  <rect x="0" y="0" width="1280" height="720" rx="0" fill="url(#bgDecor)"/>
+  <rect x="0" y="0" width="1280" height="6" rx="0" fill="url(#titleGradient)"/>
+  <text x="56" y="45" font-family="Microsoft YaHei, Arial, sans-serif" font-size="29" font-weight="bold" fill="#17313A" text-anchor="start">导入层是运行时范围入口</text>
+  <rect x="56" y="64" width="1168" height="44" rx="10" fill="#17313A"/>
+  <text x="78" y="92" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="bold" fill="#FFFFFF" text-anchor="start">import context 把接入来源和导入 GPU 索引固定下来，控制台随后只消费过滤后的数据。</text>
+  <line x1="0" y1="694" x2="1280" y2="694" stroke="#D8E0E8" stroke-width="1"/>
+  <text x="40" y="711" font-family="Microsoft YaHei, Arial, sans-serif" font-size="10" font-weight="normal" fill="#8A94A3" text-anchor="start">Source: AI DataCenter repository and implemented product features</text>
+  <text x="640" y="711" font-family="Microsoft YaHei, Arial, sans-serif" font-size="10" font-weight="normal" fill="#8A94A3" text-anchor="middle">STRICTLY CONFIDENTIAL  |  AI DATACENTER SHOWCASE</text>
+  <text x="1240" y="711" font-family="Microsoft YaHei, Arial, sans-serif" font-size="10" font-weight="normal" fill="#8A94A3" text-anchor="end">19</text>
+  <rect x="96" y="256" width="170" height="92" rx="14" fill="#17313A" fill-opacity="0.05"/>
+  <rect x="92" y="250" width="170" height="92" rx="14" fill="#FFFFFF" stroke="#D8E0E8" stroke-width="1"/>
+  <rect x="92" y="250" width="170" height="6" rx="12" fill="#17313A"/>
+  <text x="177.0" y="292" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="bold" fill="#17313A" text-anchor="middle">
+    <tspan x="177.0" dy="0">用户登录</tspan>
+  </text>
+  <rect x="318" y="256" width="190" height="92" rx="14" fill="#17313A" fill-opacity="0.05"/>
+  <rect x="314" y="250" width="190" height="92" rx="14" fill="#FFFFFF" stroke="#D8E0E8" stroke-width="1"/>
+  <rect x="314" y="250" width="190" height="6" rx="12" fill="#19A38C"/>
+  <text x="409.0" y="292" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="bold" fill="#17313A" text-anchor="middle">
+    <tspan x="409.0" dy="0">导入准备页</tspan>
+  </text>
+  <rect x="560" y="256" width="200" height="92" rx="14" fill="#17313A" fill-opacity="0.05"/>
+  <rect x="556" y="250" width="200" height="92" rx="14" fill="#FFFFFF" stroke="#D8E0E8" stroke-width="1"/>
+  <rect x="556" y="250" width="200" height="6" rx="12" fill="#5B8DEF"/>
+  <text x="656.0" y="292" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="bold" fill="#17313A" text-anchor="middle">
+    <tspan x="656.0" dy="0">扫描与选卡</tspan>
+  </text>
+  <rect x="812" y="256" width="210" height="92" rx="14" fill="#17313A" fill-opacity="0.05"/>
+  <rect x="808" y="250" width="210" height="92" rx="14" fill="#FFFFFF" stroke="#D8E0E8" stroke-width="1"/>
+  <rect x="808" y="250" width="210" height="6" rx="12" fill="#1F9D68"/>
+  <text x="913.0" y="290" font-family="Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="bold" fill="#17313A" text-anchor="middle">
+    <tspan x="913.0" dy="0">提交 import context</tspan>
+  </text>
+  <rect x="1054" y="256" width="150" height="92" rx="14" fill="#17313A" fill-opacity="0.05"/>
+  <rect x="1050" y="250" width="150" height="92" rx="14" fill="#FFFFFF" stroke="#D8E0E8" stroke-width="1"/>
+  <rect x="1050" y="250" width="150" height="6" rx="12" fill="#17313A"/>
+  <text x="1125.0" y="292" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="bold" fill="#17313A" text-anchor="middle">
+    <tspan x="1125.0" dy="0">控制台</tspan>
+  </text>
+  <line x1="272" y1="296" x2="304" y2="296" stroke="#5B8DEF" stroke-width="5"/>
+  <polygon points="304,296 290,288 290,304" fill="#5B8DEF"/>
+  <line x1="514" y1="296" x2="546" y2="296" stroke="#5B8DEF" stroke-width="5"/>
+  <polygon points="546,296 532,288 532,304" fill="#5B8DEF"/>
+  <line x1="766" y1="296" x2="798" y2="296" stroke="#5B8DEF" stroke-width="5"/>
+  <polygon points="798,296 784,288 784,304" fill="#5B8DEF"/>
+  <line x1="1028" y1="296" x2="1040" y2="296" stroke="#5B8DEF" stroke-width="5"/>
+  <polygon points="1040,296 1026,288 1026,304" fill="#5B8DEF"/>
+  <rect x="164" y="424" width="960" height="174" rx="12" fill="#17313A" fill-opacity="0.05"/>
+  <rect x="160" y="418" width="960" height="174" rx="12" fill="#FFFFFF" stroke="#D8E0E8" stroke-width="1"/>
+  <rect x="160" y="418" width="960" height="6" rx="12" fill="#17313A"/>
+  <text x="188" y="452" font-family="Microsoft YaHei, Arial, sans-serif" font-size="22" font-weight="bold" fill="#17313A" text-anchor="start">运行时范围控制</text>
+  <rect x="210" y="494" width="240" height="54" rx="14" fill="#EDF2F6" stroke="#D8E0E8" stroke-width="1"/>
+  <text x="330" y="528" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="bold" fill="#17313A" text-anchor="middle">provider_type</text>
+  <rect x="500" y="494" width="240" height="54" rx="14" fill="#EDF2F6" stroke="#D8E0E8" stroke-width="1"/>
+  <text x="620" y="520" font-family="Microsoft YaHei, Arial, sans-serif" font-size="15" font-weight="bold" fill="#17313A" text-anchor="middle">
+    <tspan x="620" dy="0">imported_gpu</tspan>
+    <tspan x="620" dy="18">indexes</tspan>
+  </text>
+  <rect x="790" y="494" width="280" height="54" rx="14" fill="#EDF2F6" stroke="#D8E0E8" stroke-width="1"/>
+  <text x="930" y="520" font-family="Microsoft YaHei, Arial, sans-serif" font-size="15" font-weight="bold" fill="#17313A" text-anchor="middle">
+    <tspan x="930" dy="0">filtered GPUs</tspan>
+    <tspan x="930" dy="18">processes</tspan>
+  </text>
+  <line x1="450" y1="521" x2="500" y2="521" stroke="#19A38C" stroke-width="4"/>
+  <polygon points="500,521 486,513 486,529" fill="#19A38C"/>
+  <line x1="740" y1="521" x2="790" y2="521" stroke="#19A38C" stroke-width="4"/>
+  <polygon points="790,521 776,513 776,529" fill="#19A38C"/>
+</svg>

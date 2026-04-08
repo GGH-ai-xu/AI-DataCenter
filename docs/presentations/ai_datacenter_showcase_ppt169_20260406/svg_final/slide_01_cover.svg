@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <linearGradient id="coverGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#17313A" />
+      <stop offset="100%" stop-color="#19A38C" />
+    </linearGradient>
+    <radialGradient id="heroGlow" cx="78%" cy="18%" r="48%">
+      <stop offset="0%" stop-color="#5B8DEF" stop-opacity="0.22" />
+      <stop offset="100%" stop-color="#5B8DEF" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+  <rect x="0" y="0" width="1280" height="720" rx="0" fill="#F7F9FB" />
+  <rect x="0" y="0" width="1280" height="282" rx="0" fill="url(#coverGrad)" />
+  <rect x="0" y="0" width="1280" height="720" rx="0" fill="url(#heroGlow)" />
+  <circle cx="1080" cy="120" r="220" fill="#FFFFFF" fill-opacity="0.05" />
+  <circle cx="1080" cy="120" r="140" fill="#FFFFFF" fill-opacity="0.06" />
+  <circle cx="1080" cy="120" r="70" fill="#FFFFFF" fill-opacity="0.08" />
+  <line x1="0" y1="694" x2="1280" y2="694" stroke="#D8E0E8" stroke-width="1" />
+  <text x="40" y="711" font-family="Microsoft YaHei, Arial, sans-serif" font-size="10" font-weight="normal" fill="#8A94A3" text-anchor="start">Source: AI DataCenter repository and implemented product features</text>
+  <text x="640" y="711" font-family="Microsoft YaHei, Arial, sans-serif" font-size="10" font-weight="normal" fill="#8A94A3" text-anchor="middle">STRICTLY CONFIDENTIAL  |  PROJECT SHOWCASE</text>
+  <text x="1240" y="711" font-family="Microsoft YaHei, Arial, sans-serif" font-size="10" font-weight="normal" fill="#8A94A3" text-anchor="end">1</text>
+  <text x="78" y="54" font-family="Microsoft YaHei, Arial, sans-serif" font-size="11" font-weight="bold" fill="#FFFFFF" text-anchor="start" letter-spacing="2.5">GPU GOVERNANCE WORKBENCH  ·  PRODUCT PRESENTATION</text>
+  <line x1="78" y1="64" x2="420" y2="64" stroke="#FFFFFF" stroke-width="1" stroke-opacity="0.25" />
+  <text text-anchor="start" fill="#FFFFFF" font-weight="bold" font-family="Microsoft YaHei, Arial, sans-serif" font-size="54" x="80" y="150">AI DataCenter</text><text text-anchor="start" fill="#FFFFFF" font-weight="normal" font-family="Microsoft YaHei, Arial, sans-serif" font-size="20" x="80" y="234">面向共享算力场景的 GPU 导入、监控与治理平台</text><text x="80" y="278" font-family="Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="normal" fill="#D9F5EF" text-anchor="start">登录 -&gt; 导入准备 -&gt; 扫描硬件 -&gt; 选卡导入 -&gt; 控制台治理</text>
+  <rect x="84" y="352" width="610" height="176" rx="12" fill="#17313A" fill-opacity="0.05" />
+  <rect x="80" y="346" width="610" height="176" rx="12" fill="#FFFFFF" stroke="#D8E0E8" stroke-width="1" />
+  <rect x="80" y="346" width="610" height="6" rx="12" fill="#19A38C" />
+  <text x="108" y="378" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" font-weight="bold" fill="#8A94A3" text-anchor="start" letter-spacing="2">项目定位</text>
+  <text text-anchor="start" fill="#17313A" font-weight="bold" font-family="Microsoft YaHei, Arial, sans-serif" font-size="24" x="108" y="423">把“资源可见”升级为</text><text text-anchor="start" fill="#17313A" font-weight="bold" font-family="Microsoft YaHei, Arial, sans-serif" font-size="24" x="108" y="457">“范围清晰、动作可控、</text><text text-anchor="start" fill="#17313A" font-weight="bold" font-family="Microsoft YaHei, Arial, sans-serif" font-size="24" x="108" y="491">结果可复盘”的共享 GPU 治理平台</text><circle cx="112" cy="494" r="5" fill="#19A38C" />
+  <text x="128" y="500" font-family="Microsoft YaHei, Arial, sans-serif" font-size="15" font-weight="normal" fill="#1F2937" text-anchor="start">平台身份先于机器连接</text>
+  <circle cx="112" cy="520" r="5" fill="#19A38C" />
+  <text x="128" y="526" font-family="Microsoft YaHei, Arial, sans-serif" font-size="15" font-weight="normal" fill="#1F2937" text-anchor="start">治理范围先于控制台入口</text>
+  <circle cx="112" cy="546" r="5" fill="#19A38C" />
+  <text x="128" y="552" font-family="Microsoft YaHei, Arial, sans-serif" font-size="15" font-weight="normal" fill="#1F2937" text-anchor="start">凭据复用与安全边界同时成立</text>
+  <rect x="752" y="338" width="208" height="160" rx="12" fill="#17313A" fill-opacity="0.05" />
+  <rect x="748" y="332" width="208" height="160" rx="12" fill="#FFFFFF" stroke="#D8E0E8" stroke-width="1" />
+  <rect x="748" y="332" width="208" height="6" rx="12" fill="#19A38C" />
+  <text x="766" y="360" font-family="Microsoft YaHei, Arial, sans-serif" font-size="11" font-weight="bold" fill="#8A94A3" text-anchor="start" letter-spacing="1.4">接入模式</text>
+  <text x="766" y="404" font-family="Microsoft YaHei, Arial, sans-serif" font-size="34" font-weight="bold" fill="#19A38C" text-anchor="start">3</text>
+  <text text-anchor="start" fill="#5B6776" font-weight="normal" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" x="766" y="424">本机 Agent</text><text text-anchor="start" fill="#5B6776" font-weight="normal" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" x="766" y="442">远程 Agent</text><text text-anchor="start" fill="#5B6776" font-weight="normal" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" x="766" y="460">SSH Linux</text><rect x="984" y="338" width="208" height="160" rx="12" fill="#17313A" fill-opacity="0.05" />
+  <rect x="980" y="332" width="208" height="160" rx="12" fill="#FFFFFF" stroke="#D8E0E8" stroke-width="1" />
+  <rect x="980" y="332" width="208" height="6" rx="12" fill="#5B8DEF" />
+  <text x="998" y="360" font-family="Microsoft YaHei, Arial, sans-serif" font-size="11" font-weight="bold" fill="#8A94A3" text-anchor="start" letter-spacing="1.4">导入阶段</text>
+  <text x="998" y="404" font-family="Microsoft YaHei, Arial, sans-serif" font-size="34" font-weight="bold" fill="#5B8DEF" text-anchor="start">4</text>
+  <text text-anchor="start" fill="#5B6776" font-weight="normal" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" x="998" y="424">已保存主机、连接来源</text><text text-anchor="start" fill="#5B6776" font-weight="normal" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" x="998" y="442">硬件概览、选卡导入</text><rect x="752" y="520" width="208" height="126" rx="12" fill="#17313A" fill-opacity="0.05" />
+  <rect x="748" y="514" width="208" height="126" rx="12" fill="#FFFFFF" stroke="#D8E0E8" stroke-width="1" />
+  <rect x="748" y="514" width="208" height="6" rx="12" fill="#17313A" />
+  <text x="766" y="542" font-family="Microsoft YaHei, Arial, sans-serif" font-size="11" font-weight="bold" fill="#8A94A3" text-anchor="start" letter-spacing="1.4">控制台模块</text>
+  <text x="766" y="586" font-family="Microsoft YaHei, Arial, sans-serif" font-size="34" font-weight="bold" fill="#17313A" text-anchor="start">6+</text>
+  <text text-anchor="start" fill="#5B6776" font-weight="normal" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" x="766" y="610">监控、任务、告警、调度与 AI 辅助</text><rect x="984" y="520" width="208" height="126" rx="12" fill="#17313A" fill-opacity="0.05" />
+  <rect x="980" y="514" width="208" height="126" rx="12" fill="#FFFFFF" stroke="#D8E0E8" stroke-width="1" />
+  <rect x="980" y="514" width="208" height="6" rx="12" fill="#1F9D68" />
+  <text x="998" y="542" font-family="Microsoft YaHei, Arial, sans-serif" font-size="11" font-weight="bold" fill="#8A94A3" text-anchor="start" letter-spacing="1.4">核心边界</text>
+  <text x="998" y="586" font-family="Microsoft YaHei, Arial, sans-serif" font-size="34" font-weight="bold" fill="#1F9D68" text-anchor="start">1</text>
+  <text text-anchor="start" fill="#5B6776" font-weight="normal" font-family="Microsoft YaHei, Arial, sans-serif" font-size="10" x="998" y="610">控制台只治理本次导入选中的卡</text><rect x="80" y="560" width="78" height="28" rx="14" fill="#17313A" />
+  <text x="119.0" y="579" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" font-weight="bold" fill="#FFFFFF" text-anchor="middle">登录</text>
+  <rect x="176" y="560" width="78" height="28" rx="14" fill="#19A38C" />
+  <text x="215.0" y="579" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" font-weight="bold" fill="#FFFFFF" text-anchor="middle">导入</text>
+  <rect x="272" y="560" width="78" height="28" rx="14" fill="#5B8DEF" />
+  <text x="311.0" y="579" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" font-weight="bold" fill="#FFFFFF" text-anchor="middle">治理</text>
+  <rect x="368" y="560" width="78" height="28" rx="14" fill="#1F9D68" />
+  <text x="407.0" y="579" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" font-weight="bold" fill="#FFFFFF" text-anchor="middle">安全</text>
+</svg>

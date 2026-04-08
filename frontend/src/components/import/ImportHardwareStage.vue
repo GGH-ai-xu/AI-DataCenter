@@ -1,5 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue'
+import { isImportableGpu } from '../../lib/importGpuAvailability.js'
+import ImportHardwareGpuCards from './ImportHardwareGpuCards.vue'
 import ImportHardwareSummary from './ImportHardwareSummary.vue'
 import ImportSavedHostSummaryBar from './ImportSavedHostSummaryBar.vue'
 
@@ -15,19 +17,21 @@ const props = defineProps({
 })
 
 const activeView = ref('cards')
+const availableGpus = computed(() => props.gpus.filter((gpu) => isImportableGpu(gpu)))
+const unavailableCount = computed(() => Math.max(props.gpus.length - availableGpus.value.length, 0))
+const busyCount = computed(() =>
+  availableGpus.value.filter((gpu) => Number(gpu.gpu_utilization || 0) > 0).length)
+const idleCount = computed(() => Math.max(availableGpus.value.length - busyCount.value, 0))
+const totalMemory = computed(() =>
+  availableGpus.value.reduce((sum, gpu) => sum + Number(gpu.memory_total || 0), 0))
+const totalMemoryUsed = computed(() =>
+  availableGpus.value.reduce((sum, gpu) => sum + Number(gpu.memory_used || 0), 0))
 
 function formatMemoryMb(value) {
   const total = Number(value || 0)
   if (!total) return '0 GB'
   return `${(total / 1024).toFixed(1)} GB`
 }
-
-const busyCount = computed(() => props.gpus.filter((gpu) => Number(gpu.gpu_utilization || 0) > 0).length)
-const idleCount = computed(() => Math.max(props.gpus.length - busyCount.value, 0))
-const totalMemory = computed(() =>
-  props.gpus.reduce((sum, gpu) => sum + Number(gpu.memory_total || 0), 0))
-const totalMemoryUsed = computed(() =>
-  props.gpus.reduce((sum, gpu) => sum + Number(gpu.memory_used || 0), 0))
 </script>
 
 <template>
@@ -49,7 +53,7 @@ const totalMemoryUsed = computed(() =>
             <div>
               <div class="section-title">GPU 总览</div>
               <p class="import-hardware-stage__panel-copy">
-                先确认这次扫描出的卡池和主机状态是否可信，再进入选卡导入阶段。
+                坏卡会保留在结果里并标成不可用，可用卡仍然可以进入下一步选卡导入。
               </p>
             </div>
             <div class="import-hardware-stage__view-toggle">
@@ -76,47 +80,20 @@ const totalMemoryUsed = computed(() =>
             先在“连接来源”阶段完成一次扫描，系统才会展示 CPU 和 GPU 的真实硬件概览。
           </div>
 
-          <div v-else-if="activeView === 'cards'" class="import-hardware-stage__cards">
-            <article
-              v-for="gpu in props.gpus"
-              :key="gpu.index"
-              class="import-hardware-stage__card"
-            >
-              <div class="import-hardware-stage__card-head">
-                <div>
-                  <div class="import-hardware-stage__badge">GPU {{ gpu.index }}</div>
-                  <strong>{{ gpu.name }}</strong>
-                </div>
-                <span class="status-badge" :class="Number(gpu.gpu_utilization || 0) > 0 ? 'status-badge--ok' : 'status-badge--warning'">
-                  {{ Number(gpu.gpu_utilization || 0) > 0 ? '运行中' : '空闲' }}
-                </span>
-              </div>
-
-              <div class="import-hardware-stage__metrics">
-                <div>
-                  <span>温度</span>
-                  <strong>{{ Number(gpu.temperature || 0) }}°C</strong>
-                </div>
-                <div>
-                  <span>功耗</span>
-                  <strong>{{ Number(gpu.power_usage || 0).toFixed(0) }}W</strong>
-                </div>
-                <div>
-                  <span>利用率</span>
-                  <strong>{{ Number(gpu.gpu_utilization || 0) }}%</strong>
-                </div>
-                <div>
-                  <span>显存</span>
-                  <strong>{{ formatMemoryMb(gpu.memory_used) }} / {{ formatMemoryMb(gpu.memory_total) }}</strong>
-                </div>
-              </div>
-            </article>
-          </div>
+          <ImportHardwareGpuCards v-else-if="activeView === 'cards'" :gpus="props.gpus" />
 
           <div v-else class="import-hardware-stage__summary-grid">
             <article class="import-hardware-stage__summary-card">
               <span>发现 GPU</span>
               <strong>{{ props.gpus.length }} 张</strong>
+            </article>
+            <article class="import-hardware-stage__summary-card">
+              <span>可用 GPU</span>
+              <strong>{{ availableGpus.length }} 张</strong>
+            </article>
+            <article class="import-hardware-stage__summary-card">
+              <span>异常 GPU</span>
+              <strong>{{ unavailableCount }} 张</strong>
             </article>
             <article class="import-hardware-stage__summary-card">
               <span>繁忙 GPU</span>
@@ -146,8 +123,8 @@ const totalMemoryUsed = computed(() =>
             <strong>{{ props.agentUrl || '目标地址待识别' }}</strong>
           </article>
           <article class="import-hardware-stage__fact">
-            <span>GPU 数量</span>
-            <strong>{{ props.gpus.length }} 张</strong>
+            <span>可导入范围</span>
+            <strong>{{ availableGpus.length }} 张可用，{{ unavailableCount }} 张异常</strong>
           </article>
           <article class="import-hardware-stage__fact">
             <span>最近结果</span>
@@ -194,7 +171,6 @@ const totalMemoryUsed = computed(() =>
 
 .import-hardware-stage__panel-copy,
 .import-hardware-stage__fact span,
-.import-hardware-stage__metrics span,
 .import-hardware-stage__empty {
   font-size: 0.78rem;
   line-height: 1.7;
@@ -222,17 +198,16 @@ const totalMemoryUsed = computed(() =>
   color: var(--text-primary);
 }
 
-.import-hardware-stage__cards,
-.import-hardware-stage__summary-grid {
+.import-hardware-stage__summary-grid,
+.import-hardware-stage__facts {
   display: grid;
-  gap: 14px;
+  gap: 12px;
 }
 
-.import-hardware-stage__cards {
+.import-hardware-stage__summary-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.import-hardware-stage__card,
 .import-hardware-stage__summary-card,
 .import-hardware-stage__fact {
   display: grid;
@@ -243,31 +218,6 @@ const totalMemoryUsed = computed(() =>
   border: 1px solid rgba(26, 26, 26, 0.05);
 }
 
-.import-hardware-stage__card-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.import-hardware-stage__badge {
-  margin-bottom: 6px;
-  font-size: 0.74rem;
-  color: var(--accent-primary);
-}
-
-.import-hardware-stage__metrics {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.import-hardware-stage__metrics div {
-  display: grid;
-  gap: 4px;
-}
-
-.import-hardware-stage__card strong,
 .import-hardware-stage__summary-card strong,
 .import-hardware-stage__fact strong {
   font-size: 0.94rem;
@@ -276,15 +226,9 @@ const totalMemoryUsed = computed(() =>
   word-break: break-word;
 }
 
-.import-hardware-stage__facts {
-  display: grid;
-  gap: 12px;
-}
-
 @media (max-width: 960px) {
   .import-hardware-stage__shell,
-  .import-hardware-stage__cards,
-  .import-hardware-stage__metrics {
+  .import-hardware-stage__summary-grid {
     grid-template-columns: 1fr;
   }
 }

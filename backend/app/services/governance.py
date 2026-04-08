@@ -107,14 +107,16 @@ class GovernanceService:
     async def get_fairness_report(
         self,
         gpu_indexes: list[int] | None = None,
+        gpus: list[dict] | None = None,
+        processes: list[dict] | None = None,
     ) -> dict:
         gpus = self._filter_by_gpu_index(
-            await self.agent.get_all_gpus() or [],
+            gpus if gpus is not None else await self.agent.get_all_gpus() or [],
             "index",
             gpu_indexes,
         )
         processes = self._filter_by_gpu_index(
-            await self.agent.get_processes() or [],
+            processes if processes is not None else await self.agent.get_processes() or [],
             "gpu_index",
             gpu_indexes,
         )

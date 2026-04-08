@@ -4,6 +4,11 @@ from fastapi import APIRouter, Query
 from fastapi.responses import Response
 
 from app.models.schemas import UserGovernanceRuleUpdate
+from app.services.runtime_snapshot import (
+    has_runtime_snapshot,
+    snapshot_scoped_gpus,
+    snapshot_scoped_processes,
+)
 
 router = APIRouter(prefix="/api/governance", tags=["Governance"])
 
@@ -12,13 +17,23 @@ def _selected_gpu_indexes(app_state) -> list[int]:
     return app_state.import_context.selected_gpu_indexes()
 
 
+def _cached_scope(app_state) -> tuple[list[dict] | None, list[dict] | None]:
+    snapshot = getattr(app_state, "latest_runtime_snapshot", {})
+    if not has_runtime_snapshot(snapshot):
+        return None, None
+    return snapshot_scoped_gpus(snapshot), snapshot_scoped_processes(snapshot)
+
+
 @router.get("/fairness")
 async def get_fairness_governance():
     """获取用户公平治理分析结果"""
     from app.main import app_state
 
+    gpus, processes = _cached_scope(app_state)
     report = await app_state.governance.get_fairness_report(
         gpu_indexes=_selected_gpu_indexes(app_state),
+        gpus=gpus,
+        processes=processes,
     )
     return app_state.privacy.sanitize_governance_report(report)
 

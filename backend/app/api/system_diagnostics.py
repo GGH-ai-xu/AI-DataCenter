@@ -4,6 +4,14 @@ import time
 
 from fastapi import APIRouter
 
+from app.services.runtime_snapshot import (
+    has_runtime_snapshot,
+    snapshot_agent_health,
+    snapshot_collected_at,
+    snapshot_scoped_gpus,
+    snapshot_scoped_processes,
+    snapshot_scoped_system,
+)
 from app.ws.realtime import ws_manager
 
 
@@ -131,24 +139,48 @@ def _build_summary(
     }
 
 
+def _cached_self_check_data(app_state, snapshot: dict):
+    agent_health = snapshot_agent_health(snapshot)
+    connection = app_state.connection.snapshot(agent_health)
+    gpus = snapshot_scoped_gpus(snapshot)
+    processes = snapshot_scoped_processes(snapshot)
+    system_info = snapshot_scoped_system(snapshot)
+    budget = app_state.scheduler.get_budget_status(gpus)
+    return (
+        snapshot_collected_at(snapshot),
+        connection,
+        agent_health,
+        gpus,
+        processes,
+        system_info,
+        budget,
+        "cache",
+    )
+
+
 async def _collect_self_check_data():
     from app.main import app_state
+
+    snapshot = getattr(app_state, "latest_runtime_snapshot", {})
+    if has_runtime_snapshot(snapshot):
+        return _cached_self_check_data(app_state, snapshot)
 
     agent_health = await app_state.agent.health_check()
     connection = app_state.connection.snapshot(agent_health)
     gpus = await app_state.agent.get_all_gpus() if agent_health else []
     processes = await app_state.agent.get_processes() if agent_health else []
+    gpus = app_state.import_context.filter_gpus(gpus)
+    processes = app_state.import_context.filter_processes(processes)
     system_info = await app_state.agent.get_system_info() if agent_health else None
     budget = app_state.scheduler.get_budget_status(gpus)
-    return connection, agent_health, gpus, processes, system_info, budget
+    return time.time(), connection, agent_health, gpus, processes, system_info, budget, "realtime"
 
 
 @router.get("/self-check")
 async def self_check():
     from app.main import app_state
 
-    checked_at = time.time()
-    connection, agent_health, gpus, processes, system_info, budget = await _collect_self_check_data()
+    checked_at, connection, agent_health, gpus, processes, system_info, budget, data_source = await _collect_self_check_data()
     llm_available = app_state.llm is not None
     return {
         "checked_at": checked_at,
@@ -169,4 +201,5 @@ async def self_check():
         "process_count": len(processes),
         "ws_connections": ws_manager.connection_count,
         "llm_available": llm_available,
+        "data_source": data_source,
     }

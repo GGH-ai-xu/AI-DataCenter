@@ -1,11 +1,11 @@
 from __future__ import annotations
-
+import re
 
 MEBIBYTE = 1024 * 1024
 UNKNOWN_USER = "unknown"
 DEFAULT_PRIORITY = "normal"
 GOVERNABLE_REASON = "可作为治理任务处理"
-
+GPU_LIST_LINE_PATTERN = re.compile(r"^GPU\s+(?P<index>\d+):\s+(?P<name>.+?)\s+\(UUID:\s*(?P<uuid>GPU-[^)]+)\)$")
 
 def _normalize_metric(value: str | None) -> str:
     raw = str(value or "").strip().strip("[]")
@@ -31,13 +31,26 @@ def _to_float(value: str | None, default: float = 0.0) -> float:
 def _split_csv_row(line: str) -> list[str]:
     return [part.strip() for part in line.split(",")]
 
-
-def parse_gpu_rows(raw: str, timestamp: float) -> list[dict]:
-    rows = []
-    for line in raw.splitlines():
-        if not line.strip():
-            continue
-        parts = _split_csv_row(line)
+def _build_available_gpu_row(parts: list[str], timestamp: float) -> dict:
+    if len(parts) == 15:
+        (
+            index,
+            uuid,
+            name,
+            pci_bus_id,
+            temperature,
+            power_usage,
+            power_limit,
+            gpu_utilization,
+            memory_utilization,
+            memory_used,
+            memory_total,
+            memory_free,
+            fan_speed,
+            clock_sm,
+            clock_mem,
+        ) = parts
+    else:
         (
             index,
             uuid,
@@ -54,25 +67,77 @@ def parse_gpu_rows(raw: str, timestamp: float) -> list[dict]:
             clock_sm,
             clock_mem,
         ) = parts
+        pci_bus_id = ""
+    return {
+        "index": _to_int(index),
+        "uuid": uuid,
+        "name": name,
+        "pci_bus_id": pci_bus_id,
+        "temperature": _to_int(temperature),
+        "power_usage": _to_float(power_usage),
+        "power_limit": _to_float(power_limit),
+        "gpu_utilization": _to_int(gpu_utilization),
+        "memory_utilization": _to_int(memory_utilization),
+        "memory_used": _to_int(memory_used),
+        "memory_total": _to_int(memory_total),
+        "memory_free": _to_int(memory_free),
+        "fan_speed": _to_int(fan_speed),
+        "clock_sm": _to_int(clock_sm),
+        "clock_mem": _to_int(clock_mem),
+        "available": True,
+        "status": "ok",
+        "error": "",
+        "timestamp": timestamp,
+    }
+
+
+def parse_gpu_list_rows(raw: str) -> list[dict]:
+    rows = []
+    for line in raw.splitlines():
+        match = GPU_LIST_LINE_PATTERN.match(line.strip())
+        if not match:
+            continue
         rows.append(
             {
-                "index": _to_int(index),
-                "uuid": uuid,
-                "name": name,
-                "temperature": _to_int(temperature),
-                "power_usage": _to_float(power_usage),
-                "power_limit": _to_float(power_limit),
-                "gpu_utilization": _to_int(gpu_utilization),
-                "memory_utilization": _to_int(memory_utilization),
-                "memory_used": _to_int(memory_used),
-                "memory_total": _to_int(memory_total),
-                "memory_free": _to_int(memory_free),
-                "fan_speed": _to_int(fan_speed),
-                "clock_sm": _to_int(clock_sm),
-                "clock_mem": _to_int(clock_mem),
-                "timestamp": timestamp,
+                "index": _to_int(match.group("index")),
+                "name": match.group("name").strip(),
+                "uuid": match.group("uuid").strip(),
+                "pci_bus_id": "",
             }
         )
+    return rows
+
+
+def build_unavailable_gpu_row(identity: dict, error: str, timestamp: float) -> dict:
+    return {
+        "index": _to_int(identity.get("index"), -1),
+        "uuid": str(identity.get("uuid") or "").strip(),
+        "name": str(identity.get("name") or "").strip(),
+        "pci_bus_id": str(identity.get("pci_bus_id") or "").strip(),
+        "temperature": 0,
+        "power_usage": 0.0,
+        "power_limit": 0.0,
+        "gpu_utilization": 0,
+        "memory_utilization": 0,
+        "memory_used": 0,
+        "memory_total": 0,
+        "memory_free": 0,
+        "fan_speed": 0,
+        "clock_sm": 0,
+        "clock_mem": 0,
+        "available": False,
+        "status": "error",
+        "error": error,
+        "timestamp": timestamp,
+    }
+
+def parse_gpu_rows(raw: str, timestamp: float) -> list[dict]:
+    rows = []
+    for line in raw.splitlines():
+        if not line.strip():
+            continue
+        parts = _split_csv_row(line)
+        rows.append(_build_available_gpu_row(parts, timestamp))
     return rows
 
 
@@ -90,7 +155,6 @@ def parse_gpu_uuid_map(raw: str) -> dict[str, int]:
         for uuid, index in mapping.items()
         if uuid and index >= 0
     }
-
 
 def parse_compute_process_rows(
     raw: str,
@@ -118,7 +182,6 @@ def parse_compute_process_rows(
         )
     return processes
 
-
 def parse_ps_rows(raw: str, timestamp: float) -> dict[int, dict]:
     rows = {}
     for line in raw.splitlines():
@@ -143,7 +206,6 @@ def parse_ps_rows(raw: str, timestamp: float) -> dict[int, dict]:
             "create_time": max(0.0, float(timestamp) - elapsed),
         }
     return rows
-
 
 def parse_proc_stat(raw: str) -> tuple[int, int]:
     for line in raw.splitlines():

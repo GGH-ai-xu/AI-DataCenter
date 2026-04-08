@@ -1,5 +1,6 @@
 import { computed, reactive, ref, watch } from 'vue'
 
+import { selectableGpuIndexes } from '../lib/importGpuAvailability.js'
 import { formatImportedGpuLabel, hasValidImportContext } from '../lib/importContext.js'
 import { resolveSavedHostScanFailure } from '../lib/importRecovery.js'
 import {
@@ -137,7 +138,7 @@ function applyScanResponse(state, data) {
   state.scanResult.value = data
   applyTarget(state, responseTarget(data))
   state.hostFingerprint.value = data?.provider?.host_fingerprint || data?.capabilities?.host_fingerprint || ''
-  state.selectedGpuIndexes.value = data.success ? data.gpus.map((gpu) => Number(gpu.index)) : []
+  state.selectedGpuIndexes.value = data.success ? selectableGpuIndexes(data.gpus) : []
   state.feedback.value = { tone: data.success ? 'ok' : 'warning', text: data.message || (data.success ? '扫描完成，已更新候选硬件列表。' : '扫描失败') }
   if (data.success) state.activeStage.value = 'hardware'
 }

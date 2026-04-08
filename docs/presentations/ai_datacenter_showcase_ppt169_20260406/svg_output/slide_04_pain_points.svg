@@ -1,0 +1,84 @@
+<?xml version="1.0" ?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <linearGradient id="titleGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#17313A"/>
+      <stop offset="100%" stop-color="#19A38C"/>
+    </linearGradient>
+    <radialGradient id="bgDecor" cx="80%" cy="12%" r="42%">
+      <stop offset="0%" stop-color="#5B8DEF" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#5B8DEF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="0" y="0" width="1280" height="720" rx="0" fill="#F7F9FB"/>
+  <rect x="0" y="0" width="1280" height="720" rx="0" fill="url(#bgDecor)"/>
+  <rect x="0" y="0" width="1280" height="6" rx="0" fill="url(#titleGradient)"/>
+  <text x="56" y="45" font-family="Microsoft YaHei, Arial, sans-serif" font-size="29" font-weight="bold" fill="#17313A" text-anchor="start">传统方式难以形成治理闭环</text>
+  <rect x="56" y="64" width="1168" height="44" rx="10" fill="#17313A"/>
+  <text x="78" y="92" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="bold" fill="#FFFFFF" text-anchor="start">只依赖 SSH、脚本或零散监控页，最终会把使用成本转移给人。</text>
+  <line x1="0" y1="694" x2="1280" y2="694" stroke="#D8E0E8" stroke-width="1"/>
+  <text x="40" y="711" font-family="Microsoft YaHei, Arial, sans-serif" font-size="10" font-weight="normal" fill="#8A94A3" text-anchor="start">Source: AI DataCenter repository and implemented product features</text>
+  <text x="640" y="711" font-family="Microsoft YaHei, Arial, sans-serif" font-size="10" font-weight="normal" fill="#8A94A3" text-anchor="middle">STRICTLY CONFIDENTIAL  |  AI DATACENTER SHOWCASE</text>
+  <text x="1240" y="711" font-family="Microsoft YaHei, Arial, sans-serif" font-size="10" font-weight="normal" fill="#8A94A3" text-anchor="end">4</text>
+  <rect x="84" y="158" width="500" height="474" rx="12" fill="#17313A" fill-opacity="0.05"/>
+  <rect x="80" y="152" width="500" height="474" rx="12" fill="#FFFFFF" stroke="#D8E0E8" stroke-width="1"/>
+  <rect x="80" y="152" width="500" height="6" rx="12" fill="#D9485F"/>
+  <text x="108" y="184" font-family="Microsoft YaHei, Arial, sans-serif" font-size="22" font-weight="bold" fill="#17313A" text-anchor="start">四类典型痛点</text>
+  <rect x="112" y="232" width="210" height="160" rx="14" fill="#17313A" fill-opacity="0.05"/>
+  <rect x="108" y="226" width="210" height="160" rx="14" fill="#EDF2F6" stroke="#D8E0E8" stroke-width="1"/>
+  <rect x="108" y="226" width="210" height="6" rx="12" fill="#D9485F"/>
+  <text x="126" y="260" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="bold" fill="#17313A" text-anchor="start">入口分散</text>
+  <text x="126" y="294" font-family="Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="normal" fill="#5B6776" text-anchor="start">
+    <tspan x="126" dy="0">看监控、连主机、管任务</tspan>
+    <tspan x="126" dy="22">分别依赖不同页面与工具。</tspan>
+  </text>
+  <rect x="350" y="232" width="210" height="160" rx="14" fill="#17313A" fill-opacity="0.05"/>
+  <rect x="346" y="226" width="210" height="160" rx="14" fill="#EDF2F6" stroke="#D8E0E8" stroke-width="1"/>
+  <rect x="346" y="226" width="210" height="6" rx="12" fill="#F59E0B"/>
+  <text x="364" y="260" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="bold" fill="#17313A" text-anchor="start">边界模糊</text>
+  <text x="364" y="294" font-family="Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="normal" fill="#5B6776" text-anchor="start">
+    <tspan x="364" dy="0">控制台容易混入</tspan>
+    <tspan x="364" dy="22">不属于当前任务的 GPU，</tspan>
+    <tspan x="364" dy="22">或当前用户范围外的卡。</tspan>
+  </text>
+  <rect x="112" y="420" width="210" height="160" rx="14" fill="#17313A" fill-opacity="0.05"/>
+  <rect x="108" y="414" width="210" height="160" rx="14" fill="#EDF2F6" stroke="#D8E0E8" stroke-width="1"/>
+  <rect x="108" y="414" width="210" height="6" rx="12" fill="#5B8DEF"/>
+  <text x="126" y="448" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="bold" fill="#17313A" text-anchor="start">安全薄弱</text>
+  <text x="126" y="482" font-family="Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="normal" fill="#5B6776" text-anchor="start">
+    <tspan x="126" dy="0">凭据复用、用户隔离</tspan>
+    <tspan x="126" dy="22">和主机归属关系难以成立。</tspan>
+  </text>
+  <rect x="350" y="420" width="210" height="160" rx="14" fill="#17313A" fill-opacity="0.05"/>
+  <rect x="346" y="414" width="210" height="160" rx="14" fill="#EDF2F6" stroke="#D8E0E8" stroke-width="1"/>
+  <rect x="346" y="414" width="210" height="6" rx="12" fill="#17313A"/>
+  <text x="364" y="448" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="bold" fill="#17313A" text-anchor="start">复盘困难</text>
+  <text x="364" y="482" font-family="Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="normal" fill="#5B6776" text-anchor="start">
+    <tspan x="364" dy="0">告警、任务和调度</tspan>
+    <tspan x="364" dy="22">缺乏统一工作台，</tspan>
+    <tspan x="364" dy="22">问题难以追踪。</tspan>
+  </text>
+  <rect x="624" y="158" width="578" height="474" rx="12" fill="#17313A" fill-opacity="0.05"/>
+  <rect x="620" y="152" width="578" height="474" rx="12" fill="#FFFFFF" stroke="#D8E0E8" stroke-width="1"/>
+  <rect x="620" y="152" width="578" height="6" rx="12" fill="#17313A"/>
+  <text x="648" y="184" font-family="Microsoft YaHei, Arial, sans-serif" font-size="22" font-weight="bold" fill="#17313A" text-anchor="start">传统方式的治理阻力指数（示意）</text>
+  <text x="648" y="254" font-family="Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="normal" fill="#5B6776" text-anchor="start">入口分散</text>
+  <rect x="760" y="236" width="360" height="22" rx="11" fill="#EDF2F6" stroke="#D8E0E8" stroke-width="1"/>
+  <rect x="760" y="236" width="281.6" height="22" rx="11" fill="#D9485F"/>
+  <text x="1136" y="254" font-family="Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="bold" fill="#D9485F" text-anchor="end">88</text>
+  <text x="648" y="332" font-family="Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="normal" fill="#5B6776" text-anchor="start">范围确认成本</text>
+  <rect x="760" y="314" width="360" height="22" rx="11" fill="#EDF2F6" stroke="#D8E0E8" stroke-width="1"/>
+  <rect x="760" y="314" width="268.8" height="22" rx="11" fill="#F59E0B"/>
+  <text x="1136" y="332" font-family="Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="bold" fill="#F59E0B" text-anchor="end">84</text>
+  <text x="648" y="410" font-family="Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="normal" fill="#5B6776" text-anchor="start">凭据与权限风险</text>
+  <rect x="760" y="392" width="360" height="22" rx="11" fill="#EDF2F6" stroke="#D8E0E8" stroke-width="1"/>
+  <rect x="760" y="392" width="252.8" height="22" rx="11" fill="#5B8DEF"/>
+  <text x="1136" y="410" font-family="Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="bold" fill="#5B8DEF" text-anchor="end">79</text>
+  <text x="648" y="488" font-family="Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="normal" fill="#5B6776" text-anchor="start">复盘与调度割裂</text>
+  <rect x="760" y="470" width="360" height="22" rx="11" fill="#EDF2F6" stroke="#D8E0E8" stroke-width="1"/>
+  <rect x="760" y="470" width="233.60000000000002" height="22" rx="11" fill="#17313A"/>
+  <text x="1136" y="488" font-family="Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="bold" fill="#17313A" text-anchor="end">73</text>
+  <text x="648" y="558" font-family="Microsoft YaHei, Arial, sans-serif" font-size="12" font-weight="normal" fill="#5B6776" text-anchor="start">
+    <tspan x="648" dy="0">注：此处为答辩表达的体验阻力示意，目的在于说明“可见”与“可治理”之间仍有巨大差距。</tspan>
+  </text>
+</svg>

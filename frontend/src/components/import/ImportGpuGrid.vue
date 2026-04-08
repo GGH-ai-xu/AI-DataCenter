@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue'
+import { isImportableGpu } from '../../lib/importGpuAvailability.js'
 
 const props = defineProps({
   gpus: { type: Array, default: () => [] },
@@ -14,6 +15,8 @@ function formatMemory(value) {
 }
 
 function toggle(index) {
+  const gpu = props.gpus.find((item) => Number(item.index) === index)
+  if (!isImportableGpu(gpu)) return
   const next = new Set(selectedSet.value)
   if (next.has(index)) next.delete(index)
   else next.add(index)
@@ -29,7 +32,11 @@ function toggle(index) {
         :key="gpu.index"
         type="button"
         class="import-gpu-grid__card"
-        :class="{ 'import-gpu-grid__card--selected': selectedSet.has(Number(gpu.index)) }"
+        :class="{
+          'import-gpu-grid__card--selected': selectedSet.has(Number(gpu.index)),
+          'import-gpu-grid__card--disabled': !isImportableGpu(gpu),
+        }"
+        :disabled="!isImportableGpu(gpu)"
         @click="toggle(Number(gpu.index))"
       >
         <div class="import-gpu-grid__top">
@@ -37,8 +44,15 @@ function toggle(index) {
             <div class="import-gpu-grid__badge">GPU {{ gpu.index }}</div>
             <strong>{{ gpu.name }}</strong>
           </div>
-          <span class="status-badge" :class="selectedSet.has(Number(gpu.index)) ? 'status-badge--ok' : 'status-badge--warning'">
-            {{ selectedSet.has(Number(gpu.index)) ? '已选中' : '点击导入' }}
+          <span
+            class="status-badge"
+            :class="!isImportableGpu(gpu)
+              ? 'status-badge--critical'
+              : selectedSet.has(Number(gpu.index))
+                ? 'status-badge--ok'
+                : 'status-badge--warning'"
+          >
+            {{ !isImportableGpu(gpu) ? '不可导入' : (selectedSet.has(Number(gpu.index)) ? '已选中' : '点击导入') }}
           </span>
         </div>
 
@@ -60,6 +74,10 @@ function toggle(index) {
             <strong>{{ formatMemory(gpu.memory_used) }} / {{ formatMemory(gpu.memory_total) }}</strong>
           </div>
         </div>
+
+        <p v-if="!isImportableGpu(gpu) && gpu.error" class="import-gpu-grid__error">
+          {{ gpu.error }}
+        </p>
       </button>
     </div>
 
@@ -97,6 +115,13 @@ function toggle(index) {
   box-shadow: 0 18px 36px rgba(46, 139, 87, 0.08);
 }
 
+.import-gpu-grid__card--disabled {
+  cursor: not-allowed;
+  border-color: rgba(178, 34, 34, 0.14);
+  background: rgba(255, 246, 244, 0.92);
+  box-shadow: none;
+}
+
 .import-gpu-grid__top {
   display: flex;
   align-items: flex-start;
@@ -126,6 +151,13 @@ function toggle(index) {
   font-size: 0.78rem;
   line-height: 1.7;
   color: var(--text-muted);
+}
+
+.import-gpu-grid__error {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.7;
+  color: #8f2d2d;
 }
 
 .import-gpu-grid__card strong,
