@@ -5,36 +5,54 @@ import {
   getSystemSelfCheck,
   healthCheck,
 } from '../services/api.js'
+import { createDashboardLoaders } from '../lib/dashboardLoaders.js'
 import { useAppStore } from '../stores/app.js'
 import { useDomainRefresh } from './useDomainRefresh.js'
 
-async function loadGovernanceBundle() {
-  const [{ data: scheduler }, { data: health }, { data: fairness }, { data: selfCheck }] = await Promise.all([
-    getSchedulerStatus(),
-    healthCheck(),
-    getFairnessGovernance(),
-    getSystemSelfCheck(),
-  ])
-
-  return { scheduler, health, fairness, selfCheck }
-}
-
 export function useDashboardData(options = {}) {
   const store = useAppStore()
-  const governanceRefresh = useDomainRefresh({
+  const activeTab = options.activeTab || null
+  const refreshEnabled = (tabKey) => !activeTab || activeTab.value === tabKey
+  const loaders = createDashboardLoaders({
+    getSchedulerStatus,
+    healthCheck,
+    getFairnessGovernance,
+    getSystemSelfCheck,
+  })
+
+  const overviewRefresh = useDomainRefresh({
     section: 'dashboard',
-    key: 'governance',
+    key: 'overview',
     intervalMs: 8000,
     staleTime: 4000,
-    loader: loadGovernanceBundle,
+    enabled: () => refreshEnabled('overview'),
+    loader: loaders.loadOverviewBundle,
     applyData: (payload) => {
+      options.onOverviewData?.(payload)
+      options.onGovernanceData?.(payload)
+    },
+  })
+
+  const healthRefresh = useDomainRefresh({
+    section: 'dashboard',
+    key: 'health',
+    intervalMs: 8000,
+    staleTime: 4000,
+    enabled: () => refreshEnabled('health'),
+    loader: loaders.loadHealthBundle,
+    applyData: (payload) => {
+      options.onHealthData?.(payload)
       options.onGovernanceData?.(payload)
     },
   })
 
   return {
     dashboardSummary: computed(() => store.dashboardSummary),
-    governanceDomain: computed(() => store.domains.dashboard.governance),
-    refreshGovernance: governanceRefresh.refresh,
+    overviewDomain: computed(() => store.domains.dashboard.overview),
+    liveDomain: computed(() => store.domains.dashboard.live),
+    healthDomain: computed(() => store.domains.dashboard.health),
+    refreshOverview: overviewRefresh.refresh,
+    refreshHealth: healthRefresh.refresh,
+    refreshGovernance: overviewRefresh.refresh,
   }
 }

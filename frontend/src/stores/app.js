@@ -25,9 +25,9 @@ function requestState() {
 function createDomainState() {
   return {
     dashboard: {
-      governance: requestState(),
-      connection: requestState(),
-      desktop: requestState(),
+      overview: requestState(),
+      live: requestState(),
+      health: requestState(),
     },
     scheduler: {
       status: requestState(),

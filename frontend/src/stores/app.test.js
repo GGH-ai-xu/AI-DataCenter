@@ -45,3 +45,13 @@ test('applyRealtimePayload keeps workspace ready and records reconnecting runtim
   assert.equal(store.runtimeStatus.status, 'reconnecting')
   assert.equal(store.runtimeStatus.providerType, 'ssh_linux')
 })
+
+test('dashboard domains follow overview live health split', () => {
+  setActivePinia(createPinia())
+  const store = useAppStore()
+
+  assert.ok(store.domains.dashboard.overview)
+  assert.ok(store.domains.dashboard.live)
+  assert.ok(store.domains.dashboard.health)
+  assert.equal(store.domains.dashboard.governance, undefined)
+})
