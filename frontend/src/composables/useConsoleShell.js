@@ -1,7 +1,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import { healthCheck } from '../services/api.js'
+import { healthCheck, resetImportContext } from '../services/api.js'
 import { formatImportSourceLabel, formatImportedGpuLabel, hasValidImportContext } from '../lib/importContext.js'
 import { useAppStore } from '../stores/app.js'
 import { useAuthStore } from '../stores/auth.js'
@@ -23,6 +23,21 @@ const NAV_ITEMS = Object.freeze([
   { path: '/alerts', label: '告警', icon: '警', desc: '风险台与异常确认', group: 'analysis' },
   { path: '/ai', label: '智能', icon: '智', desc: 'AI 解释与问答', group: 'support' },
 ])
+
+const GROUP_META = Object.freeze({
+  governance: {
+    eyebrow: 'Governance Workspace',
+    desc: '预算、调度、风险和任务治理在同一工作区内收口。',
+  },
+  analysis: {
+    eyebrow: 'Analysis Workspace',
+    desc: '围绕已导入 GPU 做观测、复盘和风险回看。',
+  },
+  support: {
+    eyebrow: 'Support Workspace',
+    desc: '把 AI 辅助、解释和建议放在同一层完成。',
+  },
+})
 
 function baseAppInfo() {
   const webDev = Boolean(import.meta.env.DEV)
@@ -60,6 +75,7 @@ export function useConsoleShell() {
   const appInfo = ref(baseAppInfo())
   const updateState = ref(null)
   const updateBusy = ref(false)
+  const switchServerBusy = ref(false)
   const closeDialog = ref(null)
   const closeBusy = ref(false)
   let clockTimer = null
@@ -80,11 +96,25 @@ export function useConsoleShell() {
 
   const isDesktop = computed(() => typeof window !== 'undefined' && Boolean(window.desktopShell))
   const workspaceLocked = computed(() => store.workspaceStatusChecked && !store.workspaceReady)
+  const activeNavItem = computed(() =>
+    NAV_ITEMS.find((item) => route.path === item.path || (item.path !== HOME_ROUTE && route.path.startsWith(item.path))) || NAV_ITEMS[0])
+  const currentWorkspaceMeta = computed(() => GROUP_META[activeNavItem.value.group] || GROUP_META.governance)
   const sidebarSummary = computed(() => {
     const modeLabel = compactSidebarModeLabel(appInfo.value.connectionModeLabel || '')
     const importedLabel = formatImportedGpuLabel(store.importContext?.imported_gpu_indexes || [])
     return `${modeLabel} · ${importedLabel}`
   })
+  const sidebarTelemetry = computed(() => [
+    { label: 'GPU', value: `${store.gpus.length}` },
+    { label: '任务', value: `${store.processes.length}` },
+    { label: '告警', value: `${store.alerts.length}` },
+    { label: '链路', value: wsConnected.value ? '在线' : '离线' },
+  ])
+  const chromeMetrics = computed(() => [
+    { label: '导入 GPU', value: `${store.gpus.length}` },
+    { label: '活跃任务', value: `${store.processes.length}` },
+    { label: '累计告警', value: `${store.alerts.length}` },
+  ])
   const runtimeBanner = computed(() => {
     const status = store.runtimeStatus?.status || 'idle'
     if (status === 'reconnecting') {
@@ -201,6 +231,27 @@ export function useConsoleShell() {
     }
   }
 
+  async function switchServer() {
+    if (switchServerBusy.value) return
+    if (typeof window !== 'undefined') {
+      const confirmed = window.confirm('切换服务器会退出当前导入范围，并返回导入层重新选择机器和 GPU。是否继续？')
+      if (!confirmed) return
+    }
+
+    switchServerBusy.value = true
+    try {
+      const { data } = await resetImportContext()
+      store.setImportContext(data?.import_context || null)
+      store.setWorkspaceReady(false)
+      store.markWorkspaceStatusChecked(true)
+      await router.replace(IMPORT_ROUTE)
+    } catch (error) {
+      console.error('Failed to switch server', error)
+    } finally {
+      switchServerBusy.value = false
+    }
+  }
+
   async function loadDesktopInfo() {
     const shellBridge = getDesktopShellBridge()
     await syncAppInfo()
@@ -288,11 +339,14 @@ export function useConsoleShell() {
 
   return {
     appInfo,
+    activeNavItem,
     checkForUpdates,
+    chromeMetrics,
     clearUpdateNotice,
     closeBusy,
     closeDialog,
     currentTime,
+    currentWorkspaceMeta,
     isDesktop,
     navItems: NAV_ITEMS,
     navigateTo,
@@ -300,7 +354,10 @@ export function useConsoleShell() {
     resolveCloseAction,
     route,
     runtimeBanner,
+    sidebarTelemetry,
     sidebarSummary,
+    switchServer,
+    switchServerBusy,
     updateBusy,
     updateState,
     workspaceLocked,

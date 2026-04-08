@@ -38,16 +38,21 @@ const isHttpRemote = computed(() => props.providerType === 'http_remote')
 
 <template>
   <section class="tech-card import-source-panel">
-    <div class="section-title">连接表单</div>
+    <div class="import-source-panel__head">
+      <div class="section-title">连接表单</div>
+      <p class="import-source-panel__copy">
+        {{ isSsh ? '填写主机地址、认证方式与可选 sudo 信息。' : (isHttpRemote ? '填写远程 Agent 地址，并为这次导入设置一个易识别的标签。' : '本机模式会直接连接当前机器上的 Agent，只需设置连接标签即可。') }}
+      </p>
+    </div>
 
     <label class="import-source-panel__field">
-      <span>导入标签</span>
+      <span>连接标签</span>
       <input
         :value="props.agentLabel"
         type="text"
         maxlength="120"
         :disabled="props.busy"
-        placeholder="例如：实验室 A / 本机 Agent"
+        placeholder="例如：实验室 A / 本机"
         @input="emit('update:agentLabel', $event.target.value)"
       >
     </label>
@@ -193,14 +198,21 @@ const isHttpRemote = computed(() => props.providerType === 'http_remote')
   padding: 20px;
 }
 
+.import-source-panel__head {
+  display: grid;
+  gap: 6px;
+}
+
+.import-source-panel__copy,
+.import-source-panel__field span {
+  font-size: 0.76rem;
+  line-height: 1.7;
+  color: var(--import-text-muted, var(--text-muted));
+}
+
 .import-source-panel__field {
   display: grid;
   gap: 8px;
-}
-
-.import-source-panel__field span {
-  font-size: 0.76rem;
-  color: var(--text-muted);
 }
 
 .import-source-panel__grid {
@@ -217,16 +229,16 @@ const isHttpRemote = computed(() => props.providerType === 'http_remote')
 
 .import-source-panel__auth-button {
   min-height: 44px;
-  border-radius: 16px;
-  border: 1px solid rgba(58, 95, 75, 0.12);
-  background: rgba(255, 252, 247, 0.82);
-  color: var(--text-secondary);
+  border-radius: 12px;
+  border: 1px solid var(--import-border, var(--border-color));
+  background: var(--import-surface-alt, rgba(255, 255, 255, 0.04));
+  color: var(--import-text-secondary, var(--text-secondary));
 }
 
 .import-source-panel__auth-button--active {
-  border-color: rgba(46, 139, 87, 0.18);
-  background: rgba(244, 250, 247, 0.88);
-  color: var(--text-primary);
+  border-color: var(--import-border-strong, rgba(94, 106, 210, 0.32));
+  background: var(--import-accent-soft, rgba(94, 106, 210, 0.14));
+  color: var(--import-text, var(--text-primary));
 }
 
 .import-source-panel__checkbox {
@@ -234,7 +246,7 @@ const isHttpRemote = computed(() => props.providerType === 'http_remote')
   align-items: center;
   gap: 10px;
   font-size: 0.82rem;
-  color: var(--text-secondary);
+  color: var(--import-text-secondary, var(--text-secondary));
 }
 
 .import-source-panel textarea {

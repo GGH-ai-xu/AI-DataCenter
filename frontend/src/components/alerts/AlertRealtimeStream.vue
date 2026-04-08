@@ -132,7 +132,7 @@ const emit = defineEmits(['ack', 'update:selectedType'])
 .alert-realtime-stream__empty {
   padding: 36px 18px;
   border-radius: 18px;
-  border: 1px dashed rgba(58, 95, 75, 0.16);
+  border: 1px dashed rgba(0, 212, 170, 0.16);
   color: var(--text-muted);
   text-align: center;
   font-size: 0.82rem;
@@ -166,8 +166,8 @@ const emit = defineEmits(['ack', 'update:selectedType'])
   gap: 10px;
   padding: 16px 18px;
   border-radius: 18px;
-  border: 1px solid rgba(26, 26, 26, 0.06);
-  background: rgba(255, 252, 247, 0.82);
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .realtime-alert-card__meta,

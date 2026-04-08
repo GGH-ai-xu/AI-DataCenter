@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.join(ROOT, "backend"))
 
 from app.services.credential_cipher import CredentialCipher  # noqa: E402
 from app.services.credential_store import CredentialStore  # noqa: E402
+from app.services.platform_auth_service import DEFAULT_ADMIN_PASSWORD  # noqa: E402
 from app.services.platform_auth_service import PlatformAuthService  # noqa: E402
 from app.services.platform_identity_store import PlatformIdentityStore  # noqa: E402
 from app.services.runtime_provider import RuntimeTarget  # noqa: E402
@@ -24,7 +25,8 @@ class SavedHostServiceTests(unittest.IsolatedAsyncioTestCase):
         await self.identity.init()
         self.auth = PlatformAuthService(self.identity)
         notice = await self.auth.ensure_default_admin()
-        self.admin_login = await self.auth.login("admin", notice["generated_password"])
+        self.assertEqual(notice["default_password"], DEFAULT_ADMIN_PASSWORD)
+        self.admin_login = await self.auth.login("admin", notice["default_password"])
         self.cipher = CredentialCipher("unit-test-master-key")
         self.credentials = CredentialStore(self.secret_path, self.cipher)
         self.service = SavedHostService(self.identity, self.credentials)

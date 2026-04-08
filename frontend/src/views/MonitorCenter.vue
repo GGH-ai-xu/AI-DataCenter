@@ -36,6 +36,21 @@ const networkSpeed = ref({ sent: 0, recv: 0 })
 const monitorRefresh = useMonitorData(activeTab, timelineHours, {
   onData: applyMonitorTabData,
 })
+const monitorPalette = Object.freeze({
+  primary: '#7F8EFF',
+  secondary: '#6EB8FF',
+  warning: '#F4B95D',
+  danger: '#FF6F96',
+  text: '#EDEEF7',
+  textSecondary: '#C6CEE1',
+  textMuted: '#9EA8C0',
+  line: 'rgba(184, 197, 236, 0.1)',
+  track: 'rgba(184, 197, 236, 0.12)',
+  border: 'rgba(127, 142, 255, 0.22)',
+  panel: 'rgba(18, 26, 46, 0.96)',
+  inactive: '#7380A0',
+})
+const monitorFontUi = "'PingFang SC','Microsoft YaHei','Noto Sans SC','Segoe UI',sans-serif"
 
 // ===== 格式化工具 =====
 const fmtBytes = (b) => {
@@ -58,6 +73,12 @@ const fmtDuration = (seconds) => {
 const fmtTime = (ts) => {
   if (!ts) return '-'
   return new Date(ts * 1000).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
+function usageColor(value, warning = 70, critical = 90, normal = monitorPalette.primary) {
+  if (value >= critical) return monitorPalette.danger
+  if (value >= warning) return monitorPalette.warning
+  return normal
 }
 
 // ===== 数据加载 =====
@@ -107,14 +128,29 @@ function applyMonitorTabData(tab, payload) {
 const cpuCoreOption = computed(() => {
   const cores = systemDetail.value?.cpu_per_core || []
   return {
-    tooltip: { trigger: 'axis', backgroundColor: 'rgba(248, 245, 240, 0.97)', borderColor: '#3A5F4B', textStyle: { color: '#2C2C2C' } },
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: monitorPalette.panel,
+      borderColor: monitorPalette.border,
+      textStyle: { color: monitorPalette.text, fontFamily: monitorFontUi },
+    },
     grid: { top: 30, right: 16, bottom: 24, left: 40 },
-    xAxis: { type: 'category', data: cores.map((_, i) => 'C' + i), axisLabel: { color: '#999999', fontSize: 10 }, axisLine: { lineStyle: { color: '#1e293b' } } },
-    yAxis: { type: 'value', max: 100, axisLabel: { color: '#999999', formatter: '{value}%' }, splitLine: { lineStyle: { color: '#1e293b' } } },
+    xAxis: {
+      type: 'category',
+      data: cores.map((_, i) => 'C' + i),
+      axisLabel: { color: monitorPalette.textMuted, fontSize: 10, fontFamily: monitorFontUi },
+      axisLine: { lineStyle: { color: monitorPalette.line } },
+    },
+    yAxis: {
+      type: 'value',
+      max: 100,
+      axisLabel: { color: monitorPalette.textMuted, formatter: '{value}%', fontFamily: monitorFontUi },
+      splitLine: { lineStyle: { color: monitorPalette.line } },
+    },
     series: [{
       type: 'bar', data: cores.map(v => ({
         value: v,
-        itemStyle: { color: v > 80 ? '#C41E3A' : v > 50 ? '#B8860B' : '#3A5F4B' }
+        itemStyle: { color: usageColor(v, 50, 80) }
       })),
       barMaxWidth: 12, borderRadius: [3, 3, 0, 0],
     }],
@@ -133,33 +169,45 @@ const trainingChartOption = computed(() => {
 
   const series = [{
     name: 'Loss', type: 'line', data: losses, smooth: true,
-    lineStyle: { color: '#C41E3A', width: 2 }, itemStyle: { color: '#C41E3A' },
+    lineStyle: { color: monitorPalette.danger, width: 2 }, itemStyle: { color: monitorPalette.danger },
     symbol: 'none', yAxisIndex: 0,
   }]
   const yAxes = [{
-    type: 'value', name: 'Loss', nameTextStyle: { color: '#C41E3A' },
-    axisLabel: { color: '#999999' }, splitLine: { lineStyle: { color: '#1e293b' } },
+    type: 'value', name: 'Loss', nameTextStyle: { color: monitorPalette.danger, fontFamily: monitorFontUi },
+    axisLabel: { color: monitorPalette.textMuted, fontFamily: monitorFontUi }, splitLine: { lineStyle: { color: monitorPalette.line } },
   }]
 
   if (accs.length > 0) {
     series.push({
       name: 'Accuracy', type: 'line', data: task.metrics.map(m => m.accuracy),
-      smooth: true, lineStyle: { color: '#2E8B57', width: 2 }, itemStyle: { color: '#2E8B57' },
+      smooth: true, lineStyle: { color: monitorPalette.primary, width: 2 }, itemStyle: { color: monitorPalette.primary },
       symbol: 'none', yAxisIndex: 1,
     })
     yAxes.push({
-      type: 'value', name: 'Acc', nameTextStyle: { color: '#2E8B57' },
-      axisLabel: { color: '#999999' }, splitLine: { show: false },
+      type: 'value', name: 'Acc', nameTextStyle: { color: monitorPalette.primary, fontFamily: monitorFontUi },
+      axisLabel: { color: monitorPalette.textMuted, fontFamily: monitorFontUi }, splitLine: { show: false },
       max: 1, min: 0,
     })
   }
 
   return {
-    tooltip: { trigger: 'axis', backgroundColor: 'rgba(248, 245, 240, 0.97)', borderColor: '#3A5F4B', textStyle: { color: '#2C2C2C' } },
-    legend: { textStyle: { color: '#666666' }, top: 4 },
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: monitorPalette.panel,
+      borderColor: monitorPalette.border,
+      textStyle: { color: monitorPalette.text, fontFamily: monitorFontUi },
+    },
+    legend: { textStyle: { color: monitorPalette.textSecondary, fontFamily: monitorFontUi }, top: 4 },
     grid: { top: 40, right: accs.length ? 60 : 16, bottom: 40, left: 60 },
     dataZoom: [{ type: 'inside' }],
-    xAxis: { type: 'category', data: epochs, name: 'Epoch', nameTextStyle: { color: '#999999' }, axisLabel: { color: '#999999' }, axisLine: { lineStyle: { color: '#1e293b' } } },
+    xAxis: {
+      type: 'category',
+      data: epochs,
+      name: 'Epoch',
+      nameTextStyle: { color: monitorPalette.textMuted, fontFamily: monitorFontUi },
+      axisLabel: { color: monitorPalette.textMuted, fontFamily: monitorFontUi },
+      axisLine: { lineStyle: { color: monitorPalette.line } },
+    },
     yAxis: yAxes,
     series,
   }
@@ -176,7 +224,7 @@ const timelineOption = computed(() => {
 
   return {
     tooltip: {
-      backgroundColor: 'rgba(248, 245, 240, 0.97)', borderColor: '#3A5F4B', textStyle: { color: '#2C2C2C' },
+      backgroundColor: monitorPalette.panel, borderColor: monitorPalette.border, textStyle: { color: monitorPalette.text, fontFamily: monitorFontUi },
       formatter: (p) => {
         const t = items[p.dataIndex]
         const dur = (t.last_seen - t.first_seen)
@@ -186,10 +234,10 @@ const timelineOption = computed(() => {
     grid: { top: 16, right: 80, bottom: 24, left: 160 },
     xAxis: {
       type: 'time',
-      axisLabel: { color: '#999999', formatter: (v) => new Date(v).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) },
-      axisLine: { lineStyle: { color: '#1e293b' } }, splitLine: { lineStyle: { color: '#1e293b' } },
+      axisLabel: { color: monitorPalette.textMuted, formatter: (v) => new Date(v).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }), fontFamily: monitorFontUi },
+      axisLine: { lineStyle: { color: monitorPalette.line } }, splitLine: { lineStyle: { color: monitorPalette.line } },
     },
-    yAxis: { type: 'category', data: categories, axisLabel: { color: '#666666', fontSize: 11, width: 150, overflow: 'break' }, axisLine: { lineStyle: { color: '#1e293b' } } },
+    yAxis: { type: 'category', data: categories, axisLabel: { color: monitorPalette.textSecondary, fontSize: 11, width: 150, overflow: 'break', fontFamily: monitorFontUi }, axisLine: { lineStyle: { color: monitorPalette.line } } },
     series: [{
       type: 'custom',
       renderItem: (params, api) => {
@@ -199,7 +247,7 @@ const timelineOption = computed(() => {
         const height = 16
         return {
           type: 'rect', shape: { x: start[0], y: start[1] - height / 2, width: Math.max(end[0] - start[0], 4), height },
-          style: { fill: api.value(3) ? '#3A5F4B' : '#999999', opacity: 0.8 },
+          style: { fill: api.value(3) ? monitorPalette.primary : monitorPalette.inactive, opacity: 0.8 },
         }
       },
       encode: { x: [1, 2], y: 0 },
@@ -282,8 +330,8 @@ watch(timelineHours, () => {
               <div class="sys-info-row"><span class="sys-label">运行时长</span><span class="stat-value">{{ uptime }}</span></div>
               <div class="sys-info-row"><span class="sys-label">CPU核心</span><span class="stat-value">{{ systemDetail.cpu_count_physical || '-' }}核 {{ systemDetail.cpu_count }}线程</span></div>
               <div class="sys-info-row"><span class="sys-label">系统负载</span><span class="stat-value">{{ (systemDetail.load_avg || []).map(v => v.toFixed(2)).join(' / ') }}</span></div>
-              <div class="sys-info-row"><span class="sys-label">网络上传</span><span class="stat-value" style="color: #2E8B57">{{ fmtSpeed(networkSpeed.sent) }}</span></div>
-              <div class="sys-info-row"><span class="sys-label">网络下载</span><span class="stat-value" style="color: #3A5F4B">{{ fmtSpeed(networkSpeed.recv) }}</span></div>
+              <div class="sys-info-row"><span class="sys-label">网络上传</span><span class="stat-value" style="color: var(--accent-secondary)">{{ fmtSpeed(networkSpeed.sent) }}</span></div>
+              <div class="sys-info-row"><span class="sys-label">网络下载</span><span class="stat-value" style="color: var(--accent-primary)">{{ fmtSpeed(networkSpeed.recv) }}</span></div>
             </div>
           </div>
 
@@ -296,7 +344,7 @@ watch(timelineHours, () => {
                   <span class="disk-usage stat-value">{{ d.percent }}%</span>
                 </div>
                 <div class="progress-bar" style="height: 6px; margin-top: 4px">
-                  <div class="progress-bar__fill" :style="{ width: d.percent + '%', background: d.percent > 90 ? '#C41E3A' : d.percent > 70 ? '#B8860B' : '#3A5F4B' }"></div>
+                  <div class="progress-bar__fill" :style="{ width: d.percent + '%', background: usageColor(d.percent) }"></div>
                 </div>
                 <div class="disk-detail">{{ fmtBytes(d.used) }} / {{ fmtBytes(d.total) }} ({{ d.fstype }})</div>
               </div>
@@ -306,7 +354,7 @@ watch(timelineHours, () => {
 
         <template #side>
           <div class="tech-card resource-card">
-            <div class="card-title">CPU 使用率 <span class="stat-value" :style="{ color: systemDetail.cpu_percent > 80 ? '#C41E3A' : '#3A5F4B' }">{{ systemDetail.cpu_percent?.toFixed(1) }}%</span></div>
+            <div class="card-title">CPU 使用率 <span class="stat-value" :style="{ color: systemDetail.cpu_percent > 80 ? 'var(--accent-danger)' : 'var(--accent-primary)' }">{{ systemDetail.cpu_percent?.toFixed(1) }}%</span></div>
             <v-chart :option="cpuCoreOption" style="height: 200px" autoresize />
           </div>
 
@@ -316,8 +364,8 @@ watch(timelineHours, () => {
               <div class="gauge-item">
                 <div class="gauge-ring">
                   <svg viewBox="0 0 100 100">
-                    <circle cx="50" cy="50" r="40" fill="none" stroke="#1e293b" stroke-width="8"/>
-                    <circle cx="50" cy="50" r="40" fill="none" :stroke="systemDetail.memory_percent > 80 ? '#C41E3A' : '#3A5F4B'" stroke-width="8" stroke-linecap="round"
+                    <circle cx="50" cy="50" r="40" fill="none" :stroke="monitorPalette.line" stroke-width="8"/>
+                    <circle cx="50" cy="50" r="40" fill="none" :stroke="usageColor(systemDetail.memory_percent, 60, 80)" stroke-width="8" stroke-linecap="round"
                       :stroke-dasharray="(systemDetail.memory_percent / 100 * 251.2) + ' 251.2'" stroke-dashoffset="0" transform="rotate(-90 50 50)"/>
                   </svg>
                   <span class="gauge-text stat-value">{{ systemDetail.memory_percent?.toFixed(0) }}%</span>
@@ -328,8 +376,8 @@ watch(timelineHours, () => {
               <div class="gauge-item">
                 <div class="gauge-ring">
                   <svg viewBox="0 0 100 100">
-                    <circle cx="50" cy="50" r="40" fill="none" stroke="#1e293b" stroke-width="8"/>
-                    <circle cx="50" cy="50" r="40" fill="none" stroke="#5B4B8C" stroke-width="8" stroke-linecap="round"
+                    <circle cx="50" cy="50" r="40" fill="none" :stroke="monitorPalette.line" stroke-width="8"/>
+                    <circle cx="50" cy="50" r="40" fill="none" :stroke="monitorPalette.secondary" stroke-width="8" stroke-linecap="round"
                       :stroke-dasharray="((systemDetail.swap_percent || 0) / 100 * 251.2) + ' 251.2'" stroke-dashoffset="0" transform="rotate(-90 50 50)"/>
                   </svg>
                   <span class="gauge-text stat-value">{{ (systemDetail.swap_percent || 0).toFixed(0) }}%</span>
@@ -372,11 +420,11 @@ watch(timelineHours, () => {
             </div>
             <div class="training-stat">
               <span class="training-stat-label">最新Loss</span>
-              <span class="stat-value text-2xl" style="color: #C41E3A">{{ task.latest.loss?.toFixed(4) }}</span>
+              <span class="stat-value text-2xl" style="color: var(--accent-danger)">{{ task.latest.loss?.toFixed(4) }}</span>
             </div>
             <div class="training-stat" v-if="task.latest.accuracy != null">
               <span class="training-stat-label">最新Accuracy</span>
-              <span class="stat-value text-2xl" style="color: #2E8B57">{{ (task.latest.accuracy * 100).toFixed(2) }}%</span>
+              <span class="stat-value text-2xl" style="color: var(--accent-primary)">{{ (task.latest.accuracy * 100).toFixed(2) }}%</span>
             </div>
           </div>
           <v-chart v-if="trainingChartOption && task.has_metrics" :option="trainingChartOption" style="height: 300px" autoresize />
@@ -427,7 +475,7 @@ watch(timelineHours, () => {
       <WorkspacePaneLayout>
         <template #main>
           <div class="timeline-controls">
-            <span style="color: var(--text-secondary)">时间范围:</span>
+            <span class="timeline-controls__label">时间范围</span>
             <button v-for="h in [1, 6, 24, 72]" :key="h" class="btn-tech btn-sm" :class="{ 'btn-tech--active': timelineHours === h }"
               @click="timelineHours = h">{{ h >= 24 ? (h/24) + '天' : h + '小时' }}</button>
           </div>
@@ -489,14 +537,25 @@ watch(timelineHours, () => {
 
 .monitor-summary-card {
   padding: 14px 16px;
-  border-radius: 16px;
-  border: 1px solid rgba(58, 95, 75, 0.08);
-  background: rgba(255, 252, 247, 0.66);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-card);
+  backdrop-filter: blur(12px) saturate(1.2);
+  transition: transform 0.24s ease, box-shadow 0.24s ease, background 0.24s ease, border-color 0.24s ease;
+}
+
+.monitor-summary-card:hover {
+  transform: translateY(-2px);
+  background: var(--bg-card-hover);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-hover);
 }
 
 .monitor-summary-card__label {
   font-size: 0.74rem;
   color: var(--text-muted);
+  letter-spacing: 0.12em;
   line-height: 1.6;
 }
 
@@ -521,12 +580,28 @@ watch(timelineHours, () => {
 .sys-info-card { grid-column: 1; padding: 18px 20px; }
 .sys-info-title { font-size: 0.875rem; font-weight: 600; color: var(--accent-primary); margin-bottom: 12px; }
 .sys-info-items { display: flex; flex-direction: column; gap: 10px; }
-.sys-info-row { display: flex; justify-content: space-between; align-items: center; }
+.sys-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-surface);
+}
 .sys-label { color: var(--text-secondary); font-size: 0.8125rem; }
 .card-title { font-size: 0.875rem; font-weight: 600; color: var(--text-primary); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
 
 .gauge-row { display: flex; gap: 32px; justify-content: center; padding: 8px 0; }
-.gauge-item { text-align: center; }
+.gauge-item {
+  min-width: 168px;
+  text-align: center;
+  padding: 14px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-surface);
+}
 .gauge-ring { width: 100px; height: 100px; position: relative; margin: 0 auto 8px; }
 .gauge-ring svg { width: 100%; height: 100%; }
 .gauge-text { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; }
@@ -536,7 +611,17 @@ watch(timelineHours, () => {
 .disk-card { grid-column: 1 / -1; padding: 18px 20px; }
 .resource-card { padding: 18px 20px; }
 .disk-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
-.disk-item { padding: 10px; border-radius: 8px; background: rgba(255, 255, 255, 0.6); }
+.disk-item {
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  transition: background 0.24s ease, border-color 0.24s ease;
+}
+.disk-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--border-strong);
+}
 .disk-header { display: flex; justify-content: space-between; }
 .disk-mount { color: var(--text-primary); font-size: 0.8125rem; font-weight: 500; }
 .disk-usage { font-size: 0.875rem; }
@@ -565,8 +650,17 @@ watch(timelineHours, () => {
 .user-stat { }
 .user-stat-label { font-size: 0.6875rem; color: var(--text-muted); margin-bottom: 2px; }
 .user-procs { display: flex; flex-direction: column; gap: 6px; }
-.user-proc-item { display: flex; align-items: flex-start; gap: 8px; padding: 6px 8px; border-radius: 6px; background: rgba(255, 255, 255, 0.6); font-size: 0.75rem; }
-.proc-gpu { background: rgba(58, 95, 75, 0.15); color: var(--accent-primary); padding: 2px 6px; border-radius: 4px; font-size: 0.6875rem; font-weight: 600; white-space: nowrap; }
+.user-proc-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  font-size: 0.75rem;
+}
+.proc-gpu { background: rgba(127, 142, 255, 0.14); color: var(--accent-primary); padding: 2px 6px; border-radius: 4px; font-size: 0.6875rem; font-weight: 600; white-space: nowrap; }
 .proc-cmd { color: var(--text-secondary); flex: 1; min-width: 0; white-space: normal; overflow-wrap: anywhere; word-break: break-word; font-family: 'JetBrains Mono', monospace; line-height: 1.6; }
 .proc-mem { color: var(--accent-primary); font-weight: 500; white-space: nowrap; }
 .proc-time { color: var(--text-muted); white-space: nowrap; }
@@ -574,21 +668,41 @@ watch(timelineHours, () => {
 /* ===== 时间线 ===== */
 .timeline-chart-card { padding: 18px 20px; }
 .timeline-ledger-card { padding: 18px 20px; }
-.timeline-controls { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+.timeline-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-card);
+}
+.timeline-controls__label {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+}
 .btn-sm { padding: 4px 12px; font-size: 0.75rem; }
-.btn-tech--active { background: rgba(58, 95, 75, 0.15); color: var(--accent-primary); border-color: var(--accent-primary); }
+.btn-tech--active { background: linear-gradient(135deg, rgba(127, 142, 255, 0.16), rgba(110, 184, 255, 0.08)); color: var(--text-primary); border-color: var(--border-strong); }
 
 .table-wrap { overflow-x: auto; }
 .data-table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
 .data-table th { text-align: left; padding: 8px 12px; color: var(--text-muted); font-weight: 500; border-bottom: 1px solid var(--border-color); }
-.data-table td { padding: 8px 12px; border-bottom: 1px solid rgba(30, 41, 59, 0.5); }
-.data-table tr:hover td { background: rgba(58, 95, 75, 0.03); }
+.data-table td { padding: 8px 12px; border-bottom: 1px solid var(--border-color); }
+.data-table tr:hover td { background: var(--bg-surface); }
 .proc-cmd-cell { max-width: 250px; white-space: normal; overflow-wrap: anywhere; word-break: break-word; font-family: 'JetBrains Mono', monospace; color: var(--text-secondary); font-size: 0.75rem; line-height: 1.6; }
 
 /* ===== 空状态 ===== */
 .empty-state { text-align: center; padding: 60px 20px; color: var(--text-secondary); }
 .empty-state--compact { padding: 24px 18px; }
-.empty-icon { font-size: 2.5rem; margin-bottom: 12px; opacity: 0.5; }
+.empty-icon {
+  font-size: 2.5rem;
+  margin-bottom: 12px;
+  opacity: 0.5;
+  color: var(--accent-secondary);
+}
 
 @media (max-width: 980px) {
   .monitor-summary-grid {

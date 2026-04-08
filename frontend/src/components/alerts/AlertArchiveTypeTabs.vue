@@ -42,21 +42,21 @@ const emit = defineEmits(['update:modelValue'])
   gap: 4px;
   padding: 14px 16px;
   border-radius: 18px;
-  border: 1px solid rgba(58, 95, 75, 0.12);
-  background: rgba(255, 252, 247, 0.76);
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.03);
   text-align: left;
   color: var(--text-secondary);
   transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
 }
 
 .alert-archive-type-tabs__item:hover {
-  border-color: rgba(58, 95, 75, 0.22);
+  border-color: rgba(0, 212, 170, 0.18);
   transform: translateY(-1px);
 }
 
 .alert-archive-type-tabs__item--active {
-  border-color: rgba(58, 95, 75, 0.34);
-  background: rgba(239, 245, 240, 0.96);
+  border-color: rgba(0, 212, 170, 0.24);
+  background: rgba(0, 212, 170, 0.08);
 }
 
 .alert-archive-type-tabs__label {

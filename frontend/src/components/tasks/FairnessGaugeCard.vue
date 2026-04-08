@@ -13,15 +13,15 @@ const props = defineProps({
 const fairnessIndex = computed(() => props.overview.fairness_index ?? 100)
 const gaugeColor = computed(() => {
   const idx = fairnessIndex.value
-  if (idx >= 70) return '#2E8B57'
-  if (idx >= 40) return '#B8860B'
-  return '#C41E3A'
+  if (idx >= 70) return '#00D4AA'
+  if (idx >= 40) return '#F59E0B'
+  return '#EF4444'
 })
 const gaugeBg = computed(() => {
   const idx = fairnessIndex.value
-  if (idx >= 70) return 'rgba(46,139,87,0.08)'
-  if (idx >= 40) return 'rgba(184,134,11,0.08)'
-  return 'rgba(196,30,58,0.08)'
+  if (idx >= 70) return 'rgba(0, 212, 170, 0.1)'
+  if (idx >= 40) return 'rgba(245, 158, 11, 0.1)'
+  return 'rgba(239, 68, 68, 0.1)'
 })
 const levelLabel = computed(() => {
   const level = props.overview.level || 'balanced'
@@ -29,9 +29,9 @@ const levelLabel = computed(() => {
 })
 
 function barColor(pct) {
-  if (pct > 60) return '#C41E3A'
-  if (pct > 35) return '#B8860B'
-  return '#3A5F4B'
+  if (pct > 60) return '#EF4444'
+  if (pct > 35) return '#F59E0B'
+  return '#00D4AA'
 }
 </script>
 
@@ -47,7 +47,7 @@ function barColor(pct) {
     <div class="fairness-gauge">
       <div class="fairness-gauge__ring">
         <svg viewBox="0 0 120 120" class="fairness-gauge__svg">
-          <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(0,0,0,0.04)" stroke-width="8" />
+          <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(255, 255, 255, 0.06)" stroke-width="8" />
           <circle cx="60" cy="60" r="52" fill="none"
             :stroke="gaugeColor"
             stroke-width="8"
@@ -92,7 +92,7 @@ function barColor(pct) {
 .fairness-gauge-card { padding: 20px 22px; }
 .fairness-gauge-card__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
 .fairness-gauge-card__eyebrow { font-size: 0.6875rem; color: var(--text-muted); letter-spacing: 0.12em; margin-bottom: 4px; }
-.fairness-gauge-card__seal { width: 36px; height: 36px; border: 2.5px solid var(--ink-vermillion, #C41E3A); border-radius: 4px; display: flex; align-items: center; justify-content: center; font-family: var(--font-seal); font-size: 0.85rem; color: var(--ink-vermillion, #C41E3A); transform: rotate(-5deg); opacity: 0.6; }
+.fairness-gauge-card__seal { width: 36px; height: 36px; border: 2.5px solid var(--ink-vermillion); border-radius: 4px; display: flex; align-items: center; justify-content: center; font-family: var(--font-seal); font-size: 0.85rem; color: var(--ink-vermillion); transform: rotate(-5deg); opacity: 0.6; }
 .fairness-gauge { display: flex; align-items: center; gap: 24px; margin-bottom: 20px; }
 .fairness-gauge__ring { position: relative; width: 120px; height: 120px; flex-shrink: 0; }
 .fairness-gauge__svg { width: 100%; height: 100%; }
@@ -108,7 +108,7 @@ function barColor(pct) {
 .fairness-bar-item__head { display: flex; justify-content: space-between; margin-bottom: 4px; }
 .fairness-bar-item__name { font-size: 0.75rem; color: var(--text-primary); font-weight: 600; }
 .fairness-bar-item__pct { font-size: 0.75rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
-.fairness-bar-item__track { height: 6px; border-radius: 3px; background: rgba(0,0,0,0.04); overflow: hidden; }
+.fairness-bar-item__track { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.06); overflow: hidden; }
 .fairness-bar-item__fill { height: 100%; border-radius: 3px; transition: width 1s ease; }
 .fairness-bar-item__meta { margin-top: 2px; font-size: 0.625rem; color: var(--text-muted); }
 </style>

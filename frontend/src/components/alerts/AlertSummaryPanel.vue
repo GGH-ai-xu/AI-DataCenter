@@ -31,21 +31,21 @@ defineProps({
 
 .alert-summary-strip__item {
   padding: 12px 14px;
-  border-radius: 16px;
-  border: 1px solid rgba(58, 95, 75, 0.08);
-  background: rgba(255, 252, 247, 0.74);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .alert-summary-strip__item--critical {
-  border-color: rgba(196, 30, 58, 0.16);
+  border-color: rgba(239, 68, 68, 0.18);
 }
 
 .alert-summary-strip__item--warning {
-  border-color: rgba(184, 134, 11, 0.16);
+  border-color: rgba(245, 158, 11, 0.18);
 }
 
 .alert-summary-strip__item--ok {
-  border-color: rgba(46, 139, 87, 0.16);
+  border-color: rgba(0, 212, 170, 0.18);
 }
 
 .alert-summary-strip__label,

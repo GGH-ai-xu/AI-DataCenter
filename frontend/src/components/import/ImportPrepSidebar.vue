@@ -2,9 +2,7 @@
 const props = defineProps({
   title: { type: String, required: true },
   description: { type: String, required: true },
-  connectionSummary: { type: String, required: true },
-  selectedSummary: { type: String, required: true },
-  scopeSummary: { type: String, required: true },
+  steps: { type: Array, required: true },
   note: { type: String, required: true },
 })
 </script>
@@ -13,30 +11,40 @@ const props = defineProps({
   <aside class="tech-card import-prep-sidebar">
     <div class="import-prep-sidebar__brand">
       <img class="import-prep-sidebar__logo" src="/logo.svg" alt="AI-DataCenter logo" />
-      <div class="import-prep-sidebar__brand-copy">
-        <div class="import-prep-sidebar__eyebrow">GPU GOVERNANCE CONSOLE</div>
-        <h1 class="import-prep-sidebar__title">{{ props.title }}</h1>
-      </div>
+      <div class="import-prep-sidebar__eyebrow">GPU GOVERNANCE SETUP</div>
     </div>
 
-    <p class="import-prep-sidebar__description">{{ props.description }}</p>
-
-    <div class="import-prep-sidebar__facts">
-      <article class="import-prep-sidebar__fact">
-        <span>当前连接</span>
-        <strong>{{ props.connectionSummary }}</strong>
-      </article>
-      <article class="import-prep-sidebar__fact">
-        <span>本次选择</span>
-        <strong>{{ props.selectedSummary }}</strong>
-      </article>
-      <article class="import-prep-sidebar__fact">
-        <span>控制范围</span>
-        <strong>{{ props.scopeSummary }}</strong>
-      </article>
+    <div class="import-prep-sidebar__brand-copy">
+      <h1 class="import-prep-sidebar__title">{{ props.title }}</h1>
+      <p class="import-prep-sidebar__description">{{ props.description }}</p>
     </div>
 
-    <p class="import-prep-sidebar__note">{{ props.note }}</p>
+    <section class="import-prep-sidebar__steps">
+      <div class="import-prep-sidebar__section-label">步骤引导</div>
+      <article
+        v-for="step in props.steps"
+        :key="step.key"
+        class="import-prep-sidebar__step"
+        :class="{
+          'import-prep-sidebar__step--current': step.state === 'current',
+          'import-prep-sidebar__step--done': step.state === 'done' || step.state === 'ready',
+        }"
+      >
+        <div class="import-prep-sidebar__step-index">{{ String(step.order).padStart(2, '0') }}</div>
+        <div class="import-prep-sidebar__step-copy">
+          <div class="import-prep-sidebar__step-title">{{ step.label }}</div>
+          <div class="import-prep-sidebar__step-desc">{{ step.desc }}</div>
+        </div>
+        <span class="import-prep-sidebar__step-state">
+          {{ step.state === 'current' ? '当前' : (step.state === 'done' || step.state === 'ready' ? '已就绪' : '待完成') }}
+        </span>
+      </article>
+    </section>
+
+    <section class="import-prep-sidebar__note">
+      <div class="import-prep-sidebar__section-label">导入规则</div>
+      <p>{{ props.note }}</p>
+    </section>
   </aside>
 </template>
 
@@ -46,78 +54,133 @@ const props = defineProps({
   top: 24px;
   align-self: start;
   display: grid;
-  gap: 18px;
+  gap: 22px;
   padding: 24px;
   max-height: calc(100vh - 48px);
+  overflow: auto;
 }
 
 .import-prep-sidebar__brand {
   display: flex;
-  align-items: flex-start;
-  gap: 14px;
+  align-items: center;
+  gap: 12px;
 }
 
 .import-prep-sidebar__logo {
-  width: 58px;
-  height: 58px;
-  border-radius: 16px;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
   flex-shrink: 0;
-  filter: drop-shadow(0 12px 24px rgba(46, 139, 87, 0.14));
+  box-shadow: none;
 }
 
 .import-prep-sidebar__brand-copy {
-  min-width: 0;
-}
-
-.import-prep-sidebar__eyebrow,
-.import-prep-sidebar__fact span,
-.import-prep-sidebar__note {
-  font-size: 0.76rem;
-  line-height: 1.7;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
+  display: grid;
+  gap: 10px;
 }
 
 .import-prep-sidebar__title {
-  margin-top: 6px;
-  font-family: var(--font-xingshu);
-  font-size: clamp(2rem, 3vw, 3rem);
-  font-weight: 400;
+  font-family: var(--font-ui);
+  font-size: clamp(1.4rem, 2vw, 1.8rem);
+  font-weight: 600;
   line-height: 1.08;
-  color: var(--text-primary);
+  letter-spacing: -0.03em;
+  color: var(--import-text, var(--text-primary));
 }
 
 .import-prep-sidebar__description {
-  font-size: 0.95rem;
-  line-height: 1.85;
-  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.8;
+  color: var(--import-text-secondary, var(--text-secondary));
 }
 
-.import-prep-sidebar__facts {
+.import-prep-sidebar__eyebrow,
+.import-prep-sidebar__section-label,
+.import-prep-sidebar__step-state {
+  font-family: var(--font-ui);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--import-text-muted, var(--text-muted));
+}
+
+.import-prep-sidebar__steps {
   display: grid;
   gap: 12px;
 }
 
-.import-prep-sidebar__fact {
+.import-prep-sidebar__step {
   display: grid;
-  gap: 8px;
-  padding: 16px;
-  border-radius: 20px;
-  border: 1px solid rgba(26, 26, 26, 0.05);
-  background: rgba(255, 252, 247, 0.72);
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+  padding: 14px 14px 14px 12px;
+  border-radius: 16px;
+  border: 1px solid var(--import-border, rgba(255, 255, 255, 0.08));
+  background: var(--import-surface-soft, rgba(255, 255, 255, 0.03));
 }
 
-.import-prep-sidebar__fact strong {
-  font-size: 0.98rem;
-  line-height: 1.65;
-  color: var(--text-primary);
-  word-break: break-word;
+.import-prep-sidebar__step--current {
+  border-color: var(--import-border-strong, rgba(94, 106, 210, 0.32));
+  background: var(--import-accent-soft, rgba(94, 106, 210, 0.12));
+}
+
+.import-prep-sidebar__step--done {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.import-prep-sidebar__step-index {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  border: 1px solid var(--import-border, rgba(255, 255, 255, 0.08));
+  background: var(--import-surface-bg, rgba(255, 255, 255, 0.04));
+  color: var(--import-text, var(--text-primary));
+  font-family: var(--font-seal);
+  font-size: 0.76rem;
+}
+
+.import-prep-sidebar__step-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.import-prep-sidebar__step-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--import-text, var(--text-primary));
+}
+
+.import-prep-sidebar__step-desc {
+  font-size: 0.78rem;
+  line-height: 1.7;
+  color: var(--import-text-muted, var(--text-muted));
+}
+
+.import-prep-sidebar__step-state {
+  align-self: center;
+  letter-spacing: 0.08em;
 }
 
 .import-prep-sidebar__note {
-  padding-left: 14px;
-  border-left: 2px solid rgba(46, 139, 87, 0.18);
-  letter-spacing: 0.04em;
+  display: grid;
+  gap: 8px;
+  padding: 16px 18px;
+  border-radius: 16px;
+  border: 1px solid var(--import-border, rgba(255, 255, 255, 0.08));
+  background: var(--import-surface-soft, rgba(255, 255, 255, 0.03));
+}
+
+.import-prep-sidebar__note p {
+  font-size: 0.8rem;
+  line-height: 1.8;
+  color: var(--import-text-secondary, var(--text-secondary));
 }
 
 @media (max-width: 1080px) {

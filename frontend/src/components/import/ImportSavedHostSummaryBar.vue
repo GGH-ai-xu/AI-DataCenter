@@ -24,15 +24,15 @@ const props = defineProps({
   display: grid;
   gap: 6px;
   padding: 16px 18px;
-  border-radius: 18px;
-  border: 1px solid rgba(58, 95, 75, 0.12);
-  background: rgba(244, 250, 247, 0.88);
+  border-radius: 16px;
+  border: 1px solid var(--import-border, var(--border-color));
+  background: var(--import-surface-soft, rgba(255, 255, 255, 0.03));
 }
 
 .import-saved-host-summary__label {
   font-size: 0.74rem;
   letter-spacing: 0.08em;
-  color: var(--text-muted);
+  color: var(--import-text-muted, var(--text-muted));
 }
 
 .import-saved-host-summary__title,

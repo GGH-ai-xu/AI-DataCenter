@@ -13,15 +13,15 @@ use([CanvasRenderer, BarChart, GridComponent, TooltipComponent])
 
 const props = defineProps({ gpus: { type: Array, default: () => [] } })
 
-const GPU_COLORS = ['#3A5F4B', '#5B4B8C', '#2E8B57', '#B8860B']
+const GPU_COLORS = ['#00D4AA', '#0EA5E9', '#38BDF8', '#F59E0B']
 
 const option = computed(() => ({
   backgroundColor: 'transparent',
   tooltip: {
     trigger: 'axis',
-    backgroundColor: 'rgba(248, 245, 240, 0.97)',
-    borderColor: 'rgba(58, 95, 75, 0.2)',
-    textStyle: { color: '#2C2C2C', fontSize: 12 },
+    backgroundColor: 'rgba(17, 21, 32, 0.96)',
+    borderColor: 'rgba(0, 212, 170, 0.18)',
+    textStyle: { color: '#E8ECF4', fontSize: 12 },
   },
   grid: { left: 45, right: 12, top: 12, bottom: 50 },
   xAxis: {
@@ -29,15 +29,15 @@ const option = computed(() => ({
     data: props.gpus.map(g => `GPU ${g.index}`),
     axisLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } },
     axisTick: { show: false },
-    axisLabel: { color: '#666666', fontSize: 11 },
+    axisLabel: { color: '#A0AABE', fontSize: 11 },
   },
   yAxis: [
     {
       type: 'value', name: '%', max: 100,
-      nameTextStyle: { color: '#999999', fontSize: 10 },
+      nameTextStyle: { color: '#6B7A94', fontSize: 10 },
       axisLine: { show: false },
       axisTick: { show: false },
-      axisLabel: { color: '#999999', fontSize: 10 },
+      axisLabel: { color: '#6B7A94', fontSize: 10 },
       splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } },
     },
   ],
@@ -51,8 +51,8 @@ const option = computed(() => ({
         color: (params) => ({
           type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
           colorStops: [
-            { offset: 0, color: GPU_COLORS[params.dataIndex] || '#3A5F4B' },
-            { offset: 1, color: (GPU_COLORS[params.dataIndex] || '#3A5F4B') + '40' },
+            { offset: 0, color: GPU_COLORS[params.dataIndex] || '#00D4AA' },
+            { offset: 1, color: (GPU_COLORS[params.dataIndex] || '#00D4AA') + '40' },
           ],
         }),
       },

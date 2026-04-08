@@ -1,8 +1,8 @@
 export const IMPORT_STAGE_TABS = Object.freeze([
-  { key: 'saved', label: '已保存主机' },
-  { key: 'source', label: '连接来源' },
-  { key: 'hardware', label: '硬件概览' },
-  { key: 'selection', label: '选卡导入' },
+  { key: 'saved', label: '已保存主机', desc: '复用成功连接过的目标' },
+  { key: 'source', label: '连接来源', desc: '配置地址、凭据与扫描入口' },
+  { key: 'hardware', label: '硬件概览', desc: '确认本次扫描出的真实硬件' },
+  { key: 'selection', label: '选卡导入', desc: '确定后续纳入治理的 GPU 范围' },
 ])
 
 export function buildImportProviderPayload({
@@ -51,7 +51,7 @@ export function resolveImportAgentUrl({ providerType, scanResult, agentUrl, sshF
     return `ssh://${user}@${host}:${sshForm.port || 22}`
   }
   if (providerType === 'http_remote') return agentUrl || '远程地址待输入'
-  return '本机 Agent / 回环连接'
+  return '本机 / 回环连接'
 }
 
 export function resolveImportConnectionSummary({
@@ -62,7 +62,7 @@ export function resolveImportConnectionSummary({
 }) {
   const sourceLabel = providerType === 'ssh_linux'
     ? 'SSH Linux'
-    : (providerType === 'http_remote' ? '远程 Agent' : '本机 Agent')
+    : (providerType === 'http_remote' ? '远程 Agent' : '本机')
   const scanLabel = scanBusy ? '扫描中' : (scanResult?.success ? '已扫描' : '未扫描')
   return `${sourceLabel} / ${currentAgentUrl} / ${scanLabel}`
 }

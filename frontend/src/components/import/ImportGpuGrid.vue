@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue'
+import { formatGpuMemoryBytes } from '../../lib/importHardwareFormatting.js'
 
 const props = defineProps({
   gpus: { type: Array, default: () => [] },
@@ -8,10 +9,6 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue'])
 const selectedSet = computed(() => new Set(props.modelValue.map((value) => Number(value))))
-
-function formatMemory(value) {
-  return `${(Number(value || 0) / 1024).toFixed(1)} GB`
-}
 
 function toggle(index) {
   const next = new Set(selectedSet.value)
@@ -57,7 +54,7 @@ function toggle(index) {
           </div>
           <div>
             <span>显存</span>
-            <strong>{{ formatMemory(gpu.memory_used) }} / {{ formatMemory(gpu.memory_total) }}</strong>
+            <strong>{{ formatGpuMemoryBytes(gpu.memory_used) }} / {{ formatGpuMemoryBytes(gpu.memory_total) }}</strong>
           </div>
         </div>
       </button>
@@ -86,15 +83,23 @@ function toggle(index) {
   gap: 16px;
   padding: 18px;
   border-radius: 22px;
-  border: 1px solid rgba(26, 26, 26, 0.06);
-  background: rgba(255, 252, 247, 0.82);
+  border: 1px solid var(--import-border, var(--border-color));
+  background: var(--import-surface-soft, rgba(255, 255, 255, 0.03));
   text-align: left;
+  transition: border-color 0.24s ease, background 0.24s ease, transform 0.24s ease, box-shadow 0.24s ease;
+}
+
+.import-gpu-grid__card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: none;
 }
 
 .import-gpu-grid__card--selected {
-  border-color: rgba(46, 139, 87, 0.2);
-  background: rgba(244, 250, 247, 0.92);
-  box-shadow: 0 18px 36px rgba(46, 139, 87, 0.08);
+  border-color: var(--import-border-strong, rgba(94, 106, 210, 0.32));
+  background: var(--import-accent-soft, rgba(94, 106, 210, 0.14));
+  box-shadow: none;
 }
 
 .import-gpu-grid__top {

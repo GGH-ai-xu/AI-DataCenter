@@ -101,7 +101,7 @@ const emit = defineEmits(['ack'])
 .alert-daybook-timeline__empty {
   padding: 40px 18px;
   border-radius: 18px;
-  border: 1px dashed rgba(58, 95, 75, 0.16);
+  border: 1px dashed rgba(0, 212, 170, 0.16);
   text-align: center;
   color: var(--text-muted);
   font-size: 0.82rem;
@@ -121,7 +121,7 @@ const emit = defineEmits(['ack'])
   top: 34px;
   bottom: 0;
   width: 2px;
-  background: rgba(58, 95, 75, 0.1);
+  background: rgba(0, 212, 170, 0.12);
 }
 
 .daybook-section__head {
@@ -148,8 +148,8 @@ const emit = defineEmits(['ack'])
   gap: 10px;
   padding: 16px 18px;
   border-radius: 18px;
-  border: 1px solid rgba(26, 26, 26, 0.06);
-  background: rgba(255, 252, 247, 0.82);
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .daybook-entry::before {
@@ -160,8 +160,8 @@ const emit = defineEmits(['ack'])
   width: 10px;
   height: 10px;
   border-radius: 999px;
-  background: #3A5F4B;
-  border: 2px solid rgba(58, 95, 75, 0.14);
+  background: var(--accent-primary);
+  border: 2px solid rgba(0, 212, 170, 0.16);
 }
 
 .daybook-entry__meta,

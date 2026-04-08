@@ -13,13 +13,16 @@ const props = defineProps({
 const router = useRouter()
 
 const pulseCards = computed(() => [
-  { label: '当前总功率', value: `${Number(props.store.totalPower || 0).toFixed(1)}W`, hint: `${props.store.gpus.length} 张 GPU`, tone: 'mountain' },
-  { label: '剩余预算', value: `${Math.abs(Number(props.governance.budget?.remaining_power || 0)).toFixed(1)}W`, hint: props.governance.budget?.is_exceeded ? '预算已超限' : `预算上限 ${props.governance.budget?.total_power_budget || 0}W`, tone: props.governance.budget?.is_exceeded ? 'danger' : 'ok' },
-  { label: '平均温度', value: `${props.store.avgTemperature}°C`, hint: `${props.summary.hotGpuCount || 0} 张高温 GPU`, tone: props.store.avgTemperature >= 80 ? 'danger' : 'amber' },
-  { label: '活跃用户', value: `${props.summary.activeUsers || 0}`, hint: `${props.store.processes.length} 个 GPU 进程`, tone: 'ink' },
-  { label: '紧急任务', value: `${props.summary.urgentTasks || 0}`, hint: `可延迟 ${props.summary.deferrableTasks || 0} / 普通 ${props.summary.normalTasks || 0}`, tone: 'vermillion' },
-  { label: '严重告警', value: `${props.summary.criticalAlertCount || 0}`, hint: `${props.governance.yieldQueue?.length || 0} 个候选让路`, tone: 'purple' },
+  { label: '当前总功率', value: `${Number(props.store.totalPower || 0).toFixed(1)}W`, hint: `${props.store.gpus.length} 张 GPU`, tone: 'accent' },
+  { label: '剩余预算', value: `${Math.abs(Number(props.governance.budget?.remaining_power || 0)).toFixed(1)}W`, hint: props.governance.budget?.is_exceeded ? '预算已超限' : `预算上限 ${props.governance.budget?.total_power_budget || 0}W`, tone: props.governance.budget?.is_exceeded ? 'critical' : 'accent' },
+  { label: '平均温度', value: `${props.store.avgTemperature}°C`, hint: `${props.summary.hotGpuCount || 0} 张高温 GPU`, tone: props.store.avgTemperature >= 80 ? 'critical' : 'warning' },
+  { label: '活跃用户', value: `${props.summary.activeUsers || 0}`, hint: `${props.store.processes.length} 个 GPU 进程`, tone: 'neutral' },
+  { label: '紧急任务', value: `${props.summary.urgentTasks || 0}`, hint: `可延迟 ${props.summary.deferrableTasks || 0} / 普通 ${props.summary.normalTasks || 0}`, tone: props.summary.urgentTasks > 0 ? 'warning' : 'neutral' },
+  { label: '严重告警', value: `${props.summary.criticalAlertCount || 0}`, hint: `${props.governance.yieldQueue?.length || 0} 个候选让路`, tone: props.summary.criticalAlertCount > 0 ? 'critical' : 'neutral' },
 ])
+
+const boardToneClass = computed(() => `live-workspace__state--${props.governance.boardTone?.tone || 'ok'}`)
+const fairnessToneClass = computed(() => `governance-chip--${props.governance.fairnessTone?.tone || 'ok'}`)
 
 function fmtMem(bytes) {
   return (Number(bytes || 0) / 1073741824).toFixed(1)
@@ -34,17 +37,17 @@ function memPct(used, total) {
 }
 
 function tempColor(temperature) {
-  if (temperature >= 90) return '#C41E3A'
-  if (temperature >= 80) return '#B8860B'
-  if (temperature >= 60) return '#3A5F4B'
-  return '#2E8B57'
+  if (temperature >= 90) return '#ff7894'
+  if (temperature >= 80) return '#F4B95D'
+  if (temperature >= 60) return '#5E6AD2'
+  return '#9ca5b3'
 }
 
 function utilColor(utilization) {
-  if (utilization >= 90) return '#C41E3A'
-  if (utilization >= 70) return '#B8860B'
-  if (utilization >= 40) return '#3A5F4B'
-  return '#2E8B57'
+  if (utilization >= 90) return '#ff7894'
+  if (utilization >= 70) return '#F4B95D'
+  if (utilization >= 40) return '#5E6AD2'
+  return '#9ca5b3'
 }
 </script>
 
@@ -52,10 +55,7 @@ function utilColor(utilization) {
   <div class="live-workspace">
     <section class="live-workspace__hero tech-card">
       <div class="live-workspace__intro">
-        <span
-          class="status-badge"
-          :style="{ background: props.governance.boardTone.bg, color: props.governance.boardTone.color, border: '1px solid ' + props.governance.boardTone.border }"
-        >
+        <span class="live-workspace__state" :class="boardToneClass">
           {{ props.governance.boardTone.badge }}
         </span>
         <h2 class="live-workspace__title">{{ props.governance.boardTone.title }}</h2>
@@ -92,7 +92,7 @@ function utilColor(utilization) {
           <div class="live-workspace__bar">
             <div
               class="live-workspace__bar-fill"
-              :style="{ width: Math.min(100, Math.max(0, props.governance.budget?.usage_pct || 0)) + '%', background: props.governance.budget?.is_exceeded ? 'var(--gradient-red)' : 'var(--gradient-green)' }"
+              :style="{ width: Math.min(100, Math.max(0, props.governance.budget?.usage_pct || 0)) + '%', background: props.governance.budget?.is_exceeded ? '#ff7894' : '#5e6ad2' }"
             ></div>
           </div>
           <div class="live-workspace__panel-text">
@@ -117,12 +117,12 @@ function utilColor(utilization) {
           <div class="section-title">公平与来源</div>
           <div class="live-workspace__panel-text">{{ props.governance.sourceState?.detail }}</div>
           <div class="live-workspace__chip-row">
-            <span class="governance-chip" :style="{ color: props.governance.fairnessTone.color, background: props.governance.fairnessTone.bg }">
+            <span class="governance-chip" :class="fairnessToneClass">
               {{ props.governance.fairnessTone.label }}
             </span>
             <span class="governance-chip">候选让路 {{ props.governance.yieldQueue?.length || 0 }}</span>
           </div>
-          <button class="btn-tech" @click="router.push('/scheduler')">进入治理调度页</button>
+          <button class="btn-tech btn-tech--primary" @click="router.push('/scheduler')">进入治理调度页</button>
         </section>
       </aside>
 
@@ -166,7 +166,7 @@ function utilColor(utilization) {
                 <div class="live-workspace__metric">
                   <span>功耗</span>
                   <strong class="stat-value">{{ gpu.power_usage.toFixed(0) }}/{{ gpu.power_limit.toFixed(0) }}W</strong>
-                  <div class="live-workspace__bar"><div class="live-workspace__bar-fill" :style="{ width: powerPct(gpu.power_usage, gpu.power_limit) + '%', background: 'var(--gradient-blue)' }"></div></div>
+                  <div class="live-workspace__bar"><div class="live-workspace__bar-fill" :style="{ width: powerPct(gpu.power_usage, gpu.power_limit) + '%', background: '#5e6ad2' }"></div></div>
                 </div>
                 <div class="live-workspace__metric">
                   <span>利用率</span>
@@ -176,7 +176,7 @@ function utilColor(utilization) {
                 <div class="live-workspace__metric">
                   <span>显存</span>
                   <strong class="stat-value">{{ fmtMem(gpu.memory_used) }}/{{ fmtMem(gpu.memory_total) }}G</strong>
-                  <div class="live-workspace__bar"><div class="live-workspace__bar-fill" :style="{ width: memPct(gpu.memory_used, gpu.memory_total) + '%', background: 'var(--gradient-green)' }"></div></div>
+                  <div class="live-workspace__bar"><div class="live-workspace__bar-fill" :style="{ width: memPct(gpu.memory_used, gpu.memory_total) + '%', background: '#6f79d8' }"></div></div>
                 </div>
               </div>
             </button>
@@ -216,18 +216,50 @@ function utilColor(utilization) {
 .live-workspace__hero,
 .live-workspace__body {
   display: grid;
-  gap: 16px;
+  gap: 18px;
 }
 
 .live-workspace__hero {
   grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.3fr);
-  padding: 22px 24px;
+  padding: 24px 26px;
+}
+
+.live-workspace__state {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  width: fit-content;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+}
+
+.live-workspace__state--ok {
+  color: #dbe0ff;
+  border-color: rgba(94, 106, 210, 0.3);
+  background: rgba(94, 106, 210, 0.14);
+}
+
+.live-workspace__state--warning {
+  color: #f7d79d;
+  border-color: rgba(244, 185, 93, 0.22);
+  background: rgba(244, 185, 93, 0.14);
+}
+
+.live-workspace__state--critical {
+  color: #ffd2de;
+  border-color: rgba(255, 120, 148, 0.22);
+  background: rgba(255, 120, 148, 0.14);
 }
 
 .live-workspace__title {
   margin-top: 12px;
-  font-size: 1.42rem;
-  line-height: 1.45;
+  font-size: 1.52rem;
+  line-height: 1.18;
+  letter-spacing: -0.03em;
+  color: var(--console-text, var(--text-primary));
 }
 
 .live-workspace__desc,
@@ -235,7 +267,7 @@ function utilColor(utilization) {
 .live-workspace__surface-note,
 .live-workspace__recommendation,
 .live-workspace__pulse-hint {
-  color: var(--text-secondary);
+  color: var(--console-text-secondary, var(--text-secondary));
   line-height: 1.7;
   overflow-wrap: anywhere;
 }
@@ -247,42 +279,45 @@ function utilColor(utilization) {
 .live-workspace__pulse-card,
 .live-workspace__panel,
 .live-workspace__gpu-card {
-  border-radius: 22px;
-  border: 1px solid rgba(26, 26, 26, 0.06);
-  background: rgba(255, 252, 247, 0.82);
+  border-radius: 20px;
+  border: 1px solid var(--console-border, rgba(255, 255, 255, 0.08));
+  background: var(--console-surface, rgba(255, 255, 255, 0.04));
 }
 
 .live-workspace__pulse-card {
-  padding: 14px 16px;
+  padding: 16px 18px;
+  border-left-width: 2px;
 }
 
-.live-workspace__pulse-card--danger {
-  border-color: rgba(196, 30, 58, 0.16);
+.live-workspace__pulse-card--accent {
+  border-left-color: rgba(94, 106, 210, 0.48);
 }
 
-.live-workspace__pulse-card--ok,
-.live-workspace__pulse-card--mountain {
-  border-color: rgba(46, 139, 87, 0.14);
+.live-workspace__pulse-card--critical {
+  border-left-color: rgba(255, 120, 148, 0.48);
+  background: rgba(255, 120, 148, 0.08);
 }
 
-.live-workspace__pulse-card--amber {
-  border-color: rgba(184, 134, 11, 0.16);
+.live-workspace__pulse-card--warning {
+  border-left-color: rgba(244, 185, 93, 0.44);
+  background: rgba(244, 185, 93, 0.08);
 }
 
-.live-workspace__pulse-card--purple {
-  border-color: rgba(91, 75, 140, 0.16);
+.live-workspace__pulse-card--neutral {
+  border-left-color: rgba(255, 255, 255, 0.12);
 }
 
 .live-workspace__pulse-label,
 .live-workspace__metric span {
   font-size: 0.74rem;
-  color: var(--text-muted);
+  color: var(--console-text-muted, var(--text-muted));
 }
 
 .live-workspace__pulse-value,
 .live-workspace__panel-value {
   display: block;
   margin: 8px 0 4px;
+  color: var(--console-text, var(--text-primary));
 }
 
 .live-workspace__panel-value {
@@ -290,11 +325,11 @@ function utilColor(utilization) {
 }
 
 .live-workspace__body {
-  grid-template-columns: 320px minmax(0, 1fr);
+  grid-template-columns: 336px minmax(0, 1fr);
 }
 
 .live-workspace__panel {
-  padding: 18px;
+  padding: 20px;
 }
 
 .live-workspace__recommendations {
@@ -304,8 +339,8 @@ function utilColor(utilization) {
 }
 
 .live-workspace__recommendation {
-  padding-left: 12px;
-  border-left: 2px solid rgba(58, 95, 75, 0.12);
+  padding-left: 14px;
+  border-left: 2px solid rgba(94, 106, 210, 0.22);
   font-size: 0.8rem;
 }
 
@@ -317,14 +352,33 @@ function utilColor(utilization) {
 
 .governance-chip {
   font-size: 0.7rem;
-  color: var(--accent-primary);
-  background: rgba(58, 95, 75, 0.08);
-  padding: 4px 8px;
+  color: var(--console-text-secondary, var(--text-secondary));
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--console-border, rgba(255, 255, 255, 0.08));
+  padding: 5px 9px;
   border-radius: 999px;
 }
 
+.governance-chip--ok {
+  color: #dbe0ff;
+  border-color: rgba(94, 106, 210, 0.3);
+  background: rgba(94, 106, 210, 0.14);
+}
+
+.governance-chip--warning {
+  color: #f7d79d;
+  border-color: rgba(244, 185, 93, 0.22);
+  background: rgba(244, 185, 93, 0.14);
+}
+
+.governance-chip--critical {
+  color: #ffd2de;
+  border-color: rgba(255, 120, 148, 0.22);
+  background: rgba(255, 120, 148, 0.14);
+}
+
 .live-workspace__gpu-surface {
-  padding: 20px;
+  padding: 22px;
 }
 
 .live-workspace__surface-head,
@@ -337,7 +391,7 @@ function utilColor(utilization) {
 
 .live-workspace__gpu-grid {
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  margin-top: 16px;
+  margin-top: 18px;
 }
 
 .live-workspace__gpu-card {
@@ -345,22 +399,31 @@ function utilColor(utilization) {
   gap: 14px;
   padding: 18px;
   text-align: left;
+  transition:
+    border-color 0.24s ease,
+    background 0.24s ease;
+}
+
+.live-workspace__gpu-card:hover {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .gpu-card__badge {
   font-size: 0.75rem;
   font-weight: 700;
-  color: var(--accent-primary);
-  background: rgba(58, 95, 75, 0.1);
-  padding: 2px 8px;
-  border-radius: 6px;
+  color: #dbe0ff;
+  background: rgba(94, 106, 210, 0.16);
+  border: 1px solid rgba(94, 106, 210, 0.22);
+  padding: 4px 9px;
+  border-radius: 999px;
   font-family: 'JetBrains Mono', monospace;
 }
 
 .live-workspace__gpu-name {
   margin-top: 8px;
   font-size: 0.92rem;
-  color: var(--text-primary);
+  color: var(--console-text, var(--text-primary));
   line-height: 1.5;
 }
 
@@ -376,9 +439,9 @@ function utilColor(utilization) {
 }
 
 .live-workspace__bar {
-  height: 6px;
+  height: 8px;
   border-radius: 999px;
-  background: rgba(58, 95, 75, 0.08);
+  background: rgba(255, 255, 255, 0.05);
   overflow: hidden;
 }
 
@@ -392,7 +455,7 @@ function utilColor(utilization) {
 }
 
 .chart-panel {
-  padding: 18px;
+  padding: 20px;
 }
 
 .chart-panel__header {
@@ -405,11 +468,12 @@ function utilColor(utilization) {
 
 .live-workspace__empty {
   margin-top: 16px;
-  padding: 56px 18px;
+  padding: 60px 18px;
   text-align: center;
-  border-radius: 22px;
-  border: 1px dashed rgba(58, 95, 75, 0.14);
-  color: var(--text-muted);
+  border-radius: var(--radius-lg);
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  color: var(--console-text-muted, var(--text-muted));
+  background: rgba(255, 255, 255, 0.03);
 }
 
 @media (max-width: 1280px) {

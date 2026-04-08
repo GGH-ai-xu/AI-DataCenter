@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import secrets
 import time
 
@@ -9,6 +10,7 @@ from app.services.password_hasher import hash_password, verify_password
 
 DEFAULT_ADMIN_USERNAME = "admin"
 DEFAULT_ADMIN_ROLE = "admin"
+DEFAULT_ADMIN_PASSWORD = os.environ.get("GPU_GOV_DEFAULT_ADMIN_PASSWORD", "admin123456")
 SESSION_TTL_SECONDS = 7 * 24 * 60 * 60
 TOKEN_BYTES = 32
 
@@ -20,17 +22,29 @@ class PlatformAuthService:
     async def ensure_default_admin(self) -> dict | None:
         current = await self.store.get_user_by_username(DEFAULT_ADMIN_USERNAME)
         if current:
+            if _can_reset_bootstrap_admin(current):
+                await self.store.update_password(
+                    current["id"],
+                    hash_password(DEFAULT_ADMIN_PASSWORD),
+                    False,
+                )
+                refreshed = await self.store.get_user_by_id(current["id"])
+                return {
+                    "username": refreshed["username"],
+                    "default_password": DEFAULT_ADMIN_PASSWORD,
+                    "status": "reset_existing",
+                }
             return None
-        generated_password = secrets.token_urlsafe(12)
         user = await self.store.create_user(
             username=DEFAULT_ADMIN_USERNAME,
-            password_hash=hash_password(generated_password),
+            password_hash=hash_password(DEFAULT_ADMIN_PASSWORD),
             role=DEFAULT_ADMIN_ROLE,
-            must_change_password=True,
+            must_change_password=False,
         )
         return {
             "username": user["username"],
-            "generated_password": generated_password,
+            "default_password": DEFAULT_ADMIN_PASSWORD,
+            "status": "created",
         }
 
     async def login(self, username: str, password: str) -> dict:
@@ -117,6 +131,10 @@ class PlatformAuthService:
 
 def _hash_token(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _can_reset_bootstrap_admin(user: dict) -> bool:
+    return bool(user.get("must_change_password")) and user.get("last_login_at") is None
 
 
 def _public_user(user: dict) -> dict:

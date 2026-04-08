@@ -44,9 +44,9 @@ const normalizedProcesses = computed(() => visibleProcesses.value)
 const processSummary = computed(() => taskSummary.value)
 
 const priorityColors = {
-  urgent: { bg: 'rgba(196,30,58,0.12)', color: '#C41E3A', label: '紧急' },
-  normal: { bg: 'rgba(58,95,75,0.12)', color: '#3A5F4B', label: '普通' },
-  deferrable: { bg: 'rgba(148,163,184,0.12)', color: '#666666', label: '可延迟' },
+  urgent: { bg: 'rgba(239, 68, 68, 0.12)', color: '#EF4444', label: '紧急' },
+  normal: { bg: 'rgba(0, 212, 170, 0.12)', color: '#00D4AA', label: '普通' },
+  deferrable: { bg: 'rgba(160, 170, 190, 0.14)', color: '#A0AABE', label: '可延迟' },
 }
 
 const fmtMem = (bytes) => `${((bytes || 0) / 1073741824).toFixed(1)} GB`
@@ -286,7 +286,7 @@ async function doExportGovernance(fmt = 'markdown') {
       </div>
       <div class="tech-card stat-card">
         <div class="stat-card__label">紧急任务</div>
-        <div class="stat-card__value stat-value" style="color:#C41E3A">{{ urgentCount }}</div>
+        <div class="stat-card__value stat-value" style="color:var(--accent-danger)">{{ urgentCount }}</div>
         <div class="stat-card__hint">预算紧张时优先保障</div>
       </div>
       <div class="tech-card stat-card">
@@ -497,9 +497,9 @@ async function doExportGovernance(fmt = 'markdown') {
   max-width: 360px;
   padding: 8px 12px;
   border-radius: 999px;
-  color: #7B5D15;
-  background: rgba(212, 175, 55, 0.08);
-  border: 1px solid rgba(184, 134, 11, 0.16);
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
 }
 
 .notice {
@@ -508,18 +508,18 @@ async function doExportGovernance(fmt = 'markdown') {
 }
 
 .notice--ok {
-  border-color: rgba(46,139,87,0.14);
-  background: rgba(46,139,87,0.05);
+  border-color: rgba(0, 212, 170, 0.18);
+  background: rgba(0, 212, 170, 0.1);
 }
 
 .notice--warning {
-  border-color: rgba(184,134,11,0.16);
-  background: rgba(212,175,55,0.08);
+  border-color: rgba(245, 158, 11, 0.18);
+  background: rgba(245, 158, 11, 0.1);
 }
 
 .notice--critical {
-  border-color: rgba(196,30,58,0.14);
-  background: rgba(196,30,58,0.06);
+  border-color: rgba(239, 68, 68, 0.18);
+  background: rgba(239, 68, 68, 0.1);
 }
 
 .notice__title {
@@ -587,8 +587,8 @@ async function doExportGovernance(fmt = 'markdown') {
 .yield-item {
   padding: 10px 12px;
   border-radius: 10px;
-  background: rgba(58,95,75,0.04);
-  border: 1px solid rgba(58,95,75,0.08);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
   font-size: 0.78rem;
   line-height: 1.7;
   color: var(--text-secondary);
@@ -604,7 +604,7 @@ async function doExportGovernance(fmt = 'markdown') {
 
 .yield-item__pid {
   font-weight: 700;
-  color: #C41E3A;
+  color: var(--accent-danger);
 }
 
 .yield-item__priority {
@@ -635,7 +635,7 @@ async function doExportGovernance(fmt = 'markdown') {
   padding: 8px 10px;
   border-radius: 8px;
   border: 1px solid var(--border-color);
-  background: rgba(255,255,255,0.55);
+  background: rgba(255, 255, 255, 0.04);
   color: var(--text-primary);
   font-size: 0.8125rem;
 }
@@ -675,18 +675,18 @@ async function doExportGovernance(fmt = 'markdown') {
 }
 
 .status-badge--ok {
-  color: #2F6A46;
-  background: rgba(46,139,87,0.08);
+  color: var(--accent-primary);
+  background: rgba(0, 212, 170, 0.1);
 }
 
 .status-badge--background {
-  color: #666666;
-  background: rgba(153,153,153,0.12);
+  color: var(--text-secondary);
+  background: rgba(160, 170, 190, 0.12);
 }
 
 .status-badge--system {
-  color: #7A4B14;
-  background: rgba(212,175,55,0.14);
+  color: var(--accent-warning);
+  background: rgba(245, 158, 11, 0.12);
 }
 
 @media (max-width: 1400px) {

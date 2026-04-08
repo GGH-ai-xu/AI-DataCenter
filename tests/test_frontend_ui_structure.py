@@ -162,9 +162,19 @@ class FrontendUIStructureTests(unittest.TestCase):
         dock_text = (ROOT / "frontend/src/components/app/SidebarInfoDock.vue").read_text(encoding="utf-8")
         self.assertIn("summary", brand_text)
         self.assertIn("app-sidebar-brand-card__summary", brand_text)
+        self.assertIn("切换服务器", brand_text)
         self.assertIn("时间", dock_text)
         self.assertNotIn("运行台", dock_text)
         self.assertNotIn("桌面端", dock_text)
+
+    def test_console_shell_exposes_switch_server_action(self):
+        shell_text = (ROOT / "frontend/src/composables/useConsoleShell.js").read_text(encoding="utf-8")
+        console_text = (ROOT / "frontend/src/views/ConsoleShell.vue").read_text(encoding="utf-8")
+        self.assertIn("resetImportContext", shell_text)
+        self.assertIn("switchServer", shell_text)
+        self.assertIn("router.replace(IMPORT_ROUTE)", shell_text)
+        self.assertIn(":switch-server-busy", console_text)
+        self.assertIn("@switch-server", console_text)
 
     def test_desktop_shell_uses_updated_logo_assets(self):
         splash_text = (ROOT / "desktop-shell/splash.html").read_text(encoding="utf-8")

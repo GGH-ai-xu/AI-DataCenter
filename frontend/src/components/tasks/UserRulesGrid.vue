@@ -125,16 +125,16 @@ async function resetRule(user) {
 .rules-panel__head { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
 .rules-panel__hint { font-size: 0.75rem; color: var(--text-muted); line-height: 1.6; }
 .rules-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 12px; }
-.rule-card { padding: 14px; border-radius: 12px; background: rgba(91,75,140,0.03); border: 1px solid rgba(91,75,140,0.08); }
+.rule-card { padding: 14px; border-radius: 12px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); }
 .rule-card__top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
 .rule-card__name { font-size: 0.92rem; font-weight: 700; color: var(--text-primary); }
 .rule-card__meta { font-size: 0.75rem; color: var(--text-muted); line-height: 1.6; }
 .rule-card__status { padding: 4px 10px; border-radius: 999px; font-size: 0.6875rem; font-weight: 700; }
-.rule-card__status--ok { color: #2E8B57; background: rgba(46,139,87,0.08); }
-.rule-card__status--warn { color: #C41E3A; background: rgba(196,30,58,0.08); }
+.rule-card__status--ok { color: var(--accent-primary); background: rgba(0, 212, 170, 0.1); }
+.rule-card__status--warn { color: var(--accent-danger); background: rgba(239, 68, 68, 0.1); }
 .rule-card__form { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 10px; }
 .rule-card__actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.task-input, .task-select { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.55); color: var(--text-primary); font-size: 0.8125rem; }
+.task-input, .task-select { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border-color); background: rgba(255, 255, 255, 0.04); color: var(--text-primary); font-size: 0.8125rem; }
 .task-input { flex: 1; }
 
 @media (max-width: 1400px) { .rules-grid { grid-template-columns: 1fr; } }

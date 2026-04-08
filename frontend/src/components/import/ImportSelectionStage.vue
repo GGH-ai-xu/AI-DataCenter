@@ -114,6 +114,7 @@ function clearSelection() {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(240px, 0.8fr);
   gap: 16px;
+  align-items: start;
   min-height: 0;
 }
 
@@ -122,6 +123,7 @@ function clearSelection() {
   display: grid;
   gap: 16px;
   padding: 20px;
+  align-content: start;
 }
 
 .import-selection-stage__toolbar-head,
@@ -156,16 +158,16 @@ function clearSelection() {
 .import-selection-stage__view-button {
   min-height: 40px;
   padding: 0 14px;
-  border-radius: 999px;
-  border: 1px solid rgba(58, 95, 75, 0.12);
-  background: rgba(255, 255, 255, 0.82);
-  color: var(--text-secondary);
+  border-radius: 12px;
+  border: 1px solid var(--import-border, var(--border-color));
+  background: var(--import-surface-alt, rgba(255, 255, 255, 0.04));
+  color: var(--import-text-secondary, var(--text-secondary));
 }
 
 .import-selection-stage__view-button--active {
-  border-color: rgba(46, 139, 87, 0.18);
-  background: rgba(244, 250, 247, 0.88);
-  color: var(--text-primary);
+  border-color: var(--import-border-strong, rgba(94, 106, 210, 0.32));
+  background: var(--import-accent-soft, rgba(94, 106, 210, 0.14));
+  color: var(--import-text, var(--text-primary));
 }
 
 .import-selection-stage__grid-shell {
@@ -184,8 +186,8 @@ function clearSelection() {
   gap: 8px;
   padding: 16px;
   border-radius: 20px;
-  background: rgba(255, 252, 247, 0.72);
-  border: 1px solid rgba(26, 26, 26, 0.05);
+  background: var(--import-surface-soft, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--import-border, var(--border-color));
 }
 
 .import-selection-stage__fact strong {

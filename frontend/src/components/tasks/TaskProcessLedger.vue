@@ -155,10 +155,10 @@ function priorityStyle(priority = 'normal') {
   grid-template-columns: minmax(0, 1.25fr) minmax(0, 1.4fr) minmax(250px, 0.95fr);
   gap: 16px;
   padding: 18px 20px;
-  border-radius: 22px;
-  border: 1px solid rgba(26, 26, 26, 0.06);
-  background: rgba(255, 252, 247, 0.82);
-  box-shadow: 0 16px 36px rgba(79, 59, 22, 0.05);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.03);
+  box-shadow: var(--shadow-card);
 }
 
 .task-process-ledger__identity,
@@ -213,8 +213,8 @@ function priorityStyle(priority = 'normal') {
 .priority-select {
   padding: 8px 10px;
   border-radius: 10px;
-  border: 1px solid rgba(26, 26, 26, 0.08);
-  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.04);
   color: var(--text-primary);
   font-size: 0.8rem;
 }
@@ -245,8 +245,8 @@ function priorityStyle(priority = 'normal') {
   gap: 10px;
   padding: 14px 16px;
   border-radius: 18px;
-  background: rgba(248, 245, 240, 0.92);
-  border: 1px dashed rgba(58, 95, 75, 0.14);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed rgba(0, 212, 170, 0.16);
 }
 
 .task-process-ledger__buttons {
@@ -259,26 +259,26 @@ function priorityStyle(priority = 'normal') {
 }
 
 .task-process-ledger__hint--readonly {
-  color: #7B5D15;
+  color: var(--accent-warning);
 }
 
 .status-badge--background {
-  color: #666666;
-  background: rgba(153, 153, 153, 0.12);
+  color: var(--text-secondary);
+  background: rgba(160, 170, 190, 0.12);
 }
 
 .status-badge--system {
-  color: #7A4B14;
-  background: rgba(212, 175, 55, 0.14);
+  color: var(--accent-warning);
+  background: rgba(245, 158, 11, 0.12);
 }
 
 .task-process-ledger__empty {
   padding: 42px 18px;
   text-align: center;
   color: var(--text-muted);
-  border-radius: 22px;
-  border: 1px dashed rgba(58, 95, 75, 0.14);
-  background: rgba(255, 252, 247, 0.72);
+  border-radius: var(--radius-lg);
+  border: 1px dashed rgba(0, 212, 170, 0.16);
+  background: rgba(255, 255, 255, 0.02);
 }
 
 @media (max-width: 1280px) {

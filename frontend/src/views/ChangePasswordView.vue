@@ -42,36 +42,56 @@ async function handleLogout() {
 
 <template>
   <div class="auth-page">
-    <section class="auth-card tech-card">
-      <div class="auth-card__eyebrow">首次登录校验</div>
-      <h1 class="auth-card__title">先修改平台密码</h1>
-      <p class="auth-card__description">
-        当前账号 {{ auth.currentUser?.username || '当前用户' }} 仍处于一次性密码状态。完成改密后才能进入导入层与控制台。
-      </p>
-      <form class="auth-form" @submit.prevent="handleSubmit">
-        <label class="auth-form__field">
-          <span>当前密码</span>
-          <input v-model="form.currentPassword" type="password" autocomplete="current-password" />
-        </label>
-        <label class="auth-form__field">
-          <span>新密码</span>
-          <input v-model="form.newPassword" type="password" autocomplete="new-password" />
-        </label>
-        <label class="auth-form__field">
-          <span>确认新密码</span>
-          <input v-model="form.confirmPassword" type="password" autocomplete="new-password" />
-        </label>
-        <p v-if="passwordMismatch" class="auth-form__error">两次输入的新密码不一致。</p>
-        <p v-else-if="errorText" class="auth-form__error">{{ errorText }}</p>
-        <div class="auth-form__actions">
-          <button type="button" class="btn-tech" :disabled="busy" @click="handleLogout">
-            退出登录
-          </button>
-          <button type="submit" class="btn-tech btn-tech--primary" :disabled="busy || !canSubmit">
-            {{ busy ? '提交中...' : '修改密码并继续' }}
-          </button>
+    <section class="auth-shell auth-shell--narrow">
+      <article class="auth-hero tech-card">
+        <div class="auth-hero__eyebrow">First Login Check</div>
+        <h1 class="auth-hero__title">先把默认口令切成你自己的平台密码。</h1>
+        <p class="auth-hero__description">
+          当前账号 {{ auth.currentUser?.username || '当前用户' }} 仍处于一次性密码状态。完成改密后，系统才会放行到导入层与治理控制台。
+        </p>
+        <div class="auth-hero__grid">
+          <article class="auth-hero__item">
+            <span>安全要求</span>
+            <strong>新密码不少于 8 位</strong>
+          </article>
+          <article class="auth-hero__item">
+            <span>登录路径</span>
+            <strong>改密成功后自动进入导入层</strong>
+          </article>
         </div>
-      </form>
+      </article>
+
+      <section class="auth-card tech-card">
+        <div class="auth-card__eyebrow">首次登录校验</div>
+        <h1 class="auth-card__title">先修改平台密码</h1>
+        <p class="auth-card__description">
+          当前账号 {{ auth.currentUser?.username || '当前用户' }} 仍处于一次性密码状态。完成改密后才能进入导入层与控制台。
+        </p>
+        <form class="auth-form" @submit.prevent="handleSubmit">
+          <label class="auth-form__field">
+            <span>当前密码</span>
+            <input v-model="form.currentPassword" type="password" autocomplete="current-password" />
+          </label>
+          <label class="auth-form__field">
+            <span>新密码</span>
+            <input v-model="form.newPassword" type="password" autocomplete="new-password" />
+          </label>
+          <label class="auth-form__field">
+            <span>确认新密码</span>
+            <input v-model="form.confirmPassword" type="password" autocomplete="new-password" />
+          </label>
+          <p v-if="passwordMismatch" class="auth-form__error">两次输入的新密码不一致。</p>
+          <p v-else-if="errorText" class="auth-form__error">{{ errorText }}</p>
+          <div class="auth-form__actions">
+            <button type="button" class="btn-tech" :disabled="busy" @click="handleLogout">
+              退出登录
+            </button>
+            <button type="submit" class="btn-tech btn-tech--primary" :disabled="busy || !canSubmit">
+              {{ busy ? '提交中...' : '修改密码并继续' }}
+            </button>
+          </div>
+        </form>
+      </section>
     </section>
   </div>
 </template>
@@ -82,38 +102,100 @@ async function handleLogout() {
   display: grid;
   place-items: center;
   padding: 24px;
-  background:
-    radial-gradient(circle at 14% 18%, rgba(196, 30, 58, 0.08), transparent 22%),
-    radial-gradient(circle at 84% 18%, rgba(46, 139, 87, 0.12), transparent 20%),
-    linear-gradient(180deg, rgba(251, 247, 242, 0.98), rgba(243, 237, 228, 0.94));
+}
+
+.auth-shell {
+  width: min(1080px, 100%);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 420px);
+  gap: 22px;
+}
+
+.auth-shell--narrow {
+  width: min(1040px, 100%);
+}
+
+.auth-hero,
+.auth-card {
+  padding: 28px;
+}
+
+.auth-hero {
+  display: grid;
+  gap: 18px;
+  align-content: start;
+}
+
+.auth-hero__eyebrow,
+.auth-card__eyebrow {
+  font-family: var(--font-seal);
+  font-size: 0.72rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.auth-hero__title {
+  font-size: clamp(2rem, 3vw, 3.2rem);
+  line-height: 0.98;
+  font-weight: 600;
+  letter-spacing: -0.05em;
+  background: linear-gradient(180deg, #ffffff 0%, rgba(237, 238, 247, 0.72) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.auth-hero__description,
+.auth-card__description {
+  color: var(--text-secondary);
+  line-height: 1.8;
+}
+
+.auth-hero__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.auth-hero__item {
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.065), rgba(255, 255, 255, 0.03));
+}
+
+.auth-hero__item span {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.auth-hero__item strong {
+  font-size: 0.96rem;
+  line-height: 1.5;
+  color: var(--text-primary);
 }
 
 .auth-card {
-  width: min(92vw, 500px);
-  padding: 28px;
   display: grid;
-  gap: 14px;
-}
-
-.auth-card__eyebrow {
-  font-size: 0.76rem;
-  letter-spacing: 0.18em;
-  color: #7d746b;
+  gap: 16px;
+  align-content: start;
 }
 
 .auth-card__title {
-  font-size: 1.76rem;
-  line-height: 1.18;
-}
-
-.auth-card__description {
-  color: #5e574f;
-  line-height: 1.7;
+  font-family: var(--font-ui);
+  font-size: 1.82rem;
+  line-height: 1.06;
+  letter-spacing: -0.04em;
 }
 
 .auth-form {
   display: grid;
-  gap: 14px;
+  gap: 16px;
 }
 
 .auth-form__field {
@@ -122,8 +204,9 @@ async function handleLogout() {
 }
 
 .auth-form__field span {
-  font-size: 0.84rem;
-  color: #5e574f;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-tertiary);
 }
 
 .auth-form__actions {
@@ -133,6 +216,18 @@ async function handleLogout() {
 }
 
 .auth-form__error {
-  color: #a12a3a;
+  color: var(--accent-danger);
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+@media (max-width: 960px) {
+  .auth-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-hero__grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

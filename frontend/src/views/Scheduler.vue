@@ -91,16 +91,16 @@ const executionSummary = computed(() =>
 const budgetFillStyle = computed(() => {
   const width = Math.min(100, Math.max(0, budget.value.usage_pct || 0))
   const background = budget.value.is_exceeded
-    ? 'linear-gradient(90deg, #C41E3A, #F97316)'
-    : 'linear-gradient(90deg, #2E8B57, #3A5F4B)'
+    ? 'linear-gradient(90deg, #FF6F96, #F4B95D)'
+    : 'linear-gradient(90deg, #7F8EFF, #6EB8FF)'
   return { width: `${width}%`, background }
 })
 
 const carbonFillStyle = computed(() => {
   const width = Math.min(100, Math.max(0, carbonBudget.value.usage_pct || 0))
   const background = carbonBudget.value.is_exceeded
-    ? 'linear-gradient(90deg, #C41E3A, #F97316)'
-    : 'linear-gradient(90deg, #2E8B57, #3A5F4B)'
+    ? 'linear-gradient(90deg, #FF6F96, #F4B95D)'
+    : 'linear-gradient(90deg, #7F8EFF, #6EB8FF)'
   return { width: `${width}%`, background }
 })
 
@@ -297,9 +297,9 @@ const auditSourceMap = {
 }
 
 const auditRiskColorMap = {
-  low: '#3A5F4B',
-  medium: '#B8860B',
-  high: '#C41E3A',
+  low: 'var(--accent-primary)',
+  medium: 'var(--accent-warning)',
+  high: 'var(--accent-danger)',
 }
 
 const auditRiskLabelMap = {
@@ -430,7 +430,7 @@ onMounted(() => {
         </div>
 
         <div class="budget-meta">
-          <span :style="{ color: budget.is_exceeded ? '#C41E3A' : '#2E8B57' }">
+          <span :style="{ color: budget.is_exceeded ? 'var(--accent-danger)' : 'var(--accent-primary)' }">
             {{ budget.is_exceeded ? `超出 ${Math.abs(budget.remaining_power).toFixed(1)}W` : `剩余 ${budget.remaining_power.toFixed(1)}W` }}
           </span>
           <span>已接管 {{ budget.managed_gpu_count }} 张GPU</span>
@@ -501,7 +501,7 @@ onMounted(() => {
         </div>
 
         <div class="budget-meta">
-          <span :style="{ color: carbonBudget.is_exceeded ? '#C41E3A' : '#2E8B57' }">
+          <span :style="{ color: carbonBudget.is_exceeded ? 'var(--accent-danger)' : 'var(--accent-primary)' }">
             {{ carbonBudget.is_exceeded ? '已超出碳预算' : '碳预算充裕' }}
           </span>
           <span>已运行 {{ carbonBudget.hours_elapsed }} 小时</span>
@@ -514,7 +514,7 @@ onMounted(() => {
           </div>
           <div class="carbon-stat-item">
             <span class="carbon-stat-item__label">预估全天碳排放</span>
-            <span class="carbon-stat-item__value" :style="{ color: carbonBudget.projected_daily_carbon_kg > carbonBudget.daily_budget_kg ? '#C41E3A' : '#2E8B57' }">
+            <span class="carbon-stat-item__value" :style="{ color: carbonBudget.projected_daily_carbon_kg > carbonBudget.daily_budget_kg ? 'var(--accent-danger)' : 'var(--accent-primary)' }">
               {{ carbonBudget.projected_daily_carbon_kg }} kgCO₂
             </span>
           </div>
@@ -555,7 +555,7 @@ onMounted(() => {
           >
             <span class="toggle-btn__dot"></span>
           </button>
-          <span :style="{ color: autoEnabled ? '#2E8B57' : '#C41E3A', fontSize: '0.8125rem' }">
+          <span :style="{ color: autoEnabled ? 'var(--accent-primary)' : 'var(--accent-danger)', fontSize: '0.8125rem' }">
             {{ autoEnabled ? '已启用' : '已禁用' }}
           </span>
         </div>
@@ -587,7 +587,7 @@ onMounted(() => {
             我已确认会直接改动真实任务与功耗限制
           </label>
         </div>
-        <div style="color: #B8860B; font-size: 0.75rem; margin-bottom: 12px; line-height: 1.7">
+        <div style="color: var(--text-secondary); font-size: 0.75rem; margin-bottom: 12px; line-height: 1.7">
           {{ executionSummary }}
         </div>
         <button class="btn-tech btn-tech--primary" @click="runOnce" :disabled="scheduleLoading">
@@ -631,7 +631,7 @@ onMounted(() => {
         <div v-if="scheduleResult.ai_strategy" style="margin-bottom: 12px">
           <div style="color: var(--accent-primary); font-size: 0.8125rem; margin-bottom: 6px">AI策略摘要</div>
           <div style="color: var(--text-secondary); font-size: 0.8125rem">{{ scheduleResult.ai_strategy.summary }}</div>
-          <div v-if="scheduleResult.ai_strategy.estimated_power_saving" style="color: #2E8B57; font-size: 0.8125rem; margin-top: 4px">
+          <div v-if="scheduleResult.ai_strategy.estimated_power_saving" style="color: var(--accent-primary); font-size: 0.8125rem; margin-top: 4px">
             理论节能: {{ scheduleResult.ai_strategy.estimated_power_saving }}W
           </div>
         </div>
@@ -733,7 +733,7 @@ onMounted(() => {
           <div v-for="log in auditLogs" :key="log.id" class="audit-item">
             <div class="audit-item__top">
               <span class="audit-item__action">{{ auditActionMap[log.action] || log.action || '未知动作' }}</span>
-              <span class="audit-item__risk" :style="{ color: auditRiskColorMap[log.risk_level || 'low'] || '#3A5F4B' }">
+              <span class="audit-item__risk" :style="{ color: auditRiskColorMap[log.risk_level || 'low'] || 'var(--accent-primary)' }">
                 {{ auditRiskLabelMap[log.risk_level || 'low'] || '低' }}风险
               </span>
             </div>
@@ -765,9 +765,10 @@ onMounted(() => {
 
 .scheduler-summary-card {
   padding: 14px 16px;
-  border-radius: 16px;
-  border: 1px solid rgba(58, 95, 75, 0.08);
-  background: rgba(255, 252, 247, 0.66);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.03);
+  box-shadow: var(--shadow-card);
 }
 
 .scheduler-summary-card__label,
@@ -793,18 +794,18 @@ onMounted(() => {
 }
 
 .sched-notice--ok {
-  border-color: rgba(46,139,87,0.14);
-  background: rgba(46,139,87,0.05);
+  border-color: rgba(127, 142, 255, 0.24);
+  background: linear-gradient(135deg, rgba(127, 142, 255, 0.16), rgba(110, 184, 255, 0.08));
 }
 
 .sched-notice--warning {
-  border-color: rgba(184,134,11,0.16);
-  background: rgba(212,175,55,0.08);
+  border-color: rgba(244, 185, 93, 0.22);
+  background: rgba(244, 185, 93, 0.12);
 }
 
 .sched-notice--critical {
-  border-color: rgba(196,30,58,0.14);
-  background: rgba(196,30,58,0.06);
+  border-color: rgba(255, 111, 150, 0.22);
+  background: rgba(255, 111, 150, 0.12);
 }
 
 .sched-notice__title {
@@ -825,19 +826,19 @@ onMounted(() => {
   background: rgba(255, 255, 255, 0.1); cursor: pointer;
   position: relative; transition: background 0.3s;
 }
-.toggle-btn--on { background: rgba(46,139,87,0.3); }
 .toggle-btn__dot {
   position: absolute; top: 3px; left: 3px;
   width: 18px; height: 18px; border-radius: 50%;
-  background: #666666; transition: all 0.3s;
+  background: var(--text-tertiary); transition: all 0.3s;
 }
-.toggle-btn--on .toggle-btn__dot { left: 23px; background: #2E8B57; box-shadow: 0 0 8px rgba(46,139,87,0.4); }
+.toggle-btn--on { background: rgba(127, 142, 255, 0.28); }
+.toggle-btn--on .toggle-btn__dot { left: 23px; background: var(--accent-primary); box-shadow: 0 0 10px rgba(127, 142, 255, 0.42); }
 
 .power-row {
   display: flex; align-items: center; gap: 10px;
   padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.03);
 }
-.gpu-tag { font-size: 0.6875rem; font-weight: 600; color: var(--accent-primary); background: rgba(58,95,75,0.1); padding: 2px 8px; border-radius: 4px; }
+.gpu-tag { font-size: 0.6875rem; font-weight: 600; color: var(--accent-primary); background: rgba(127, 142, 255, 0.14); padding: 2px 8px; border-radius: 4px; }
 
 .budget-hero {
   display: flex;
@@ -946,8 +947,8 @@ onMounted(() => {
 .budget-action {
   padding: 10px 12px;
   border-radius: 8px;
-  background: rgba(58,95,75,0.04);
-  border: 1px solid rgba(58,95,75,0.08);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
 }
 
 .budget-action__top {
@@ -965,13 +966,13 @@ onMounted(() => {
 }
 
 .budget-action__tag {
-  color: #2E8B57;
-  background: rgba(46,139,87,0.1);
+  color: var(--accent-primary);
+  background: rgba(127, 142, 255, 0.14);
 }
 
 .budget-action__target {
-  color: var(--accent-primary);
-  background: rgba(58,95,75,0.1);
+  color: var(--accent-tertiary);
+  background: rgba(110, 184, 255, 0.12);
 }
 
 .budget-action__reason {
@@ -987,8 +988,8 @@ onMounted(() => {
 .result-item {
   display: flex; padding: 8px 12px; border-radius: 6px; font-size: 0.8125rem; margin-bottom: 4px;
 }
-.result-item--ok { background: rgba(46,139,87,0.08); color: #2E8B57; }
-.result-item--fail { background: rgba(196,30,58,0.08); color: #C41E3A; }
+.result-item--ok { background: rgba(127, 142, 255, 0.14); color: var(--accent-primary); }
+.result-item--fail { background: rgba(255, 111, 150, 0.12); color: var(--accent-danger); }
 
 .result-item__reason {
   margin-top: 4px;
@@ -1015,8 +1016,8 @@ onMounted(() => {
 .audit-item {
   padding: 12px 14px;
   border-radius: 14px;
-  border: 1px solid rgba(58,95,75,0.08);
-  background: rgba(255,252,247,0.66);
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .audit-item__top,
@@ -1057,8 +1058,8 @@ onMounted(() => {
   min-width: 120px;
   padding: 10px 12px;
   border-radius: 8px;
-  background: rgba(58,95,75,0.04);
-  border: 1px solid rgba(58,95,75,0.08);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
 }
 
 .carbon-stat-item__label {
@@ -1120,8 +1121,8 @@ onMounted(() => {
 .strategy-item {
   padding: 16px;
   border-radius: 10px;
-  background: rgba(58,95,75,0.04);
-  border: 1px solid rgba(58,95,75,0.08);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
   text-align: center;
 }
 
@@ -1132,8 +1133,8 @@ onMounted(() => {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: rgba(196,30,58,0.08);
-  color: #C41E3A;
+  background: rgba(110, 184, 255, 0.14);
+  color: var(--accent-tertiary);
   font-size: 0.875rem;
   font-weight: 700;
   font-family: var(--font-seal, "KaiTi", "STKaiti", serif);
@@ -1192,8 +1193,8 @@ onMounted(() => {
   margin-bottom: 14px;
   padding: 10px 12px;
   border-radius: 8px;
-  background: rgba(58,95,75,0.04);
-  border: 1px solid rgba(58,95,75,0.08);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
 }
 
 .eval-card__details {
@@ -1224,13 +1225,13 @@ onMounted(() => {
 }
 
 .eval-detail__item--ok {
-  background: rgba(46,139,87,0.08);
-  color: #2E8B57;
+  background: rgba(127, 142, 255, 0.14);
+  color: var(--accent-primary);
 }
 
 .eval-detail__item--fail {
-  background: rgba(196,30,58,0.08);
-  color: #C41E3A;
+  background: rgba(255, 111, 150, 0.12);
+  color: var(--accent-danger);
 }
 
 .eval-card__improve {
@@ -1238,12 +1239,12 @@ onMounted(() => {
   align-items: flex-start;
   gap: 8px;
   font-size: 0.8125rem;
-  color: #B8860B;
+  color: var(--accent-warning);
   line-height: 1.7;
   padding: 10px 12px;
   border-radius: 8px;
-  background: rgba(184,134,11,0.06);
-  border: 1px solid rgba(184,134,11,0.12);
+  background: rgba(244, 185, 93, 0.12);
+  border: 1px solid rgba(244, 185, 93, 0.22);
 }
 
 .eval-improve__icon {
@@ -1253,8 +1254,8 @@ onMounted(() => {
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: rgba(196,30,58,0.08);
-  color: #C41E3A;
+  background: rgba(255, 111, 150, 0.14);
+  color: var(--accent-danger);
   font-size: 0.75rem;
   font-weight: 700;
   font-family: var(--font-seal, "KaiTi", "STKaiti", serif);

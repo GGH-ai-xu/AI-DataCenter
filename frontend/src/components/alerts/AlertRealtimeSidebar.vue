@@ -77,8 +77,8 @@ defineEmits(['update:modelValue'])
 }
 
 .alert-realtime-sidebar__filter {
-  border: 1px solid rgba(58, 95, 75, 0.12);
-  background: rgba(255, 252, 247, 0.82);
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.04);
   color: var(--text-secondary);
   border-radius: 999px;
   padding: 8px 12px;
@@ -87,8 +87,8 @@ defineEmits(['update:modelValue'])
 }
 
 .alert-realtime-sidebar__filter--active {
-  border-color: rgba(58, 95, 75, 0.26);
-  background: rgba(58, 95, 75, 0.1);
+  border-color: rgba(0, 212, 170, 0.24);
+  background: rgba(0, 212, 170, 0.08);
   color: var(--text-primary);
 }
 
@@ -104,8 +104,8 @@ defineEmits(['update:modelValue'])
   gap: 12px;
   padding: 10px 12px;
   border-radius: 12px;
-  background: rgba(255, 252, 247, 0.72);
-  border: 1px solid rgba(58, 95, 75, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
   font-size: 0.78rem;
   color: var(--text-secondary);
 }

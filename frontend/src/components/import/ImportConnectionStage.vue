@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import ImportSourcePanel from './ImportSourcePanel.vue'
 const SOURCE_MODES = Object.freeze([
-  { key: 'http_local', label: '本机 Agent' },
+  { key: 'http_local', label: '本机' },
   { key: 'http_remote', label: '远程 Agent' },
   { key: 'ssh_linux', label: 'SSH Linux' },
 ])
@@ -22,7 +22,6 @@ const props = defineProps({
   sudoPassword: { type: String, default: '' },
   scanBusy: { type: Boolean, required: true },
   feedback: { type: Object, default: null },
-  connectionSummary: { type: String, required: true },
   hostFingerprint: { type: String, default: '' },
 })
 
@@ -45,6 +44,9 @@ const emit = defineEmits([
 const authLabel = computed(() => (props.providerType === 'ssh_linux'
   ? (props.authType === 'private_key' ? '私钥认证' : '密码认证')
   : 'Agent 直连'))
+const providerLabel = computed(() => (props.providerType === 'ssh_linux'
+  ? 'SSH Linux'
+  : (props.providerType === 'http_remote' ? '远程 Agent' : '本机')))
 
 const targetAddress = computed(() => {
   if (props.providerType === 'ssh_linux') {
@@ -55,7 +57,7 @@ const targetAddress = computed(() => {
   if (props.providerType === 'http_remote') {
     return props.agentUrl || '远程地址待输入'
   }
-  return '本机 Agent / 回环连接'
+  return '本机 / 回环连接'
 })
 
 const scanState = computed(() => {
@@ -67,7 +69,8 @@ const scanState = computed(() => {
 
 const connectionFacts = computed(() => {
   const facts = [
-    { label: '当前目标', value: targetAddress.value },
+    { label: '连接来源', value: providerLabel.value },
+    { label: '目标地址', value: targetAddress.value },
     { label: '认证方式', value: authLabel.value },
     { label: '连接标签', value: props.agentLabel || '待填写' },
     { label: '最近状态', value: scanState.value },
@@ -83,7 +86,12 @@ const connectionFacts = computed(() => {
     <div class="import-connection-stage__shell">
       <div class="import-connection-stage__main">
         <section class="tech-card import-connection-stage__modes">
-          <div class="section-title">连接来源</div>
+          <div>
+            <div class="section-title">连接来源</div>
+            <p class="import-connection-stage__intro">
+              先确认本次导入的目标类型。切换来源后，下面的表单会自动切换为对应的连接字段。
+            </p>
+          </div>
           <div class="import-connection-stage__mode-strip">
             <button
               v-for="mode in SOURCE_MODES"
@@ -128,17 +136,24 @@ const connectionFacts = computed(() => {
         <section class="tech-card import-connection-stage__action-card">
           <div class="import-connection-stage__action-head">
             <div>
-              <div class="section-title">连接与扫描</div>
+              <div class="section-title">硬件扫描</div>
               <p class="import-connection-stage__action-copy">
-                先确认连接信息，再发起一次真实扫描，后续验机和选卡都以这次结果为准。
+                当连接信息准备好后，执行一次真实扫描。扫描结果会直接决定下一步的验机视图和候选 GPU 列表。
               </p>
             </div>
-            <span class="status-badge" :class="props.feedback?.tone === 'ok' ? 'status-badge--ok' : 'status-badge--warning'">
+            <span
+              class="status-badge"
+              :class="props.feedback?.tone === 'ok' ? 'status-badge--ok' : (props.feedback?.tone === 'error' ? 'status-badge--critical' : 'status-badge--warning')"
+            >
               {{ scanState }}
             </span>
           </div>
 
           <div class="import-connection-stage__action-row">
+            <div class="import-connection-stage__action-summary">
+              <strong>当前目标</strong>
+              <span>{{ targetAddress }}</span>
+            </div>
             <button
               type="button"
               class="btn-tech btn-tech--primary"
@@ -147,7 +162,6 @@ const connectionFacts = computed(() => {
             >
               {{ props.scanBusy ? '扫描中...' : '扫描硬件' }}
             </button>
-            <div class="import-connection-stage__action-summary">{{ props.connectionSummary }}</div>
           </div>
 
           <div
@@ -188,6 +202,7 @@ const connectionFacts = computed(() => {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(240px, 0.8fr);
   gap: 16px;
+  align-items: start;
   min-height: 0;
 }
 
@@ -197,6 +212,7 @@ const connectionFacts = computed(() => {
   display: grid;
   gap: 14px;
   padding: 20px;
+  align-content: start;
 }
 
 .import-connection-stage__mode-strip {
@@ -207,16 +223,16 @@ const connectionFacts = computed(() => {
 
 .import-connection-stage__mode {
   min-height: 44px;
-  border-radius: 16px;
-  border: 1px solid rgba(58, 95, 75, 0.12);
-  background: rgba(255, 252, 247, 0.82);
-  color: var(--text-secondary);
+  border-radius: 12px;
+  border: 1px solid var(--import-border, var(--border-color));
+  background: var(--import-surface-alt, rgba(255, 255, 255, 0.04));
+  color: var(--import-text-secondary, var(--text-secondary));
 }
 
 .import-connection-stage__mode--active {
-  border-color: rgba(46, 139, 87, 0.18);
-  background: rgba(244, 250, 247, 0.88);
-  color: var(--text-primary);
+  border-color: var(--import-border-strong, rgba(94, 106, 210, 0.32));
+  background: var(--import-accent-soft, rgba(94, 106, 210, 0.14));
+  color: var(--import-text, var(--text-primary));
 }
 
 .import-connection-stage__action-head,
@@ -229,38 +245,46 @@ const connectionFacts = computed(() => {
 }
 
 .import-connection-stage__action-copy,
+.import-connection-stage__intro,
 .import-connection-stage__action-summary,
 .import-connection-stage__fact span {
   font-size: 0.78rem;
   line-height: 1.7;
-  color: var(--text-muted);
+  color: var(--import-text-muted, var(--text-muted));
 }
 
 .import-connection-stage__action-summary {
-  max-width: 100%;
+  display: grid;
+  gap: 4px;
+  max-width: min(100%, 420px);
   word-break: break-word;
+}
+
+.import-connection-stage__action-summary strong {
+  font-size: 0.82rem;
+  color: var(--import-text, var(--text-primary));
 }
 
 .import-connection-stage__feedback {
   padding: 12px 14px;
-  border-radius: 16px;
+  border-radius: 14px;
   font-size: 0.82rem;
   line-height: 1.7;
 }
 
 .import-connection-stage__feedback--ok {
-  color: #2f6a46;
-  background: rgba(46, 139, 87, 0.08);
+  color: var(--import-accent, var(--accent-primary));
+  background: var(--import-accent-soft, rgba(94, 106, 210, 0.12));
 }
 
 .import-connection-stage__feedback--warning {
-  color: #8a6510;
-  background: rgba(212, 175, 55, 0.12);
+  color: var(--import-warning, var(--accent-warning));
+  background: var(--import-warning-soft, rgba(244, 185, 93, 0.12));
 }
 
 .import-connection-stage__feedback--error {
-  color: #9a1730;
-  background: rgba(196, 30, 58, 0.08);
+  color: var(--import-danger, var(--accent-danger));
+  background: var(--import-danger-soft, rgba(255, 111, 150, 0.12));
 }
 
 .import-connection-stage__facts {
@@ -272,15 +296,15 @@ const connectionFacts = computed(() => {
   display: grid;
   gap: 6px;
   padding: 14px;
-  border-radius: 18px;
-  background: rgba(255, 252, 247, 0.72);
-  border: 1px solid rgba(26, 26, 26, 0.05);
+  border-radius: 16px;
+  background: var(--import-surface-soft, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--import-border, var(--border-color));
 }
 
 .import-connection-stage__fact strong {
   font-size: 0.94rem;
   line-height: 1.6;
-  color: var(--text-primary);
+  color: var(--import-text, var(--text-primary));
   word-break: break-word;
 }
 

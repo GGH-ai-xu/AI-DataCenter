@@ -12,8 +12,8 @@ const props = defineProps({
 })
 
 const facts = computed(() => [
-  { label: '导入模式', value: props.providerType === 'ssh_linux' ? 'SSH Linux' : (props.providerType === 'http_remote' ? '远程 Agent' : '本机 Agent') },
-  { label: '目标标签', value: props.agentLabel || (props.providerType === 'http_remote' ? '远程 Agent' : '本机 Agent') },
+  { label: '导入模式', value: props.providerType === 'ssh_linux' ? 'SSH Linux' : (props.providerType === 'http_remote' ? '远程 Agent' : '本机') },
+  { label: '目标标签', value: props.agentLabel || (props.providerType === 'http_remote' ? '远程 Agent' : '本机') },
   { label: 'CPU 占用', value: `${Number(props.system?.cpu_percent || 0).toFixed(1)}%` },
   { label: 'CPU 线程', value: `${Number(props.system?.cpu_count || 0) || '未知'}` },
   { label: '内存总量', value: formatSystemMemoryBytes(props.system?.memory_total) },
@@ -73,22 +73,22 @@ const facts = computed(() => [
   display: grid;
   gap: 6px;
   padding: 14px;
-  border-radius: 18px;
-  background: rgba(255, 252, 247, 0.72);
-  border: 1px solid rgba(26, 26, 26, 0.05);
+  border-radius: 16px;
+  background: var(--import-surface-soft, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--import-border, var(--border-color));
 }
 
 .import-hardware-summary__fact span,
 .import-hardware-summary__address {
   font-size: 0.76rem;
   line-height: 1.7;
-  color: var(--text-muted);
+  color: var(--import-text-muted, var(--text-muted));
   word-break: break-word;
 }
 
 .import-hardware-summary__fact strong {
   font-size: 1rem;
-  color: var(--text-primary);
+  color: var(--import-text, var(--text-primary));
 }
 
 @media (max-width: 900px) {

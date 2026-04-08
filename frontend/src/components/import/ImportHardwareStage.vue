@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import ImportHardwareSummary from './ImportHardwareSummary.vue'
 import ImportSavedHostSummaryBar from './ImportSavedHostSummaryBar.vue'
+import { formatGpuMemoryBytes } from '../../lib/importHardwareFormatting.js'
 
 const props = defineProps({
   savedHostSummary: { type: Object, default: null },
@@ -15,12 +16,6 @@ const props = defineProps({
 })
 
 const activeView = ref('cards')
-
-function formatMemoryMb(value) {
-  const total = Number(value || 0)
-  if (!total) return '0 GB'
-  return `${(total / 1024).toFixed(1)} GB`
-}
 
 const busyCount = computed(() => props.gpus.filter((gpu) => Number(gpu.gpu_utilization || 0) > 0).length)
 const idleCount = computed(() => Math.max(props.gpus.length - busyCount.value, 0))
@@ -107,7 +102,7 @@ const totalMemoryUsed = computed(() =>
                 </div>
                 <div>
                   <span>显存</span>
-                  <strong>{{ formatMemoryMb(gpu.memory_used) }} / {{ formatMemoryMb(gpu.memory_total) }}</strong>
+                  <strong>{{ formatGpuMemoryBytes(gpu.memory_used) }} / {{ formatGpuMemoryBytes(gpu.memory_total) }}</strong>
                 </div>
               </div>
             </article>
@@ -128,7 +123,7 @@ const totalMemoryUsed = computed(() =>
             </article>
             <article class="import-hardware-stage__summary-card">
               <span>总显存</span>
-              <strong>{{ formatMemoryMb(totalMemoryUsed) }} / {{ formatMemoryMb(totalMemory) }}</strong>
+              <strong>{{ formatGpuMemoryBytes(totalMemoryUsed) }} / {{ formatGpuMemoryBytes(totalMemory) }}</strong>
             </article>
           </div>
         </section>
@@ -139,7 +134,7 @@ const totalMemoryUsed = computed(() =>
         <div class="import-hardware-stage__facts">
           <article class="import-hardware-stage__fact">
             <span>扫描来源</span>
-            <strong>{{ props.providerType === 'ssh_linux' ? 'SSH Linux' : (props.providerType === 'http_remote' ? '远程 Agent' : '本机 Agent') }}</strong>
+            <strong>{{ props.providerType === 'ssh_linux' ? 'SSH Linux' : (props.providerType === 'http_remote' ? '远程 Agent' : '本机') }}</strong>
           </article>
           <article class="import-hardware-stage__fact">
             <span>目标地址</span>
@@ -175,6 +170,8 @@ const totalMemoryUsed = computed(() =>
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(240px, 0.8fr);
   gap: 16px;
+  align-items: start;
+  min-height: 0;
 }
 
 .import-hardware-stage__gpu-panel,
@@ -182,6 +179,7 @@ const totalMemoryUsed = computed(() =>
   display: grid;
   gap: 16px;
   padding: 20px;
+  align-content: start;
 }
 
 .import-hardware-stage__panel-head {
@@ -210,16 +208,16 @@ const totalMemoryUsed = computed(() =>
 .import-hardware-stage__view-button {
   min-height: 40px;
   padding: 0 14px;
-  border-radius: 999px;
-  border: 1px solid rgba(58, 95, 75, 0.12);
-  background: rgba(255, 255, 255, 0.82);
-  color: var(--text-secondary);
+  border-radius: 12px;
+  border: 1px solid var(--import-border, var(--border-color));
+  background: var(--import-surface-alt, rgba(255, 255, 255, 0.04));
+  color: var(--import-text-secondary, var(--text-secondary));
 }
 
 .import-hardware-stage__view-button--active {
-  border-color: rgba(46, 139, 87, 0.18);
-  background: rgba(244, 250, 247, 0.88);
-  color: var(--text-primary);
+  border-color: var(--import-border-strong, rgba(94, 106, 210, 0.32));
+  background: var(--import-accent-soft, rgba(94, 106, 210, 0.14));
+  color: var(--import-text, var(--text-primary));
 }
 
 .import-hardware-stage__cards,
@@ -239,8 +237,8 @@ const totalMemoryUsed = computed(() =>
   gap: 8px;
   padding: 16px;
   border-radius: 20px;
-  background: rgba(255, 252, 247, 0.72);
-  border: 1px solid rgba(26, 26, 26, 0.05);
+  background: var(--import-surface-soft, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--import-border, var(--border-color));
 }
 
 .import-hardware-stage__card-head {

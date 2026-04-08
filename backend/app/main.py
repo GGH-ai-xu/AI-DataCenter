@@ -317,9 +317,10 @@ async def lifespan(app: FastAPI):
     bootstrap_notice = await app_state.platform_auth.ensure_default_admin()
     if bootstrap_notice:
         logger.warning(
-            "默认管理员已创建: username=%s temporary_password=%s",
+            "默认管理员已初始化: username=%s default_password=%s status=%s",
             bootstrap_notice["username"],
-            bootstrap_notice["generated_password"],
+            bootstrap_notice["default_password"],
+            bootstrap_notice["status"],
         )
     app_state.credentials = CredentialStore(credential_config_path, cipher)
     app_state.saved_hosts = SavedHostService(app_state.identity, app_state.credentials)

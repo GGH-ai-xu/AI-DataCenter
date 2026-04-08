@@ -8,12 +8,20 @@ const props = defineProps({
     type: Object,
     required: true,
   },
+  switchServerBusy: {
+    type: Boolean,
+    required: true,
+  },
   currentPath: {
     type: String,
     required: true,
   },
   currentTime: {
     type: String,
+    required: true,
+  },
+  telemetry: {
+    type: Array,
     required: true,
   },
   navItems: {
@@ -30,7 +38,7 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['navigate'])
+const emit = defineEmits(['navigate', 'switch-server'])
 </script>
 
 <template>
@@ -38,6 +46,8 @@ const emit = defineEmits(['navigate'])
     <SidebarBrandCard
       :app-info="props.appInfo"
       :summary="props.summary"
+      :switch-server-busy="props.switchServerBusy"
+      @switch-server="emit('switch-server')"
     />
     <div class="app-primary-sidebar__main">
       <SidebarNavRail
@@ -47,7 +57,7 @@ const emit = defineEmits(['navigate'])
         @navigate="emit('navigate', $event)"
       />
     </div>
-    <SidebarInfoDock :current-time="props.currentTime" />
+    <SidebarInfoDock :current-time="props.currentTime" :telemetry="props.telemetry" />
   </div>
 </template>
 
@@ -56,13 +66,13 @@ const emit = defineEmits(['navigate'])
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 16px;
-  height: 100%;
+  height: auto;
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .app-primary-sidebar__main {
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 </style>

@@ -3,7 +3,6 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import DashboardLiveWorkspace from '../components/dashboard/DashboardLiveWorkspace.vue'
 import DataStatisticsCard from '../components/dashboard/DataStatisticsCard.vue'
-import WorkspaceSummary from '../components/workspace/WorkspaceSummary.vue'
 import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
 import { formatImportedGpuLabel } from '../lib/importContext.js'
 import { useAppStore } from '../stores/app.js'
@@ -91,39 +90,34 @@ const governanceTip = computed(() => {
 const boardTone = computed(() => {
   if (schedulerState.value.budget?.is_exceeded) {
     return {
+      tone: 'critical',
       badge: '预算超限',
       title: '导入范围需要立即收口预算',
-      color: '#9A1730',
-      border: 'rgba(196, 30, 58, 0.18)',
-      bg: 'rgba(196, 30, 58, 0.08)',
     }
   }
   if ((liveSummary.value.criticalAlertCount || 0) > 0) {
     return {
+      tone: 'warning',
       badge: '风险待处理',
       title: '导入范围内存在需要优先确认的告警',
-      color: '#8A6510',
-      border: 'rgba(212, 175, 55, 0.18)',
-      bg: 'rgba(212, 175, 55, 0.12)',
     }
   }
   return {
+    tone: 'ok',
     badge: '治理稳定',
     title: '控制台已完全收口到本次导入范围',
-    color: '#2F6A46',
-    border: 'rgba(46, 139, 87, 0.18)',
-    bg: 'rgba(46, 139, 87, 0.08)',
   }
 })
 const fairnessTone = computed(() => {
-  if (fairnessOverview.value.level === 'critical') return { label: '公平紧张', color: '#9A1730', bg: 'rgba(196, 30, 58, 0.08)' }
-  if (fairnessOverview.value.level === 'watch') return { label: '公平观察', color: '#8A6510', bg: 'rgba(212, 175, 55, 0.12)' }
-  return { label: '公平稳定', color: '#2F6A46', bg: 'rgba(46, 139, 87, 0.08)' }
+  if (fairnessOverview.value.level === 'critical') return { tone: 'critical', label: '公平紧张' }
+  if (fairnessOverview.value.level === 'watch') return { tone: 'warning', label: '公平观察' }
+  return { tone: 'ok', label: '公平稳定' }
 })
 const recommendationList = computed(() => {
   const items = fairnessState.value.recommendations || []
   return items.length ? items : ['控制台只显示已导入 GPU；如需更改范围，请重新进入导入层扫描并提交。']
 })
+const primaryRecommendation = computed(() => recommendationList.value[0] || '当前没有额外建议。')
 const healthCards = computed(() => [
   { label: '导入范围', value: formatImportedGpuLabel(importedIndexes.value) },
   { label: '实时连接', value: store.wsConnected ? '在线' : '离线' },
@@ -141,6 +135,10 @@ const governanceProps = computed(() => ({
   sourceState: sourceState.value,
 }))
 
+function toneClass(tone) {
+  return `dashboard-tone--${tone || 'ok'}`
+}
+
 function applyGovernancePayload(payload) {
   schedulerState.value = payload.scheduler || schedulerState.value
   fairnessState.value = payload.fairness || fairnessState.value
@@ -156,8 +154,14 @@ function applyGovernancePayload(payload) {
 
 <template>
   <div class="dashboard-view">
-    <WorkspaceSummary title="治理总览">
-      <template #meta>
+    <section class="tech-card dashboard-summary">
+      <div class="dashboard-summary__top">
+        <div class="dashboard-summary__copy">
+          <div class="section-title">当前导入范围</div>
+          <div class="dashboard-summary__lead">
+            当前控制台已经收口到本次导入范围。你只需要围绕这批 GPU 做治理、观察、风险处置和效果复盘。
+          </div>
+        </div>
         <div class="dashboard-summary__meta">
           <span class="status-badge">{{ store.importContext?.source_mode === 'remote' ? '远程导入' : '本机导入' }}</span>
           <span class="status-badge status-badge--ok">{{ formatImportedGpuLabel(importedIndexes) }}</span>
@@ -165,11 +169,28 @@ function applyGovernancePayload(payload) {
             {{ store.wsConnected ? '实时在线' : '实时离线' }}
           </span>
         </div>
-      </template>
-      <div>
-        当前控制台只管理本次导入选中的 GPU。接入方式、本地/远程选择和重新扫描逻辑已经全部迁到导入层。
       </div>
-    </WorkspaceSummary>
+      <div class="dashboard-summary__quick-grid">
+        <article class="dashboard-summary__quick-item">
+          <span>治理状态</span>
+          <strong>{{ boardTone.badge }}</strong>
+          <small>{{ boardTone.title }}</small>
+        </article>
+        <article class="dashboard-summary__quick-item">
+          <span>公平指数</span>
+          <strong>{{ fairnessOverview.fairness_index ?? 0 }}</strong>
+          <small>{{ fairnessTone.label }}</small>
+        </article>
+        <article class="dashboard-summary__quick-item">
+          <span>接入状态</span>
+          <strong>{{ sourceState.connected ? '实时可用' : '等待导入' }}</strong>
+          <small>{{ sourceState.detail }}</small>
+        </article>
+      </div>
+      <div class="dashboard-summary__caption">
+        如需更改机器或 GPU 范围，直接使用左侧“切换服务器”返回导入层，不再在控制台内四处寻找入口。
+      </div>
+    </section>
 
     <div class="workspace-nav-layout">
       <div class="workspace-nav-layout__nav">
@@ -179,8 +200,14 @@ function applyGovernancePayload(payload) {
       <div class="workspace-nav-layout__content">
         <template v-if="activeTab === 'overview'">
           <div class="overview-layout">
-            <section class="tech-card overview-card">
-              <div class="section-title">导入范围摘要</div>
+            <section class="tech-card overview-card overview-card--hero">
+              <div class="overview-card__header">
+                <div class="section-title">导入范围摘要</div>
+                <div class="overview-card__tone" :class="toneClass(boardTone.tone)">
+                  {{ boardTone.badge }}
+                </div>
+              </div>
+              <h3 class="overview-card__headline">{{ boardTone.title }}</h3>
               <div class="overview-card__hero">{{ governanceTip }}</div>
               <div class="overview-card__facts">
                 <div class="overview-card__fact">
@@ -202,7 +229,7 @@ function applyGovernancePayload(payload) {
               </div>
             </section>
 
-            <section class="tech-card overview-card">
+            <section class="tech-card overview-card overview-card--routes">
               <div class="section-title">工作分流</div>
               <div class="overview-routes">
                 <button
@@ -217,7 +244,29 @@ function applyGovernancePayload(payload) {
                     <strong>{{ item.label }}</strong>
                     <small>{{ item.desc }}</small>
                   </span>
+                  <span class="overview-route__action">进入</span>
                 </button>
+              </div>
+            </section>
+
+            <section class="tech-card overview-card overview-card--insight">
+              <div class="section-title">当前判断</div>
+              <div class="overview-insight__stack">
+                <article class="overview-insight__item">
+                  <span class="overview-insight__label">公平状态</span>
+                  <strong :class="toneClass(fairnessTone.tone)">{{ fairnessTone.label }}</strong>
+                  <p>活跃用户 {{ fairnessOverview.active_users || 0 }} 人，最高占用 {{ fairnessOverview.highest_share_pct || 0 }}%。</p>
+                </article>
+                <article class="overview-insight__item">
+                  <span class="overview-insight__label">优先建议</span>
+                  <strong>先处理最短路径动作</strong>
+                  <p>{{ primaryRecommendation }}</p>
+                </article>
+                <article class="overview-insight__item">
+                  <span class="overview-insight__label">连接状态</span>
+                  <strong>{{ sourceState.connected ? '导入链路稳定' : '等待重新导入' }}</strong>
+                  <p>{{ sourceState.detail }}</p>
+                </article>
               </div>
             </section>
           </div>
@@ -258,11 +307,13 @@ function applyGovernancePayload(payload) {
 <style scoped>
 .dashboard-view,
 .dashboard-summary__meta,
+.dashboard-summary__quick-grid,
 .overview-layout,
 .overview-routes,
 .dashboard-health,
 .dashboard-health__grid,
-.dashboard-health__checks {
+.dashboard-health__checks,
+.overview-insight__stack {
   display: grid;
   gap: 16px;
 }
@@ -273,27 +324,130 @@ function applyGovernancePayload(payload) {
   justify-content: flex-end;
 }
 
+.dashboard-summary {
+  display: grid;
+  gap: 16px;
+  padding: 20px 24px;
+}
+
+.dashboard-summary__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.dashboard-summary__copy {
+  display: grid;
+  gap: 10px;
+  max-width: 72ch;
+}
+
+.dashboard-summary__lead,
+.dashboard-summary__caption {
+  font-size: 0.92rem;
+  line-height: 1.8;
+  color: var(--console-text-secondary, var(--text-secondary));
+}
+
+.dashboard-summary__caption {
+  color: var(--console-text-muted, var(--text-tertiary));
+}
+
+.dashboard-summary__quick-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dashboard-summary__quick-item {
+  display: grid;
+  gap: 6px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 1px solid var(--console-border, rgba(255, 255, 255, 0.08));
+  background: var(--console-surface, rgba(255, 255, 255, 0.04));
+}
+
+.dashboard-summary__quick-item span,
+.dashboard-summary__quick-item small {
+  font-size: 0.76rem;
+  line-height: 1.6;
+  color: var(--console-text-muted, var(--text-muted));
+}
+
+.dashboard-summary__quick-item strong {
+  font-size: 1.02rem;
+  color: var(--console-text, var(--text-primary));
+}
+
 .overview-layout {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
 }
 
 .overview-card,
 .dashboard-health {
-  padding: 20px;
+  padding: 22px 24px;
+}
+
+.overview-card {
+  position: relative;
+}
+
+.overview-card--hero {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-rows: auto auto auto auto;
+  gap: 16px;
+  align-content: start;
+}
+
+.overview-card--routes,
+.overview-card--insight {
+  align-content: start;
+}
+
+.overview-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.overview-card__tone {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  width: fit-content;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--console-border, rgba(255, 255, 255, 0.08));
+  font-size: 0.72rem;
+  line-height: 1;
+  letter-spacing: 0.08em;
+}
+
+.overview-card__headline {
+  font-size: clamp(1.5rem, 3vw, 2.2rem);
+  line-height: 1.14;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--console-text, var(--text-primary));
 }
 
 .overview-card__hero,
 .dashboard-health__summary,
-.dashboard-health__check div {
+.dashboard-health__check div,
+.overview-insight__item p {
   font-size: 0.88rem;
   line-height: 1.8;
-  color: var(--text-secondary);
+  color: var(--console-text-secondary, var(--text-secondary));
 }
 
 .overview-card__facts,
 .dashboard-health__grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -302,53 +456,129 @@ function applyGovernancePayload(payload) {
 .dashboard-health__check,
 .overview-route {
   display: grid;
-  gap: 6px;
-  padding: 14px;
+  gap: 8px;
+  padding: 16px;
   border-radius: 18px;
-  border: 1px solid rgba(26, 26, 26, 0.05);
-  background: rgba(255, 252, 247, 0.76);
+  border: 1px solid var(--console-border, rgba(255, 255, 255, 0.08));
+  background: var(--console-surface, rgba(255, 255, 255, 0.04));
 }
 
 .overview-route {
-  grid-template-columns: 34px minmax(0, 1fr);
-  align-items: start;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
   text-align: left;
+  transition:
+    border-color 0.24s ease,
+    background 0.24s ease;
+}
+
+.overview-route:hover {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .overview-route__stamp {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 12px;
-  color: var(--ink-vermillion);
-  background: rgba(196, 30, 58, 0.08);
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  border: 1px solid rgba(94, 106, 210, 0.2);
+  color: #dbe0ff;
+  background: rgba(94, 106, 210, 0.12);
   font-family: var(--font-seal);
 }
 
 .overview-route__body {
   display: grid;
-  gap: 4px;
+  gap: 6px;
+}
+
+.overview-route__body strong {
+  font-size: 0.96rem;
+  color: var(--console-text, var(--text-primary));
 }
 
 .overview-route__body small,
 .overview-card__fact span,
 .dashboard-health__item span {
   font-size: 0.76rem;
-  color: var(--text-muted);
+  color: var(--console-text-muted, var(--text-muted));
+}
+
+.overview-route__action {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: #dbe0ff;
+}
+
+.overview-card__fact strong,
+.dashboard-health__item strong {
+  font-size: 1.18rem;
+  color: var(--console-text, var(--text-primary));
+}
+
+.overview-insight__item {
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid var(--console-border, rgba(255, 255, 255, 0.08));
+  background: var(--console-surface, rgba(255, 255, 255, 0.04));
+}
+
+.overview-insight__label {
+  font-family: var(--font-seal);
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--console-text-muted, var(--text-muted));
+}
+
+.overview-insight__item strong {
+  font-size: 1rem;
+  color: var(--console-text, var(--text-primary));
+}
+
+.dashboard-tone--ok {
+  color: #dbe0ff;
+  border-color: rgba(94, 106, 210, 0.3);
+  background: rgba(94, 106, 210, 0.14);
+}
+
+.dashboard-tone--warning {
+  color: #f7d79d;
+  border-color: rgba(244, 185, 93, 0.22);
+  background: rgba(244, 185, 93, 0.14);
+}
+
+.dashboard-tone--critical {
+  color: #ffd2de;
+  border-color: rgba(255, 120, 148, 0.22);
+  background: rgba(255, 120, 148, 0.14);
 }
 
 .data-stats-row {
-  margin-top: 14px;
-  max-width: 480px;
+  margin-top: 16px;
+  max-width: 520px;
 }
 
 @media (max-width: 980px) {
+  .dashboard-summary__top,
   .overview-layout,
+  .dashboard-summary__quick-grid,
   .overview-card__facts,
   .dashboard-health__grid {
     grid-template-columns: 1fr;
+  }
+
+  .dashboard-summary__top {
+    display: grid;
+  }
+
+  .dashboard-summary__meta {
+    justify-content: flex-start;
   }
 }
 </style>

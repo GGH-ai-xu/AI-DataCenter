@@ -7,3 +7,10 @@ export function formatSystemMemoryBytes(value) {
   if (total >= GIBIBYTE) return `${(total / GIBIBYTE).toFixed(1)} GB`
   return `${(total / MEBIBYTE).toFixed(0)} MB`
 }
+
+export function formatGpuMemoryBytes(value) {
+  const total = Number(value || 0)
+  if (!total) return '0 GB'
+  if (total >= GIBIBYTE) return `${(total / GIBIBYTE).toFixed(1)} GB`
+  return `${(total / MEBIBYTE).toFixed(0)} MB`
+}

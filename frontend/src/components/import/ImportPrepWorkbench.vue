@@ -45,7 +45,7 @@ const emit = defineEmits(['update:activeTab', 'submit'])
   gap: 16px;
   min-height: 0;
   height: min(880px, calc(100vh - 64px));
-  padding: 18px;
+  padding: 20px;
 }
 
 .import-prep-workbench__body {
@@ -59,18 +59,19 @@ const emit = defineEmits(['update:activeTab', 'submit'])
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 16px;
   align-items: center;
-  padding-top: 4px;
-  border-top: 1px solid rgba(26, 26, 26, 0.06);
+  padding-top: 16px;
+  border-top: 1px solid var(--import-border, rgba(255, 255, 255, 0.08));
 }
 
 .import-prep-workbench__status {
-  font-size: 0.82rem;
-  line-height: 1.7;
-  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.75;
+  color: var(--import-text-muted, var(--text-secondary));
 }
 
 .import-prep-workbench__submit {
   min-width: 220px;
+  font-weight: 600;
 }
 
 @media (max-width: 1080px) {

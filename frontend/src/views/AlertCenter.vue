@@ -63,8 +63,8 @@ const formatAlertType = (value = '') => ({
 }[value] || value || '未知')
 
 const severityConfig = {
-  critical: { bg: 'rgba(196,30,58,0.08)', border: 'rgba(196,30,58,0.2)', color: '#C41E3A', icon: '⚠', label: '严重' },
-  warning: { bg: 'rgba(184,134,11,0.08)', border: 'rgba(184,134,11,0.2)', color: '#B8860B', icon: '△', label: '警告' },
+  critical: { bg: 'rgba(239, 68, 68, 0.1)', border: 'rgba(239, 68, 68, 0.18)', color: '#EF4444', icon: '⚠', label: '严重' },
+  warning: { bg: 'rgba(245, 158, 11, 0.1)', border: 'rgba(245, 158, 11, 0.18)', color: '#F59E0B', icon: '△', label: '警告' },
 }
 
 const realtimeAlerts = computed(() => (

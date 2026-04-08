@@ -14,7 +14,7 @@ const emit = defineEmits(['update:scope', 'refresh', 'edit', 'scan', 'delete'])
 function providerLabel(providerType) {
   if (providerType === 'ssh_linux') return 'SSH Linux'
   if (providerType === 'http_remote') return '远程 Agent'
-  return '本机 Agent'
+  return '本机'
 }
 
 function targetSummary(host) {
@@ -164,15 +164,16 @@ function formatTime(value) {
 .saved-host-stage__scope-button {
   min-height: 40px;
   padding: 0 14px;
-  border-radius: 999px;
-  border: 1px solid rgba(58, 95, 75, 0.12);
-  background: rgba(255, 255, 255, 0.86);
+  border-radius: 12px;
+  border: 1px solid var(--import-border, var(--border-color));
+  background: var(--import-surface-alt, rgba(255, 255, 255, 0.04));
+  color: var(--import-text-secondary, var(--text-secondary));
 }
 
 .saved-host-stage__scope-button--active {
-  border-color: rgba(46, 139, 87, 0.2);
-  background: rgba(242, 248, 244, 0.96);
-  color: #2f6a46;
+  border-color: var(--import-border-strong, rgba(94, 106, 210, 0.32));
+  background: var(--import-accent-soft, rgba(94, 106, 210, 0.14));
+  color: var(--import-text, var(--text-primary));
 }
 
 .saved-host-stage__grid {
@@ -183,15 +184,16 @@ function formatTime(value) {
 .saved-host-card {
   padding: 18px;
   border-radius: 22px;
-  border: 1px solid rgba(58, 95, 75, 0.12);
-  background: rgba(255, 252, 247, 0.94);
+  border: 1px solid var(--import-border, var(--border-color));
+  background: var(--import-surface-soft, rgba(255, 255, 255, 0.03));
   display: grid;
   gap: 16px;
 }
 
 .saved-host-card--active {
-  border-color: rgba(30, 92, 77, 0.26);
-  box-shadow: 0 14px 28px rgba(30, 92, 77, 0.08);
+  border-color: var(--import-border-strong, rgba(94, 106, 210, 0.32));
+  background: var(--import-accent-soft, rgba(94, 106, 210, 0.12));
+  box-shadow: none;
 }
 
 .saved-host-card__head,
@@ -215,7 +217,7 @@ function formatTime(value) {
 
 .saved-host-card__warning {
   margin: 0;
-  color: #a14a3f;
+  color: var(--import-danger, var(--accent-danger));
   line-height: 1.6;
 }
 
@@ -223,8 +225,8 @@ function formatTime(value) {
   align-self: flex-start;
   padding: 6px 10px;
   border-radius: 999px;
-  background: rgba(242, 248, 244, 0.96);
-  color: #2f6a46;
+  background: var(--import-accent-soft, rgba(94, 106, 210, 0.12));
+  color: var(--import-accent, var(--accent-primary));
 }
 
 .saved-host-card__meta {

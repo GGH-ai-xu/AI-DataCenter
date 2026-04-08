@@ -65,6 +65,31 @@ const an = reactive({power:0, kwh:0, cost:0, co2:0, saving:0, score:0})
 const ANIMATION_DELTA_FLOOR = 0.1
 const ANIMATION_DELTA_RATIO = 0.02
 
+const energyPalette = Object.freeze({
+  primary: '#7F8EFF',
+  secondary: '#97A5FF',
+  tertiary: '#6EB8FF',
+  warning: '#F4B95D',
+  danger: '#FF6F96',
+  accent: '#7F8EFF',
+  text: '#EDEEF7',
+  textSecondary: '#C6CEE1',
+  textMuted: '#9EA8C0',
+  textFaint: '#7380A0',
+  border: 'rgba(184, 197, 236, 0.12)',
+  line: 'rgba(184, 197, 236, 0.1)',
+  track: 'rgba(184, 197, 236, 0.08)',
+  panel: 'rgba(18, 26, 46, 0.96)',
+  primarySoft: 'rgba(127, 142, 255, 0.14)',
+  secondarySoft: 'rgba(151, 165, 255, 0.14)',
+  tertiarySoft: 'rgba(110, 184, 255, 0.12)',
+  warningSoft: 'rgba(244, 185, 93, 0.12)',
+  dangerSoft: 'rgba(255, 111, 150, 0.12)',
+  purple: '#97A5FF',
+  purpleSoft: 'rgba(151, 165, 255, 0.14)',
+})
+const energyFontUi = "'PingFang SC','Microsoft YaHei','Noto Sans SC','Segoe UI',sans-serif"
+
 function anim(k, t, d=1400) {
   const s=an[k], df=t-s, t0=performance.now()
   ;(function step(n){const p=Math.min((n-t0)/d,1);an[k]=s+df*(1-Math.pow(1-p,3));if(p<1)requestAnimationFrame(step)})(t0)
@@ -89,9 +114,9 @@ function ci(k,el){if(!el.value)return null;if(charts[k])return charts[k];charts[
 // 计算
 const tp = computed(()=>{
   const h=new Date().getHours()
-  if((h>=9&&h<12)||(h>=14&&h<18)) return {label:'高峰',color:'#C41E3A',bg:'rgba(196,30,58,0.08)'}
-  if(h>=22||h<6) return {label:'低谷',color:'#2E8B57',bg:'rgba(46,139,87,0.08)'}
-  return {label:'平峰',color:'#4A6741',bg:'rgba(74,103,65,0.08)'}
+  if((h>=9&&h<12)||(h>=14&&h<18)) return {label:'高峰',color:energyPalette.danger,bg:energyPalette.dangerSoft}
+  if(h>=22||h<6) return {label:'低谷',color:energyPalette.primary,bg:energyPalette.primarySoft}
+  return {label:'平峰',color:energyPalette.secondary,bg:energyPalette.secondarySoft}
 })
 
 const sourceLabel = computed(() => {
@@ -123,9 +148,9 @@ const sourceHint = computed(() => {
 const breakdownLegendData = computed(() => {
   const data = breakdown.value?.breakdown
   return [
-    { name: '高峰', value: data?.peak?.pct || 0, color: '#C41E3A' },
-    { name: '平峰', value: data?.normal?.pct || 0, color: '#5B8C7E' },
-    { name: '低谷', value: data?.valley?.pct || 0, color: '#3A5F4B' },
+    { name: '高峰', value: data?.peak?.pct || 0, color: energyPalette.danger },
+    { name: '平峰', value: data?.normal?.pct || 0, color: energyPalette.tertiary },
+    { name: '低谷', value: data?.valley?.pct || 0, color: energyPalette.primary },
   ]
 })
 
@@ -241,13 +266,13 @@ async function refreshAiAnomalies() {
 
 // ========== 水墨图表配色 ==========
 const inkColors = {
-  mountain: '#3A5F4B',   // 青绿山水
-  water: '#5B8C7E',      // 碧水
-  ink: '#2C2C2C',        // 浓墨
-  lightInk: '#7A7A7A',   // 淡墨
-  vermillion: '#C41E3A', // 朱砂
-  gold: '#B8860B',       // 暗金
-  paper: '#F8F5F0',      // 宣纸
+  mountain: energyPalette.primary,
+  water: energyPalette.secondary,
+  ink: energyPalette.text,
+  lightInk: energyPalette.textSecondary,
+  vermillion: energyPalette.danger,
+  gold: energyPalette.warning,
+  paper: '#111520',
 }
 
 function renderGauge(){
@@ -255,10 +280,10 @@ function renderGauge(){
   c.setOption({ backgroundColor:'transparent', series:[{
     type:'gauge', startAngle:225, endAngle:-45, min:0, max:100,
     pointer:{show:false},
-    progress:{show:true,roundCap:true,width:12,itemStyle:{color:new graphic.LinearGradient(0,0,1,0,[{offset:0,color:'#3A5F4B40'},{offset:1,color:'#3A5F4B'}])}},
-    axisLine:{lineStyle:{width:12,color:[[1,'rgba(0,0,0,0.04)']]}},
+    progress:{show:true,roundCap:true,width:12,itemStyle:{color:new graphic.LinearGradient(0,0,1,0,[{offset:0,color:'rgba(127, 142, 255, 0.22)'},{offset:1,color:energyPalette.tertiary}])}},
+    axisLine:{lineStyle:{width:12,color:[[1,energyPalette.track]]}},
     axisTick:{show:false},splitLine:{show:false},axisLabel:{show:false},title:{show:false},
-    detail:{valueAnimation:true,fontSize:28,fontWeight:700,fontFamily:"'ZCOOL XiaoWei','Noto Serif SC',serif",color:'#2C2C2C',offsetCenter:[0,'0%'],formatter:v=>v.toFixed(1)+'%'},
+    detail:{valueAnimation:true,fontSize:28,fontWeight:700,fontFamily:energyFontUi,color:energyPalette.text,offsetCenter:[0,'0%'],formatter:v=>v.toFixed(1)+'%'},
     data:[{value:metrics.value?.saving_pct||0}],
   }]})
 }
@@ -269,11 +294,11 @@ function renderPie(){
   c.setOption({ backgroundColor:'transparent', series:[{
     type:'pie',radius:['50%','75%'],center:['50%','50%'],padAngle:3,itemStyle:{borderRadius:4},
     label:{show:false},
-    emphasis:{label:{show:true,fontSize:13,fontFamily:"'ZCOOL XiaoWei',serif",color:'#2C2C2C'},itemStyle:{shadowBlur:12,shadowColor:'rgba(0,0,0,0.1)'}},
+    emphasis:{label:{show:true,fontSize:13,fontFamily:energyFontUi,color:energyPalette.text},itemStyle:{shadowBlur:12,shadowColor:'rgba(0,0,0,0.2)'}},
     data:[
-      {value:b.peak?.pct||0,name:'高峰',itemStyle:{color:'#C41E3A'}},
-      {value:b.normal?.pct||0,name:'平峰',itemStyle:{color:'#5B8C7E'}},
-      {value:b.valley?.pct||0,name:'低谷',itemStyle:{color:'#3A5F4B'}},
+      {value:b.peak?.pct||0,name:'高峰',itemStyle:{color:energyPalette.danger}},
+      {value:b.normal?.pct||0,name:'平峰',itemStyle:{color:energyPalette.tertiary}},
+      {value:b.valley?.pct||0,name:'低谷',itemStyle:{color:energyPalette.primary}},
     ],animationType:'scale',animationEasing:'elasticOut',
   }]})
 }
@@ -282,21 +307,21 @@ function renderTrend(){
   const c=ci('t',trendRef); if(!c||!breakdown.value) return
   const h=breakdown.value.hourly||[], hrs=h.map(x=>x.hour+':00'), pws=h.map(x=>x.avg_power), uts=h.map(x=>x.avg_util)
   const areas=[]; let s=0
-  for(let i=1;i<=h.length;i++){if(i===h.length||h[i].period!==h[s].period){const p=h[s].period;const cl=p==='peak'?'rgba(196,30,58,0.05)':p==='valley'?'rgba(58,95,75,0.05)':'rgba(91,140,126,0.04)';areas.push([{xAxis:hrs[s],itemStyle:{color:cl}},{xAxis:hrs[i-1]}]);s=i}}
+  for(let i=1;i<=h.length;i++){if(i===h.length||h[i].period!==h[s].period){const p=h[s].period;const cl=p==='peak'?energyPalette.dangerSoft:p==='valley'?energyPalette.primarySoft:energyPalette.tertiarySoft;areas.push([{xAxis:hrs[s],itemStyle:{color:cl}},{xAxis:hrs[i-1]}]);s=i}}
   c.setOption({ backgroundColor:'transparent',
-    tooltip:{trigger:'axis',backgroundColor:'rgba(248,245,240,0.97)',borderColor:'rgba(0,0,0,0.08)',textStyle:{color:'#2C2C2C',fontSize:12,fontFamily:"'ZCOOL XiaoWei',serif"},extraCssText:'border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.08)',
-      formatter:ps=>{const hi=h.find(x=>x.hour+':00'===ps[0]?.axisValue);const pl=hi?.period==='peak'?'高峰':hi?.period==='valley'?'低谷':'平峰';const pc=hi?.period==='peak'?'#C41E3A':hi?.period==='valley'?'#3A5F4B':'#5B8C7E';let r=`<div style="color:#999;font-size:11px;margin-bottom:4px">${ps[0]?.axisValue} <b style="color:${pc}">${pl}</b></div>`;ps.forEach(p=>{r+=`<div style="display:flex;align-items:center;gap:6px;margin:2px 0"><span style="width:8px;height:3px;border-radius:2px;background:${p.color}"></span>${p.seriesName}: <b>${typeof p.value==='number'?p.value.toFixed(1):p.value}</b></div>`});return r},
+    tooltip:{trigger:'axis',backgroundColor:energyPalette.panel,borderColor:energyPalette.border,textStyle:{color:energyPalette.text,fontSize:12,fontFamily:energyFontUi},extraCssText:'border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.24)',
+      formatter:ps=>{const hi=h.find(x=>x.hour+':00'===ps[0]?.axisValue);const pl=hi?.period==='peak'?'高峰':hi?.period==='valley'?'低谷':'平峰';const pc=hi?.period==='peak'?energyPalette.danger:hi?.period==='valley'?energyPalette.primary:energyPalette.tertiary;let r=`<div style="color:${energyPalette.textMuted};font-size:11px;margin-bottom:4px">${ps[0]?.axisValue} <b style="color:${pc}">${pl}</b></div>`;ps.forEach(p=>{r+=`<div style="display:flex;align-items:center;gap:6px;margin:2px 0"><span style="width:8px;height:3px;border-radius:2px;background:${p.color}"></span>${p.seriesName}: <b>${typeof p.value==='number'?p.value.toFixed(1):p.value}</b></div>`});return r},
     },
-    legend:{data:['功耗','利用率'],textStyle:{color:'#999',fontSize:11,fontFamily:"'ZCOOL XiaoWei',serif"},top:4,right:10,itemWidth:16,itemHeight:3},
+    legend:{data:['功耗','利用率'],textStyle:{color:energyPalette.textSecondary,fontSize:11,fontFamily:energyFontUi},top:4,right:10,itemWidth:16,itemHeight:3},
     grid:{left:52,right:52,top:36,bottom:30},
-    xAxis:{type:'category',data:hrs,boundaryGap:false,axisLine:{lineStyle:{color:'rgba(0,0,0,0.06)'}},axisTick:{show:false},axisLabel:{color:'#999',fontSize:10,interval:1}},
+    xAxis:{type:'category',data:hrs,boundaryGap:false,axisLine:{lineStyle:{color:energyPalette.line}},axisTick:{show:false},axisLabel:{color:energyPalette.textMuted,fontSize:10,interval:1}},
     yAxis:[
-      {type:'value',name:'W',nameTextStyle:{color:'#999',fontSize:10},axisLine:{show:false},axisTick:{show:false},axisLabel:{color:'#999',fontSize:10},splitLine:{lineStyle:{color:'rgba(0,0,0,0.04)',type:'dashed'}}},
-      {type:'value',name:'%',max:100,nameTextStyle:{color:'#999',fontSize:10},axisLine:{show:false},axisTick:{show:false},axisLabel:{color:'#999',fontSize:10},splitLine:{show:false}},
+      {type:'value',name:'W',nameTextStyle:{color:energyPalette.textMuted,fontSize:10},axisLine:{show:false},axisTick:{show:false},axisLabel:{color:energyPalette.textMuted,fontSize:10},splitLine:{lineStyle:{color:energyPalette.track,type:'dashed'}}},
+      {type:'value',name:'%',max:100,nameTextStyle:{color:energyPalette.textMuted,fontSize:10},axisLine:{show:false},axisTick:{show:false},axisLabel:{color:energyPalette.textMuted,fontSize:10},splitLine:{show:false}},
     ],
     series:[
-      {name:'功耗',type:'line',smooth:.4,symbol:'none',lineStyle:{width:2.5,color:'#3A5F4B'},areaStyle:{color:new graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(58,95,75,0.15)'},{offset:1,color:'transparent'}])},data:pws,markArea:{silent:true,data:areas}},
-      {name:'利用率',type:'line',smooth:.4,symbol:'none',yAxisIndex:1,lineStyle:{width:1.5,color:'#C41E3A80',type:[6,4]},data:uts},
+      {name:'功耗',type:'line',smooth:.4,symbol:'none',lineStyle:{width:2.5,color:energyPalette.primary},areaStyle:{color:new graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(127, 142, 255, 0.18)'},{offset:1,color:'transparent'}])},data:pws,markArea:{silent:true,data:areas}},
+      {name:'利用率',type:'line',smooth:.4,symbol:'none',yAxisIndex:1,lineStyle:{width:1.5,color:'rgba(110, 184, 255, 0.8)',type:[6,4]},data:uts},
     ],animationDuration:1500,
   })
 }
@@ -305,16 +330,16 @@ function renderPred(){
   const c=ci('pd',predRef); if(!c||!prediction.value) return
   const ps=prediction.value.predictions||[], hrs=ps.map(p=>p.hour+':00')
   c.setOption({ backgroundColor:'transparent',
-    tooltip:{trigger:'axis',backgroundColor:'rgba(248,245,240,0.97)',borderColor:'rgba(0,0,0,0.08)',textStyle:{color:'#2C2C2C',fontSize:12,fontFamily:"'ZCOOL XiaoWei',serif"},extraCssText:'border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.08)',
-      formatter:pms=>{const i=pms[0]?.dataIndex??0,p=ps[i];if(!p)return'';const algoColor=p.algorithm==='多项式'?'#C41E3A':p.algorithm==='线性回归'?'#B8860B':'#5B4B8C';return`<div style="color:#999;font-size:11px;margin-bottom:4px">${p.hour}:00 (${p.period==='peak'?'高峰':p.period==='valley'?'低谷':'平峰'})</div><div>预测: <b style="color:#5B4B8C">${p.predicted_power}W</b></div><div style="font-size:11px;color:#999">置信: ${p.lower_bound}W ~ ${p.upper_bound}W</div><div style="font-size:11px;margin-top:4px;padding-top:4px;border-top:1px solid rgba(0,0,0,0.06)"><span style="color:${algoColor};font-weight:600">${p.algorithm||'加权平均'}</span> <span style="color:#bbb;margin-left:6px">RMSE ${p.rmse??'—'}</span> <span style="color:#bbb;margin-left:6px">R² ${p.r_squared??'—'}</span></div>`},
+    tooltip:{trigger:'axis',backgroundColor:energyPalette.panel,borderColor:energyPalette.border,textStyle:{color:energyPalette.text,fontSize:12,fontFamily:energyFontUi},extraCssText:'border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.24)',
+      formatter:pms=>{const i=pms[0]?.dataIndex??0,p=ps[i];if(!p)return'';const algoColor=p.algorithm==='多项式'?energyPalette.danger:p.algorithm==='线性回归'?energyPalette.warning:energyPalette.secondary;return`<div style="color:${energyPalette.textMuted};font-size:11px;margin-bottom:4px">${p.hour}:00 (${p.period==='peak'?'高峰':p.period==='valley'?'低谷':'平峰'})</div><div>预测: <b style="color:${energyPalette.secondary}">${p.predicted_power}W</b></div><div style="font-size:11px;color:${energyPalette.textMuted}">置信: ${p.lower_bound}W ~ ${p.upper_bound}W</div><div style="font-size:11px;margin-top:4px;padding-top:4px;border-top:1px solid ${energyPalette.line}"><span style="color:${algoColor};font-weight:600">${p.algorithm||'加权平均'}</span> <span style="color:${energyPalette.textFaint};margin-left:6px">RMSE ${p.rmse??'—'}</span> <span style="color:${energyPalette.textFaint};margin-left:6px">R² ${p.r_squared??'—'}</span></div>`},
     },
     grid:{left:52,right:20,top:16,bottom:30},
-    xAxis:{type:'category',data:hrs,boundaryGap:false,axisLine:{lineStyle:{color:'rgba(0,0,0,0.06)'}},axisTick:{show:false},axisLabel:{color:'#999',fontSize:10,interval:3}},
-    yAxis:{type:'value',name:'W',nameTextStyle:{color:'#999',fontSize:10},axisLine:{show:false},axisTick:{show:false},axisLabel:{color:'#999',fontSize:10},splitLine:{lineStyle:{color:'rgba(0,0,0,0.04)',type:'dashed'}}},
+    xAxis:{type:'category',data:hrs,boundaryGap:false,axisLine:{lineStyle:{color:energyPalette.line}},axisTick:{show:false},axisLabel:{color:energyPalette.textMuted,fontSize:10,interval:3}},
+    yAxis:{type:'value',name:'W',nameTextStyle:{color:energyPalette.textMuted,fontSize:10},axisLine:{show:false},axisTick:{show:false},axisLabel:{color:energyPalette.textMuted,fontSize:10},splitLine:{lineStyle:{color:energyPalette.track,type:'dashed'}}},
     series:[
       {name:'u',type:'line',smooth:.4,symbol:'none',lineStyle:{width:0},areaStyle:{color:'transparent'},data:ps.map(p=>p.upper_bound),stack:'b',z:1},
-      {name:'l',type:'line',smooth:.4,symbol:'none',lineStyle:{width:0},areaStyle:{color:new graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(91,75,140,0.12)'},{offset:1,color:'rgba(91,75,140,0.02)'}])},data:ps.map(p=>p.lower_bound),stack:'b',z:1},
-      {name:'预测',type:'line',smooth:.4,showSymbol:false,lineStyle:{width:2.5,color:'#5B4B8C'},itemStyle:{color:'#5B4B8C'},data:ps.map(p=>p.predicted_power),z:10},
+      {name:'l',type:'line',smooth:.4,symbol:'none',lineStyle:{width:0},areaStyle:{color:new graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(110, 184, 255, 0.16)'},{offset:1,color:'rgba(110, 184, 255, 0.04)'}])},data:ps.map(p=>p.lower_bound),stack:'b',z:1},
+      {name:'预测',type:'line',smooth:.4,showSymbol:false,lineStyle:{width:2.5,color:energyPalette.secondary},itemStyle:{color:energyPalette.secondary},data:ps.map(p=>p.predicted_power),z:10},
     ],animationDuration:1800,
   })
 }
@@ -322,17 +347,17 @@ function renderPred(){
 function renderEff(){
   const c=ci('ef',effRef); if(!c||!efficiency.value) return
   const gs=[...efficiency.value].sort((a,b)=>a.score-b.score)
-  const colors=gs.map(g=>g.score>=70?'#3A5F4B':g.score>=40?'#B8860B':'#C41E3A')
+  const colors=gs.map(g=>g.score>=70?energyPalette.primary:g.score>=40?energyPalette.warning:energyPalette.danger)
   c.setOption({ backgroundColor:'transparent',
-    tooltip:{trigger:'axis',axisPointer:{type:'shadow'},backgroundColor:'rgba(248,245,240,0.97)',borderColor:'rgba(0,0,0,0.08)',textStyle:{color:'#2C2C2C',fontSize:12},extraCssText:'border-radius:8px',
-      formatter:ps=>{const i=ps[0]?.dataIndex??0,g=gs[i];if(!g)return'';return`<b>GPU ${g.gpu_index}</b><br/>效率: <b style="color:${colors[i]}">${g.score.toFixed(1)}</b><br/><span style="font-size:11px;color:#999">利用率:${g.gpu_utilization}% 功耗:${g.power_usage.toFixed(0)}/${g.power_limit}W</span>`},
+    tooltip:{trigger:'axis',axisPointer:{type:'shadow'},backgroundColor:energyPalette.panel,borderColor:energyPalette.border,textStyle:{color:energyPalette.text,fontSize:12,fontFamily:energyFontUi},extraCssText:'border-radius:8px',
+      formatter:ps=>{const i=ps[0]?.dataIndex??0,g=gs[i];if(!g)return'';return`<b>GPU ${g.gpu_index}</b><br/>效率: <b style="color:${colors[i]}">${g.score.toFixed(1)}</b><br/><span style="font-size:11px;color:${energyPalette.textMuted}">利用率:${g.gpu_utilization}% 功耗:${g.power_usage.toFixed(0)}/${g.power_limit}W</span>`},
     },
     grid:{left:65,right:50,top:8,bottom:8},
-    xAxis:{type:'value',max:100,axisLine:{show:false},axisTick:{show:false},axisLabel:{show:false},splitLine:{lineStyle:{color:'rgba(0,0,0,0.03)'}}},
-    yAxis:{type:'category',data:gs.map(g=>`GPU ${g.gpu_index}`),inverse:true,axisLine:{show:false},axisTick:{show:false},axisLabel:{color:'#666',fontSize:12,fontWeight:500,fontFamily:"'ZCOOL XiaoWei',serif"}},
+    xAxis:{type:'value',max:100,axisLine:{show:false},axisTick:{show:false},axisLabel:{show:false},splitLine:{lineStyle:{color:energyPalette.track}}},
+    yAxis:{type:'category',data:gs.map(g=>`GPU ${g.gpu_index}`),inverse:true,axisLine:{show:false},axisTick:{show:false},axisLabel:{color:energyPalette.textSecondary,fontSize:12,fontWeight:500,fontFamily:energyFontUi}},
     series:[
-      {type:'bar',barWidth:16,z:2,data:gs.map((g,i)=>({value:g.score,itemStyle:{color:new graphic.LinearGradient(0,0,1,0,[{offset:0,color:colors[i]+'15'},{offset:1,color:colors[i]}]),borderRadius:[0,4,4,0]}})),label:{show:true,position:'right',color:'#999',fontSize:12,fontFamily:"'JetBrains Mono',monospace",fontWeight:600}},
-      {type:'bar',barWidth:16,z:1,silent:true,data:gs.map(()=>({value:100,itemStyle:{color:'rgba(0,0,0,0.02)',borderRadius:[0,4,4,0]}}))},
+      {type:'bar',barWidth:16,z:2,data:gs.map((g,i)=>({value:g.score,itemStyle:{color:new graphic.LinearGradient(0,0,1,0,[{offset:0,color:`${colors[i]}25`},{offset:1,color:colors[i]}]),borderRadius:[0,4,4,0]}})),label:{show:true,position:'right',color:energyPalette.textMuted,fontSize:12,fontFamily:"'JetBrains Mono',monospace",fontWeight:600}},
+      {type:'bar',barWidth:16,z:1,silent:true,data:gs.map(()=>({value:100,itemStyle:{color:'rgba(255, 255, 255, 0.03)',borderRadius:[0,4,4,0]}}))},
     ],animationDuration:1200,
   })
 }
@@ -347,15 +372,15 @@ function renderComp(){
   const optIdx=bs.findIndex(p=>p.timestamp>=optTime)
   const markData=optIdx>=0?[{xAxis:labels[optIdx]}]:[]
   c.setOption({ backgroundColor:'transparent',
-    tooltip:{trigger:'axis',backgroundColor:'rgba(248,245,240,0.97)',borderColor:'rgba(0,0,0,0.08)',textStyle:{color:'#2C2C2C',fontSize:12,fontFamily:"'ZCOOL XiaoWei',serif"},extraCssText:'border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.08)'},
-    legend:{data:['基线功耗','实际功耗','节省量'],textStyle:{color:'#999',fontSize:11,fontFamily:"'ZCOOL XiaoWei',serif"},top:4,right:10,itemWidth:16,itemHeight:3},
+    tooltip:{trigger:'axis',backgroundColor:energyPalette.panel,borderColor:energyPalette.border,textStyle:{color:energyPalette.text,fontSize:12,fontFamily:energyFontUi},extraCssText:'border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.24)'},
+    legend:{data:['基线功耗','实际功耗','节省量'],textStyle:{color:energyPalette.textSecondary,fontSize:11,fontFamily:energyFontUi},top:4,right:10,itemWidth:16,itemHeight:3},
     grid:{left:52,right:20,top:36,bottom:30},
-    xAxis:{type:'category',data:labels,boundaryGap:false,axisLine:{lineStyle:{color:'rgba(0,0,0,0.06)'}},axisTick:{show:false},axisLabel:{color:'#999',fontSize:10,interval:Math.max(1,Math.floor(labels.length/12))}},
-    yAxis:{type:'value',name:'W',nameTextStyle:{color:'#999',fontSize:10},axisLine:{show:false},axisTick:{show:false},axisLabel:{color:'#999',fontSize:10},splitLine:{lineStyle:{color:'rgba(0,0,0,0.04)',type:'dashed'}}},
+    xAxis:{type:'category',data:labels,boundaryGap:false,axisLine:{lineStyle:{color:energyPalette.line}},axisTick:{show:false},axisLabel:{color:energyPalette.textMuted,fontSize:10,interval:Math.max(1,Math.floor(labels.length/12))}},
+    yAxis:{type:'value',name:'W',nameTextStyle:{color:energyPalette.textMuted,fontSize:10},axisLine:{show:false},axisTick:{show:false},axisLabel:{color:energyPalette.textMuted,fontSize:10},splitLine:{lineStyle:{color:energyPalette.track,type:'dashed'}}},
     series:[
-      {name:'基线功耗',type:'line',smooth:.4,symbol:'none',lineStyle:{width:2,color:'#C41E3A',type:'dashed',opacity:0.7},data:bs.map(p=>p.power),markLine:{silent:true,symbol:'none',lineStyle:{color:'#3A5F4B',type:'dashed',width:1.5},data:markData.map(d=>({...d,label:{formatter:'优化点',color:'#3A5F4B',fontSize:10,fontFamily:"'ZCOOL XiaoWei',serif"}}))}},
-      {name:'实际功耗',type:'line',smooth:.4,symbol:'none',lineStyle:{width:2.5,color:'#2E8B57'},areaStyle:{color:new graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(46,139,87,0.1)'},{offset:1,color:'transparent'}])},data:as2.map(p=>p.power)},
-      {name:'节省量',type:'bar',barWidth:4,itemStyle:{color:'rgba(46,139,87,0.35)',borderRadius:[2,2,0,0]},data:ss.map(p=>p.saved)},
+      {name:'基线功耗',type:'line',smooth:.4,symbol:'none',lineStyle:{width:2,color:energyPalette.danger,type:'dashed',opacity:0.7},data:bs.map(p=>p.power),markLine:{silent:true,symbol:'none',lineStyle:{color:energyPalette.primary,type:'dashed',width:1.5},data:markData.map(d=>({...d,label:{formatter:'优化点',color:energyPalette.primary,fontSize:10,fontFamily:energyFontUi}}))}},
+      {name:'实际功耗',type:'line',smooth:.4,symbol:'none',lineStyle:{width:2.5,color:energyPalette.primary},areaStyle:{color:new graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(127, 142, 255, 0.14)'},{offset:1,color:'transparent'}])},data:as2.map(p=>p.power)},
+      {name:'节省量',type:'bar',barWidth:4,itemStyle:{color:'rgba(127, 142, 255, 0.38)',borderRadius:[2,2,0,0]},data:ss.map(p=>p.saved)},
     ],animationDuration:1500,
   })
 }
@@ -433,14 +458,14 @@ watch(activeTab, () => {
         <h1 class="ink-title">能耗治理</h1>
       </div>
       <div class="ink-header__right">
-        <span class="ink-period" style="color:#3A5F4B;background:rgba(58,95,75,0.08)">
+        <span class="ink-period" :style="{ color: energyPalette.primary, background: energyPalette.primarySoft }">
           {{ sourceLabel }}
         </span>
         <span
           class="ink-period"
           :style="{
-            color: schedulerState?.budget?.is_exceeded ? '#C41E3A' : schedulerState?.budget?.enabled ? '#2E8B57' : '#666',
-            background: schedulerState?.budget?.is_exceeded ? 'rgba(196,30,58,0.08)' : schedulerState?.budget?.enabled ? 'rgba(46,139,87,0.08)' : 'rgba(0,0,0,0.04)',
+            color: schedulerState?.budget?.is_exceeded ? energyPalette.danger : schedulerState?.budget?.enabled ? energyPalette.primary : energyPalette.textSecondary,
+            background: schedulerState?.budget?.is_exceeded ? energyPalette.dangerSoft : schedulerState?.budget?.enabled ? energyPalette.primarySoft : energyPalette.track,
           }"
         >
           {{ budgetLabel }}
@@ -506,23 +531,23 @@ watch(activeTab, () => {
       </div>
       <div class="kpi-ink">
         <div class="kpi-ink__label">月预估费用</div>
-        <div class="kpi-ink__val stat-value" style="color:#B8860B">¥{{ an.cost.toFixed(0) }}</div>
+        <div class="kpi-ink__val stat-value" :style="{ color: energyPalette.warning }">¥{{ an.cost.toFixed(0) }}</div>
         <div class="kpi-ink__hint">¥0.85/kWh 商业电价</div>
       </div>
       <div class="kpi-ink">
         <div class="kpi-ink__label">今日碳排放</div>
-        <div class="kpi-ink__val stat-value" style="color:#3A5F4B">{{ an.co2.toFixed(2) }}<span class="kpi-ink__unit">kg</span></div>
-        <div class="kpi-ink__hint" style="color:#3A5F4B">≈ {{ carbon?.trees_equivalent?.toFixed(1)||'0' }} 棵树/天</div>
+        <div class="kpi-ink__val stat-value" :style="{ color: energyPalette.primary }">{{ an.co2.toFixed(2) }}<span class="kpi-ink__unit">kg</span></div>
+        <div class="kpi-ink__hint" :style="{ color: energyPalette.primary }">≈ {{ carbon?.trees_equivalent?.toFixed(1)||'0' }} 棵树/天</div>
       </div>
       <div class="kpi-ink">
         <div class="kpi-ink__label">节能比例</div>
-        <div class="kpi-ink__val stat-value" :style="{color:an.saving>=20?'#2E8B57':'#3A5F4B'}">{{ an.saving.toFixed(1) }}<span class="kpi-ink__unit">%</span></div>
+        <div class="kpi-ink__val stat-value" :style="{ color: an.saving >= 20 ? energyPalette.primary : energyPalette.secondary }">{{ an.saving.toFixed(1) }}<span class="kpi-ink__unit">%</span></div>
         <div class="kpi-ink__bar"><div class="kpi-ink__bar-f" :style="{width:Math.min(an.saving,100)+'%'}"></div></div>
       </div>
       <div class="kpi-ink">
         <div class="kpi-ink__label">效率评分</div>
-        <div class="kpi-ink__val stat-value" :style="{color:an.score>=70?'#2E8B57':an.score>=40?'#B8860B':'#C41E3A'}">{{ an.score.toFixed(0) }}<span class="kpi-ink__unit">分</span></div>
-        <div class="kpi-ink__bar"><div class="kpi-ink__bar-f" :style="{width:Math.min(an.score,100)+'%',background:an.score>=70?'#3A5F4B':an.score>=40?'#B8860B':'#C41E3A'}"></div></div>
+        <div class="kpi-ink__val stat-value" :style="{ color: an.score >= 70 ? energyPalette.primary : an.score >= 40 ? energyPalette.warning : energyPalette.danger }">{{ an.score.toFixed(0) }}<span class="kpi-ink__unit">分</span></div>
+        <div class="kpi-ink__bar"><div class="kpi-ink__bar-f" :style="{width:Math.min(an.score,100)+'%',background:an.score>=70?energyPalette.primary:an.score>=40?energyPalette.warning:energyPalette.danger}"></div></div>
       </div>
     </div>
 
@@ -588,10 +613,10 @@ watch(activeTab, () => {
       <div class="ink-card">
         <div class="ink-card__hd"><span class="ink-card__title">碳排放</span><span class="ink-stamp ink-stamp--teal">碳</span></div>
         <div class="carbon-row">
-          <div class="carbon-item"><div class="carbon-item__v stat-value" style="color:#3A5F4B;font-size:1.75rem">{{ carbon?.co2_kg?.toFixed(2)||'—' }}</div><div class="carbon-item__l">kgCO₂ / 日</div></div>
-          <div class="carbon-item"><div class="carbon-item__v stat-value" style="color:#2E8B57;font-size:1.75rem">{{ carbon?.trees_equivalent?.toFixed(1)||'—' }}</div><div class="carbon-item__l">🌳 等效树木</div></div>
+          <div class="carbon-item"><div class="carbon-item__v stat-value" :style="{ color: energyPalette.primary, fontSize: '1.75rem' }">{{ carbon?.co2_kg?.toFixed(2)||'—' }}</div><div class="carbon-item__l">kgCO₂ / 日</div></div>
+          <div class="carbon-item"><div class="carbon-item__v stat-value" :style="{ color: energyPalette.secondary, fontSize: '1.75rem' }">{{ carbon?.trees_equivalent?.toFixed(1)||'—' }}</div><div class="carbon-item__l">🌳 等效树木</div></div>
         </div>
-        <div class="carbon-meta"><span>碳因子 {{ carbon?.carbon_factor||'0.5703' }}</span><span>已减排 <b style="color:#2E8B57">{{ carbon?.co2_saved_kg?.toFixed(3)||'0' }}</b> kg</span></div>
+        <div class="carbon-meta"><span>碳因子 {{ carbon?.carbon_factor||'0.5703' }}</span><span>已减排 <b :style="{ color: energyPalette.primary }">{{ carbon?.co2_saved_kg?.toFixed(3)||'0' }}</b> kg</span></div>
       </div>
       <div class="ink-card">
         <div class="ink-card__hd"><span class="ink-card__title">时段分布</span><span class="ink-period-sm" :style="{color:tp.color,background:tp.bg}">{{ tp.label }}</span></div>
@@ -611,9 +636,9 @@ watch(activeTab, () => {
       <div class="ink-card__hd">
         <span class="ink-card__title">廿四时功耗</span>
         <div class="trend-legend">
-          <span class="trend-legend__i"><span class="trend-legend__bar" style="background:#C41E3A"></span>高峰</span>
-          <span class="trend-legend__i"><span class="trend-legend__bar" style="background:#3A5F4B"></span>低谷</span>
-          <span class="trend-legend__i"><span class="trend-legend__bar" style="background:#5B8C7E"></span>平峰</span>
+          <span class="trend-legend__i"><span class="trend-legend__bar" :style="{ background: energyPalette.danger }"></span>高峰</span>
+          <span class="trend-legend__i"><span class="trend-legend__bar" :style="{ background: energyPalette.primary }"></span>低谷</span>
+          <span class="trend-legend__i"><span class="trend-legend__bar" :style="{ background: energyPalette.tertiary }"></span>平峰</span>
         </div>
       </div>
       <div ref="trendRef" style="height:300px"></div>
@@ -711,19 +736,19 @@ watch(activeTab, () => {
         <div class="opt-compare">
           <div class="opt-compare__item">
             <div class="opt-compare__label">优化前</div>
-            <div class="opt-compare__val stat-value" style="color:#C41E3A">{{ optimizeResult.baseline_power?.toFixed(0)||'—' }}<span class="opt-compare__u">W</span></div>
+            <div class="opt-compare__val stat-value" :style="{ color: energyPalette.danger }">{{ optimizeResult.baseline_power?.toFixed(0)||'—' }}<span class="opt-compare__u">W</span></div>
           </div>
           <div class="opt-compare__arrow">
-            <svg width="48" height="24" viewBox="0 0 48 24"><path d="M2 12 H38 M32 6 L38 12 L32 18" stroke="#3A5F4B" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+            <svg width="48" height="24" viewBox="0 0 48 24"><path d="M2 12 H38 M32 6 L38 12 L32 18" :stroke="energyPalette.primary" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
           </div>
           <div class="opt-compare__item">
             <div class="opt-compare__label">优化后</div>
-            <div class="opt-compare__val stat-value" style="color:#2E8B57">{{ optimizeResult.optimized_power?.toFixed(0)||'—' }}<span class="opt-compare__u">W</span></div>
+            <div class="opt-compare__val stat-value" :style="{ color: energyPalette.primary }">{{ optimizeResult.optimized_power?.toFixed(0)||'—' }}<span class="opt-compare__u">W</span></div>
           </div>
           <div class="opt-compare__sep"></div>
           <div class="opt-compare__item">
             <div class="opt-compare__label">节省</div>
-            <div class="opt-compare__val stat-value" style="color:#2E8B57;font-size:2.25rem">{{ optimizeResult.saving_pct?.toFixed(1)||'0' }}<span class="opt-compare__u" style="font-size:1rem">%</span></div>
+            <div class="opt-compare__val stat-value" :style="{ color: energyPalette.primary, fontSize: '2.25rem' }">{{ optimizeResult.saving_pct?.toFixed(1)||'0' }}<span class="opt-compare__u" style="font-size:1rem">%</span></div>
             <div class="opt-compare__meta">-{{ optimizeResult.estimated_saving_w?.toFixed(0)||'0' }}W · ¥{{ optimizeResult.cost_saved_per_hour?.toFixed(3)||'0' }}/h</div>
           </div>
         </div>
@@ -751,9 +776,9 @@ watch(activeTab, () => {
       <div class="ink-card__hd">
         <span class="ink-card__title">优化效果对比</span>
         <div class="trend-legend">
-          <span class="trend-legend__i"><span class="trend-legend__bar" style="background:#C41E3A;border-style:dashed"></span>基线</span>
-          <span class="trend-legend__i"><span class="trend-legend__bar" style="background:#2E8B57"></span>实际</span>
-          <span class="trend-legend__i"><span class="trend-legend__bar" style="background:rgba(46,139,87,0.35);height:8px;border-radius:2px"></span>节省</span>
+          <span class="trend-legend__i"><span class="trend-legend__bar" :style="{ background: energyPalette.danger, borderStyle: 'dashed' }"></span>基线</span>
+          <span class="trend-legend__i"><span class="trend-legend__bar" :style="{ background: energyPalette.primary }"></span>实际</span>
+          <span class="trend-legend__i"><span class="trend-legend__bar" :style="{ background: 'rgba(127, 142, 255, 0.38)', height: '8px', borderRadius: '2px' }"></span>节省</span>
           <span v-if="historyComparison?.total_saved_kwh" class="comp-saved">累计节省 <b>{{ historyComparison.total_saved_kwh.toFixed(1) }}</b> kWh</span>
         </div>
       </div>
@@ -773,9 +798,9 @@ watch(activeTab, () => {
       <div v-else class="schedule-timeline">
         <div class="sched-stats">
           <span>动作 <b>{{ scheduleHistory.execution_total ?? scheduleHistory.total }}</b> 次</span>
-          <span style="color:#2E8B57">成功 <b>{{ scheduleHistory.success_count }}</b></span>
-          <span style="color:#C41E3A">失败 <b>{{ scheduleHistory.failure_count ?? ((scheduleHistory.execution_total ?? scheduleHistory.total) - scheduleHistory.success_count) }}</b></span>
-          <span style="color:#5B4B8C">AI复盘 <b>{{ scheduleHistory.evaluation_total || 0 }}</b></span>
+          <span :style="{ color: energyPalette.primary }">成功 <b>{{ scheduleHistory.success_count }}</b></span>
+          <span :style="{ color: energyPalette.danger }">失败 <b>{{ scheduleHistory.failure_count ?? ((scheduleHistory.execution_total ?? scheduleHistory.total) - scheduleHistory.success_count) }}</b></span>
+          <span :style="{ color: energyPalette.secondary }">AI复盘 <b>{{ scheduleHistory.evaluation_total || 0 }}</b></span>
         </div>
         <div class="timeline-list">
           <div v-for="log in scheduleHistory.logs" :key="log.id" class="timeline-item">
@@ -791,7 +816,7 @@ watch(activeTab, () => {
               <div class="timeline-card__reason">{{ log.reason }}</div>
               <!-- D4: AI调度评估 -->
               <div v-if="parseEvaluation(log)" class="ai-eval-inline">
-                <span class="ai-eval-inline__score" :style="{color:parseEvaluation(log).score>=70?'#2E8B57':parseEvaluation(log).score>=40?'#B8860B':'#C41E3A'}">{{ parseEvaluation(log).score }}分</span>
+                <span class="ai-eval-inline__score" :style="{ color: parseEvaluation(log).score >= 70 ? energyPalette.primary : parseEvaluation(log).score >= 40 ? energyPalette.warning : energyPalette.danger }">{{ parseEvaluation(log).score }}分</span>
                 <span class="ai-eval-inline__verdict">{{ parseEvaluation(log).verdict }}</span>
               </div>
             </div>
@@ -817,25 +842,36 @@ watch(activeTab, () => {
   max-width: 1600px;
   margin: 0 auto;
   position: relative;
-  color: #2C2C2C;
+  color: var(--text-primary);
   font-family: var(--font-ui);
+  --energy-card: rgba(19, 29, 50, 0.76);
+  --energy-card-strong: rgba(19, 29, 50, 0.92);
+  --energy-surface: rgba(127, 142, 255, 0.08);
+  --energy-surface-strong: rgba(127, 142, 255, 0.12);
+  --energy-border: var(--border-color);
+  --energy-line: rgba(184, 197, 236, 0.1);
+  --energy-text: var(--text-primary);
+  --energy-text-secondary: var(--text-secondary);
+  --energy-text-muted: var(--text-tertiary);
+  --energy-text-faint: var(--text-muted);
+  --energy-shadow: var(--shadow-card);
 }
 
 .ink-export-feedback {
   margin: 0 0 18px;
   padding: 12px 16px;
   border-radius: 12px;
-  border: 1px solid rgba(0,0,0,0.06);
-  background: rgba(255,255,255,0.62);
+  border: 1px solid rgba(127, 142, 255, 0.24);
+  background: linear-gradient(135deg, rgba(127, 142, 255, 0.16), rgba(110, 184, 255, 0.08));
   font-size: 0.8125rem;
   line-height: 1.7;
-  color: #3A5F4B;
+  color: var(--accent-primary);
 }
 
 .ink-export-feedback--error {
-  color: #C41E3A;
-  border-color: rgba(196,30,58,0.16);
-  background: rgba(196,30,58,0.06);
+  color: var(--accent-danger);
+  border-color: rgba(255, 111, 150, 0.22);
+  background: rgba(255, 111, 150, 0.12);
 }
 
 /* ===== 背景水墨山水 ===== */
@@ -852,14 +888,14 @@ watch(activeTab, () => {
   bottom: 0; left: 0; right: 0;
   height: 35%;
   background:
-    linear-gradient(165deg, transparent 30%, rgba(58,95,75,0.03) 50%, rgba(58,95,75,0.06) 70%, rgba(58,95,75,0.04) 100%);
+    linear-gradient(165deg, transparent 28%, rgba(127, 142, 255, 0.04) 50%, rgba(110, 184, 255, 0.1) 72%, rgba(151, 165, 255, 0.06) 100%);
   mask-image: linear-gradient(to top, rgba(0,0,0,0.6), transparent);
 }
 
 .ink-cloud {
   position: absolute;
   width: 400px; height: 80px;
-  background: radial-gradient(ellipse, rgba(58,95,75,0.04) 0%, transparent 70%);
+  background: radial-gradient(ellipse, rgba(110, 184, 255, 0.08) 0%, transparent 70%);
   opacity: 0.8;
   animation: cloud-drift 60s linear infinite;
 }
@@ -885,7 +921,7 @@ watch(activeTab, () => {
   font-size: 2rem;
   font-weight: 400;
   letter-spacing: 0.12em;
-  color: #1a1a1a;
+  color: var(--text-primary);
   line-height: 1;
 }
 
@@ -916,28 +952,30 @@ watch(activeTab, () => {
 
 .source-card {
   padding: 16px 18px;
-  background: rgba(255,255,255,0.56);
-  border: 1px solid rgba(0,0,0,0.04);
+  background: var(--energy-card);
+  border: 1px solid var(--energy-border);
   border-radius: 12px;
+  box-shadow: var(--energy-shadow);
+  backdrop-filter: blur(12px) saturate(1.2);
 }
 
 .source-card__label {
   font-size: 0.6875rem;
-  color: #999;
+  color: var(--energy-text-muted);
   letter-spacing: 0.14em;
   margin-bottom: 8px;
 }
 
 .source-card__value {
   font-size: 1rem;
-  color: #1f2937;
+  color: var(--energy-text);
   font-weight: 700;
   margin-bottom: 6px;
 }
 
 .source-card__hint {
   font-size: 0.75rem;
-  color: #666;
+  color: var(--energy-text-secondary);
   line-height: 1.7;
 }
 
@@ -972,52 +1010,57 @@ watch(activeTab, () => {
   padding: 18px;
   text-align: left;
   border-radius: 12px;
-  border: 1px solid rgba(0,0,0,0.05);
-  background: rgba(255,255,255,0.62);
+  border: 1px solid var(--energy-border);
+  background: var(--energy-card);
+  box-shadow: var(--energy-shadow);
   transition: transform .28s ease, box-shadow .28s ease, background .28s ease;
 }
 
 .overview-focus-card:hover {
   transform: translateY(-2px);
-  background: rgba(255,255,255,0.78);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.04);
+  background: var(--bg-card-hover);
+  box-shadow: var(--shadow-hover);
 }
 
 .overview-focus-card__eyebrow {
   font-size: 0.6875rem;
   letter-spacing: 0.14em;
-  color: #999;
+  color: var(--energy-text-muted);
 }
 
 .overview-focus-card__title {
-  font-family: 'Ma Shan Zheng', cursive;
+  font-family: var(--font-ui);
   font-size: 1.08rem;
-  color: #333;
+  color: var(--energy-text);
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .overview-focus-card__desc,
 .overview-focus-card__meta {
   font-size: 0.75rem;
   line-height: 1.75;
-  color: #666;
+  color: var(--energy-text-secondary);
 }
 
 .overview-focus-card__meta {
-  color: #3A5F4B;
+  color: var(--accent-primary);
 }
 
 .kpi-ink {
   position: relative;
   padding: 20px 16px;
-  background: rgba(255,255,255,0.6);
-  border: 1px solid rgba(0,0,0,0.04);
+  background: var(--energy-card);
+  border: 1px solid var(--energy-border);
   border-radius: 12px;
   transition: all .3s;
+  box-shadow: var(--energy-shadow);
+  backdrop-filter: blur(12px) saturate(1.2);
 }
 
 .kpi-ink:hover {
-  background: rgba(255,255,255,0.8);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.04);
+  background: var(--bg-card-hover);
+  box-shadow: var(--shadow-hover);
   transform: translateY(-2px);
 }
 
@@ -1026,8 +1069,8 @@ watch(activeTab, () => {
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  background: linear-gradient(145deg, rgba(58,95,75,0.04), rgba(255,255,255,0.7));
-  border-color: rgba(58,95,75,0.08);
+  background: linear-gradient(145deg, rgba(127, 142, 255, 0.16), rgba(110, 184, 255, 0.06));
+  border-color: rgba(127, 142, 255, 0.24);
   position: relative;
   overflow: hidden;
 }
@@ -1035,13 +1078,13 @@ watch(activeTab, () => {
 .kpi-ink__brush {
   position: absolute;
   top: 0; left: 0; right: 0; height: 3px;
-  background: linear-gradient(90deg, transparent 5%, rgba(58,95,75,0.2) 20%, rgba(58,95,75,0.4) 40%, rgba(58,95,75,0.3) 60%, rgba(58,95,75,0.1) 80%, transparent 95%);
+  background: linear-gradient(90deg, transparent 5%, rgba(127, 142, 255, 0.18) 20%, rgba(110, 184, 255, 0.44) 40%, rgba(151, 165, 255, 0.3) 62%, rgba(127, 142, 255, 0.12) 82%, transparent 95%);
   border-radius: 2px;
 }
 
 .kpi-ink__label {
   font-size: 0.6875rem;
-  color: #999;
+  color: var(--energy-text-muted);
   letter-spacing: 0.15em;
   margin-bottom: 6px;
 }
@@ -1049,22 +1092,24 @@ watch(activeTab, () => {
 .kpi-ink__big {
   font-size: 2.75rem;
   line-height: 1;
-  color: #1a1a1a;
-  font-family: 'Noto Serif SC', serif;
+  color: var(--energy-text);
+  font-family: var(--font-ui);
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 .kpi-ink__val {
   font-size: 1.5rem;
   line-height: 1;
-  color: #333;
-  font-family: 'Noto Serif SC', serif;
+  color: var(--energy-text);
+  font-family: var(--font-ui);
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 .kpi-ink__unit {
   font-size: 0.75rem;
-  color: #999;
+  color: var(--energy-text-muted);
   font-weight: 300;
   margin-left: 3px;
 }
@@ -1072,13 +1117,13 @@ watch(activeTab, () => {
 .kpi-ink__hint {
   margin-top: 8px;
   font-size: 0.625rem;
-  color: #bbb;
+  color: var(--energy-text-faint);
 }
 
 .kpi-ink__bar {
   height: 3px;
   border-radius: 2px;
-  background: rgba(0,0,0,0.04);
+  background: var(--energy-line);
   margin-top: 10px;
   overflow: hidden;
 }
@@ -1086,7 +1131,7 @@ watch(activeTab, () => {
 .kpi-ink__bar-f {
   height: 100%;
   border-radius: 2px;
-  background: #3A5F4B;
+  background: var(--gradient-green);
   transition: width 1.2s cubic-bezier(.25,.46,.45,.94);
 }
 
@@ -1094,15 +1139,17 @@ watch(activeTab, () => {
 .ink-card {
   position: relative;
   padding: 22px;
-  background: rgba(255,255,255,0.55);
-  border: 1px solid rgba(0,0,0,0.04);
+  background: var(--energy-card);
+  border: 1px solid var(--energy-border);
   border-radius: 12px;
   transition: all .3s;
+  box-shadow: var(--energy-shadow);
+  backdrop-filter: blur(12px) saturate(1.2);
 }
 
 .ink-card:hover {
-  background: rgba(255,255,255,0.75);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.04);
+  background: var(--bg-card-hover);
+  box-shadow: var(--shadow-hover);
 }
 
 .ink-card--wide { margin-top: 18px; }
@@ -1115,10 +1162,11 @@ watch(activeTab, () => {
 }
 
 .ink-card__title {
-  font-family: 'Ma Shan Zheng', cursive;
-  font-size: 1.25rem;
-  color: #333;
-  letter-spacing: 0.1em;
+  font-family: var(--font-ui);
+  font-size: 1.05rem;
+  color: var(--energy-text);
+  font-weight: 600;
+  letter-spacing: 0.04em;
 }
 
 /* 小印章 */
@@ -1132,10 +1180,10 @@ watch(activeTab, () => {
   font-size: 0.75rem;
   transform: rotate(-5deg);
 }
-.ink-stamp--green { border: 2px solid #3A5F4B; color: #3A5F4B; opacity: 0.5; }
-.ink-stamp--teal  { border: 2px solid #2E8B57; color: #2E8B57; opacity: 0.5; }
-.ink-stamp--purple { border: 2px solid #5B4B8C; color: #5B4B8C; opacity: 0.5; }
-.ink-stamp--gold  { border: 2px solid #B8860B; color: #B8860B; opacity: 0.5; }
+.ink-stamp--green { border: 2px solid var(--accent-primary); color: var(--accent-primary); opacity: 0.65; }
+.ink-stamp--teal  { border: 2px solid var(--accent-secondary); color: var(--accent-secondary); opacity: 0.65; }
+.ink-stamp--purple { border: 2px solid var(--accent-tertiary); color: var(--accent-tertiary); opacity: 0.65; }
+.ink-stamp--gold  { border: 2px solid var(--accent-warning); color: var(--accent-warning); opacity: 0.65; }
 
 .ink-period-sm {
   font-size: 0.6875rem;
@@ -1155,29 +1203,29 @@ watch(activeTab, () => {
   justify-content: center;
   gap: 0;
   padding: 12px 0 0;
-  border-top: 1px solid rgba(0,0,0,0.04);
+  border-top: 1px solid var(--energy-line);
   text-align: center;
 }
 .gauge-bottom > div { flex: 1; }
-.gauge-bottom__l { font-size: 0.625rem; color: #bbb; margin-bottom: 2px; }
-.gauge-bottom__v { font-size: 0.9375rem; color: #3A5F4B; }
-.gauge-bottom__sep { width: 1px; height: 28px; background: rgba(0,0,0,0.04); }
+.gauge-bottom__l { font-size: 0.625rem; color: var(--energy-text-faint); margin-bottom: 2px; }
+.gauge-bottom__v { font-size: 0.9375rem; color: var(--accent-primary); }
+.gauge-bottom__sep { width: 1px; height: 28px; background: var(--energy-line); }
 
 /* ===== 碳排放 ===== */
 .carbon-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
-.carbon-item { text-align: center; padding: 16px 8px; background: rgba(58,95,75,0.03); border-radius: 8px; }
-.carbon-item__l { font-size: 0.6875rem; color: #999; margin-top: 6px; }
-.carbon-meta { display: flex; justify-content: space-between; font-size: 0.625rem; color: #bbb; padding-top: 10px; border-top: 1px solid rgba(0,0,0,0.04); }
+.carbon-item { text-align: center; padding: 16px 8px; background: var(--energy-surface); border: 1px solid var(--energy-border); border-radius: 8px; }
+.carbon-item__l { font-size: 0.6875rem; color: var(--energy-text-muted); margin-top: 6px; }
+.carbon-meta { display: flex; justify-content: space-between; font-size: 0.625rem; color: var(--energy-text-faint); padding-top: 10px; border-top: 1px solid var(--energy-line); }
 
 /* ===== 图例 ===== */
 .pie-legend { display:flex; flex-direction:column; gap:5px; margin-top:4px; }
 .pie-legend__i { display:flex; align-items:center; gap:8px; font-size:.75rem; }
 .pie-legend__dot { width:8px; height:8px; border-radius:2px; flex-shrink:0; }
-.pie-legend__name { color:#666; flex:1; }
+.pie-legend__name { color:var(--energy-text-secondary); flex:1; }
 .pie-legend__pct { font-size:.8125rem; }
 
 .trend-legend { display:flex; gap:14px; }
-.trend-legend__i { display:flex; align-items:center; gap:5px; font-size:.6875rem; color:#999; }
+.trend-legend__i { display:flex; align-items:center; gap:5px; font-size:.6875rem; color:var(--energy-text-muted); }
 .trend-legend__bar { width:16px; height:3px; border-radius:2px; opacity:.6; }
 
 /* ===== 优化按钮（印章风） ===== */
@@ -1197,28 +1245,29 @@ watch(activeTab, () => {
 
 .seal-btn__stamp {
   width: 36px; height: 36px;
-  border: 2.5px solid #C41E3A;
+  border: 2.5px solid var(--accent-danger);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: 'ZCOOL KuaiLe', cursive;
   font-size: 1rem;
-  color: #C41E3A;
+  color: var(--accent-danger);
   transition: all .3s;
 }
 
 .seal-btn:hover:not(:disabled) .seal-btn__stamp {
-  background: #C41E3A;
-  color: white;
-  box-shadow: 0 4px 16px rgba(196,30,58,0.2);
+  background: var(--accent-danger);
+  color: #0B0E14;
+  box-shadow: 0 4px 16px rgba(255, 111, 150, 0.24);
 }
 
 .seal-btn__text {
-  font-family: 'ZCOOL XiaoWei', serif;
+  font-family: var(--font-ui);
   font-size: 0.9375rem;
-  color: #333;
+  color: var(--energy-text);
   letter-spacing: 0.1em;
+  font-weight: 600;
 }
 
 /* ===== 空态 ===== */
@@ -1230,22 +1279,23 @@ watch(activeTab, () => {
 .opt-empty-ink__char {
   font-family: 'Ma Shan Zheng', cursive;
   font-size: 5rem;
-  color: rgba(58,95,75,0.06);
+  color: rgba(127, 142, 255, 0.1);
   line-height: 1;
   margin-bottom: 12px;
 }
 
 .opt-empty-ink__t {
-  font-family: 'Ma Shan Zheng', cursive;
-  font-size: 1.25rem;
-  color: #666;
-  letter-spacing: 0.2em;
+  font-family: var(--font-ui);
+  font-size: 1rem;
+  color: var(--energy-text-secondary);
+  font-weight: 600;
+  letter-spacing: 0.06em;
   margin-bottom: 8px;
 }
 
 .opt-empty-ink__d {
   font-size: 0.8125rem;
-  color: #bbb;
+  color: var(--energy-text-faint);
   line-height: 1.8;
 }
 
@@ -1256,19 +1306,25 @@ watch(activeTab, () => {
   justify-content: center;
   gap: 32px;
   padding: 28px;
-  background: rgba(58,95,75,0.02);
+  background: var(--energy-surface);
   border-radius: 12px;
-  border: 1px solid rgba(0,0,0,0.03);
+  border: 1px solid var(--energy-border);
 }
 
 .opt-compare__item { text-align: center; }
-.opt-compare__label { font-size: 0.6875rem; color: #999; margin-bottom: 8px; letter-spacing: 0.15em; }
-.opt-compare__val { font-size: 1.75rem; line-height: 1; font-family: 'Noto Serif SC', serif; font-weight: 700; }
-.opt-compare__u { font-size: 0.75rem; color: #999; font-weight: 300; }
+.opt-compare__label { font-size: 0.6875rem; color: var(--energy-text-muted); margin-bottom: 8px; letter-spacing: 0.15em; }
+.opt-compare__val {
+  font-size: 1.75rem;
+  line-height: 1;
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.opt-compare__u { font-size: 0.75rem; color: var(--energy-text-muted); font-weight: 300; }
 .opt-compare__arrow { flex-shrink: 0; opacity: .4; animation: arrow-breathe 2.5s ease-in-out infinite; }
 @keyframes arrow-breathe { 0%,100%{opacity:.3} 50%{opacity:.7} }
-.opt-compare__sep { width: 1px; height: 50px; background: rgba(0,0,0,0.04); }
-.opt-compare__meta { font-size: 0.6875rem; color: #bbb; margin-top: 6px; }
+.opt-compare__sep { width: 1px; height: 50px; background: var(--energy-line); }
+.opt-compare__meta { font-size: 0.6875rem; color: var(--energy-text-faint); margin-top: 6px; }
 
 /* ===== 建议卡片 ===== */
 .sug-grid-ink { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
@@ -1277,31 +1333,31 @@ watch(activeTab, () => {
   display: flex;
   gap: 14px;
   padding: 18px;
-  background: rgba(255,255,255,0.4);
-  border: 1px solid rgba(0,0,0,0.03);
+  background: var(--energy-surface);
+  border: 1px solid var(--energy-border);
   border-radius: 10px;
   transition: all .25s;
 }
-.sug-ink:hover { background: rgba(255,255,255,0.7); box-shadow: 0 4px 16px rgba(0,0,0,0.03); }
+.sug-ink:hover { background: var(--energy-surface-strong); box-shadow: var(--shadow-hover); }
 
 .sug-ink__seal {
   width: 34px; height: 34px; flex-shrink: 0;
-  border: 2px solid rgba(58,95,75,0.3);
+  border: 2px solid rgba(127, 142, 255, 0.24);
   border-radius: 4px;
   display: flex; align-items: center; justify-content: center;
   font-family: 'ZCOOL KuaiLe', cursive;
   font-size: 0.8rem;
-  color: #3A5F4B;
+  color: var(--accent-primary);
   transform: rotate(-3deg);
 }
 
 .sug-ink__body { flex: 1; min-width: 0; }
 .sug-ink__top { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
-.sug-ink__tag { font-size: 0.6875rem; font-weight: 500; color: #3A5F4B; background: rgba(58,95,75,0.06); padding: 2px 8px; border-radius: 3px; }
-.sug-ink__gpu { font-size: 0.6875rem; font-weight: 500; color: #5B4B8C; background: rgba(91,75,140,0.06); padding: 2px 8px; border-radius: 3px; font-family: 'JetBrains Mono', monospace; }
-.sug-ink__tgt { font-size: 0.6875rem; color: #999; font-family: 'JetBrains Mono', monospace; }
-.sug-ink__save { margin-left: auto; font-size: 0.8125rem; font-weight: 700; color: #2E8B57; font-family: 'JetBrains Mono', monospace; }
-.sug-ink__reason { font-size: 0.8125rem; color: #666; line-height: 1.65; }
+.sug-ink__tag { font-size: 0.6875rem; font-weight: 500; color: var(--accent-primary); background: rgba(127, 142, 255, 0.12); padding: 2px 8px; border-radius: 3px; }
+.sug-ink__gpu { font-size: 0.6875rem; font-weight: 500; color: var(--accent-tertiary); background: rgba(110, 184, 255, 0.12); padding: 2px 8px; border-radius: 3px; font-family: 'JetBrains Mono', monospace; }
+.sug-ink__tgt { font-size: 0.6875rem; color: var(--energy-text-muted); font-family: 'JetBrains Mono', monospace; }
+.sug-ink__save { margin-left: auto; font-size: 0.8125rem; font-weight: 700; color: var(--accent-primary); font-family: 'JetBrains Mono', monospace; }
+.sug-ink__reason { font-size: 0.8125rem; color: var(--energy-text-secondary); line-height: 1.65; }
 
 /* ===== 导出按钮（小号印章风） ===== */
 .seal-btn--sm { padding: 4px 12px 4px 6px; gap: 6px; }
@@ -1311,11 +1367,12 @@ watch(activeTab, () => {
 /* ===== 对比图累计节省标签 ===== */
 .comp-saved {
   font-size: 0.75rem;
-  color: #2E8B57;
-  background: rgba(46,139,87,0.06);
+  color: var(--accent-primary);
+  background: rgba(127, 142, 255, 0.12);
   padding: 2px 10px;
   border-radius: 4px;
   margin-left: 8px;
+  border: 1px solid rgba(127, 142, 255, 0.16);
 }
 
 /* ===== 调度时间线 ===== */
@@ -1324,12 +1381,15 @@ watch(activeTab, () => {
   display: flex;
   gap: 16px;
   font-size: 0.75rem;
-  color: #999;
+  color: var(--energy-text-muted);
   margin-bottom: 16px;
   padding-bottom: 12px;
-  border-bottom: 1px solid rgba(0,0,0,0.04);
+  border-bottom: 1px solid var(--energy-line);
 }
-.sched-stats b { font-family: 'Noto Serif SC', serif; }
+.sched-stats b {
+  font-family: var(--font-ui);
+  font-variant-numeric: tabular-nums;
+}
 
 .timeline-list { position: relative; padding-left: 20px; }
 
@@ -1345,11 +1405,11 @@ watch(activeTab, () => {
   top: 6px;
   width: 10px; height: 10px;
   border-radius: 50%;
-  background: #3A5F4B;
-  border: 2px solid rgba(58,95,75,0.2);
+  background: var(--accent-primary);
+  border: 2px solid rgba(127, 142, 255, 0.2);
   z-index: 1;
 }
-.timeline-dot--fail { background: #C41E3A; border-color: rgba(196,30,58,0.2); }
+.timeline-dot--fail { background: var(--accent-danger); border-color: rgba(255, 111, 150, 0.22); }
 
 .timeline-line {
   position: absolute;
@@ -1357,17 +1417,17 @@ watch(activeTab, () => {
   top: 18px;
   bottom: 0;
   width: 2px;
-  background: rgba(0,0,0,0.04);
+  background: var(--energy-line);
 }
 
 .timeline-card {
   padding: 12px 16px;
-  background: rgba(255,255,255,0.4);
-  border: 1px solid rgba(0,0,0,0.03);
+  background: var(--energy-surface);
+  border: 1px solid var(--energy-border);
   border-radius: 8px;
   transition: all .25s;
 }
-.timeline-card:hover { background: rgba(255,255,255,0.7); box-shadow: 0 4px 16px rgba(0,0,0,0.03); }
+.timeline-card:hover { background: var(--energy-surface-strong); box-shadow: var(--energy-shadow); }
 
 .timeline-card__top {
   display: flex;
@@ -1379,25 +1439,25 @@ watch(activeTab, () => {
 
 .timeline-card__time {
   font-size: 0.6875rem;
-  color: #999;
+  color: var(--energy-text-muted);
   font-family: 'JetBrains Mono', monospace;
 }
 
 .timeline-card__action {
   font-size: 0.6875rem;
   font-weight: 500;
-  color: #3A5F4B;
-  background: rgba(58,95,75,0.06);
+  color: var(--accent-primary);
+  background: rgba(127, 142, 255, 0.12);
   padding: 1px 8px;
   border-radius: 3px;
 }
-.timeline-card__action--ai { color: #5B4B8C; background: rgba(91,75,140,0.08); }
+.timeline-card__action--ai { color: var(--accent-tertiary); background: rgba(110, 184, 255, 0.12); }
 
 .timeline-card__target {
   font-size: 0.6875rem;
-  color: #5B4B8C;
+  color: var(--accent-tertiary);
   font-family: 'JetBrains Mono', monospace;
-  background: rgba(91,75,140,0.06);
+  background: rgba(110, 184, 255, 0.1);
   padding: 1px 8px;
   border-radius: 3px;
 }
@@ -1405,15 +1465,15 @@ watch(activeTab, () => {
 .timeline-card__result {
   margin-left: auto;
   font-size: 0.625rem;
-  color: #2E8B57;
+  color: var(--accent-primary);
   font-weight: 500;
 }
-.timeline-card__result--fail { color: #C41E3A; }
-.timeline-card__result--neutral { color: #5B4B8C; }
+.timeline-card__result--fail { color: var(--accent-danger); }
+.timeline-card__result--neutral { color: var(--accent-secondary); }
 
 .timeline-card__reason {
   font-size: 0.8125rem;
-  color: #666;
+  color: var(--energy-text-secondary);
   line-height: 1.6;
 }
 
@@ -1429,7 +1489,7 @@ watch(activeTab, () => {
   text-orientation: mixed;
   font-family: 'Ma Shan Zheng', cursive;
   font-size: 0.875rem;
-  color: rgba(0,0,0,0.08);
+  color: rgba(255, 255, 255, 0.08);
   letter-spacing: 0.5em;
   height: 180px;
 }
@@ -1445,7 +1505,7 @@ watch(activeTab, () => {
 
 .ink-loading__brush {
   width: 40px; height: 3px;
-  background: linear-gradient(90deg, transparent, #3A5F4B, transparent);
+  background: linear-gradient(90deg, transparent, var(--accent-primary), transparent);
   border-radius: 2px;
   animation: brush-stroke 1.5s ease-in-out infinite;
 }
@@ -1457,8 +1517,8 @@ watch(activeTab, () => {
 }
 
 .ink-loading__text {
-  font-family: 'ZCOOL XiaoWei', serif;
-  color: #999;
+  font-family: var(--font-ui);
+  color: var(--energy-text-muted);
   margin-top: 20px;
   font-size: 0.875rem;
   letter-spacing: 0.2em;
@@ -1466,10 +1526,10 @@ watch(activeTab, () => {
 
 /* ===== AI 能力区块样式 ===== */
 .ink-card--ai {
-  background: linear-gradient(135deg, rgba(91,75,140,0.03), rgba(255,255,255,0.55));
-  border-color: rgba(91,75,140,0.08);
+  background: linear-gradient(135deg, rgba(127, 142, 255, 0.16), rgba(18, 26, 46, 0.82));
+  border-color: rgba(127, 142, 255, 0.22);
 }
-.ink-stamp--ai { border: 2px solid #5B4B8C; color: #5B4B8C; opacity: 0.5; }
+.ink-stamp--ai { border: 2px solid var(--accent-secondary); color: var(--accent-secondary); opacity: 0.65; }
 
 .ai-risk-badge {
   font-size: 0.625rem;
@@ -1478,33 +1538,34 @@ watch(activeTab, () => {
   letter-spacing: 0.05em;
   margin-left: auto;
 }
-.ai-risk-badge--low { color: #2E8B57; background: rgba(46,139,87,0.08); }
-.ai-risk-badge--medium { color: #B8860B; background: rgba(184,134,11,0.08); }
-.ai-risk-badge--high { color: #C41E3A; background: rgba(196,30,58,0.08); }
+.ai-risk-badge--low { color: var(--accent-primary); background: rgba(127, 142, 255, 0.12); }
+.ai-risk-badge--medium { color: var(--accent-warning); background: rgba(244, 185, 93, 0.12); }
+.ai-risk-badge--high { color: var(--accent-danger); background: rgba(255, 111, 150, 0.12); }
 
 /* D2: AI洞察 */
 .ai-insight-body { padding: 0 4px; }
 .ai-insight-summary {
-  font-family: 'Ma Shan Zheng', cursive;
-  font-size: 1.15rem;
-  color: #333;
-  letter-spacing: 0.05em;
+  font-family: var(--font-ui);
+  font-size: 1rem;
+  color: var(--energy-text);
+  font-weight: 600;
+  letter-spacing: 0.02em;
   margin-bottom: 8px;
 }
 .ai-insight-detail {
   font-size: 0.8125rem;
-  color: #666;
+  color: var(--energy-text-secondary);
   line-height: 1.7;
   margin-bottom: 12px;
 }
 .ai-insight-suggestions { display: flex; flex-wrap: wrap; gap: 8px; }
 .ai-insight-sug {
   font-size: 0.75rem;
-  color: #5B4B8C;
-  background: rgba(91,75,140,0.06);
+  color: var(--accent-tertiary);
+  background: rgba(110, 184, 255, 0.1);
   padding: 4px 12px;
   border-radius: 4px;
-  border-left: 2px solid rgba(91,75,140,0.3);
+  border-left: 2px solid rgba(110, 184, 255, 0.28);
 }
 
 /* D3: AI预测解读 */
@@ -1514,24 +1575,24 @@ watch(activeTab, () => {
   gap: 10px;
   margin-top: 14px;
   padding: 12px 16px;
-  background: rgba(91,75,140,0.04);
-  border-left: 3px solid rgba(91,75,140,0.3);
+  background: rgba(110, 184, 255, 0.1);
+  border-left: 3px solid rgba(110, 184, 255, 0.28);
   border-radius: 0 8px 8px 0;
 }
 .ai-interpret-icon {
   flex-shrink: 0;
   width: 22px; height: 22px;
-  border: 1.5px solid #5B4B8C;
+  border: 1.5px solid var(--accent-secondary);
   border-radius: 3px;
   display: flex; align-items: center; justify-content: center;
   font-family: 'ZCOOL KuaiLe', cursive;
   font-size: 0.625rem;
-  color: #5B4B8C;
+  color: var(--accent-secondary);
   opacity: 0.6;
 }
 .ai-interpret-text {
   font-size: 0.8125rem;
-  color: #666;
+  color: var(--energy-text-secondary);
   line-height: 1.7;
 }
 
@@ -1539,20 +1600,20 @@ watch(activeTab, () => {
 .ai-anomaly-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; }
 .ai-anomaly-item {
   padding: 14px 16px;
-  background: rgba(255,255,255,0.4);
-  border: 1px solid rgba(0,0,0,0.03);
+  background: var(--energy-surface);
+  border: 1px solid var(--energy-border);
   border-radius: 8px;
-  border-left: 3px solid #B8860B;
+  border-left: 3px solid var(--accent-warning);
 }
-.ai-anomaly-item--critical { border-left-color: #C41E3A; }
+.ai-anomaly-item--critical { border-left-color: var(--accent-danger); }
 .ai-anomaly-item__head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-.ai-anomaly-item__type { font-size: 0.8125rem; font-weight: 500; color: #333; }
-.ai-anomaly-item__gpu { font-size: 0.6875rem; color: #5B4B8C; background: rgba(91,75,140,0.06); padding: 1px 8px; border-radius: 3px; font-family: 'JetBrains Mono', monospace; }
+.ai-anomaly-item__type { font-size: 0.8125rem; font-weight: 500; color: var(--energy-text); }
+.ai-anomaly-item__gpu { font-size: 0.6875rem; color: var(--accent-tertiary); background: rgba(110, 184, 255, 0.1); padding: 1px 8px; border-radius: 3px; font-family: 'JetBrains Mono', monospace; }
 .ai-anomaly-item__sev { margin-left: auto; font-size: 0.625rem; font-weight: 500; padding: 1px 8px; border-radius: 3px; }
-.ai-anomaly-item__sev--warning { color: #B8860B; background: rgba(184,134,11,0.08); }
-.ai-anomaly-item__sev--critical { color: #C41E3A; background: rgba(196,30,58,0.08); }
-.ai-anomaly-item__desc { font-size: 0.8125rem; color: #666; line-height: 1.6; }
-.ai-anomaly-item__sug { font-size: 0.75rem; color: #5B4B8C; margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(0,0,0,0.04); }
+.ai-anomaly-item__sev--warning { color: var(--accent-warning); background: rgba(244, 185, 93, 0.12); }
+.ai-anomaly-item__sev--critical { color: var(--accent-danger); background: rgba(255, 111, 150, 0.12); }
+.ai-anomaly-item__desc { font-size: 0.8125rem; color: var(--energy-text-secondary); line-height: 1.6; }
+.ai-anomaly-item__sug { font-size: 0.75rem; color: var(--accent-tertiary); margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--energy-line); }
 
 /* D4: AI调度评估（内联） */
 .ai-eval-inline {
@@ -1561,16 +1622,17 @@ watch(activeTab, () => {
   gap: 8px;
   margin-top: 6px;
   padding-top: 6px;
-  border-top: 1px dashed rgba(91,75,140,0.15);
+  border-top: 1px dashed rgba(127, 142, 255, 0.18);
 }
 .ai-eval-inline__score {
-  font-family: 'Noto Serif SC', serif;
+  font-family: var(--font-ui);
   font-weight: 700;
   font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
 }
 .ai-eval-inline__verdict {
   font-size: 0.75rem;
-  color: #666;
+  color: var(--energy-text-secondary);
 }
 
 /* ===== 卡片标题组（eyebrow + title） ===== */
@@ -1581,9 +1643,9 @@ watch(activeTab, () => {
 }
 .ink-card__eyebrow {
   font-size: 0.625rem;
-  color: #999;
+  color: var(--energy-text-muted);
   letter-spacing: 0.12em;
-  font-family: 'ZCOOL XiaoWei', serif;
+  font-family: var(--font-ui);
 }
 
 /* ===== AI 加载态 ===== */
@@ -1595,15 +1657,16 @@ watch(activeTab, () => {
 }
 .ai-loading-box__brush {
   width: 36px; height: 3px;
-  background: linear-gradient(90deg, transparent, #5B4B8C, transparent);
+  background: linear-gradient(90deg, transparent, var(--accent-secondary), transparent);
   border-radius: 2px;
   animation: brush-stroke 1.5s ease-in-out infinite;
 }
 .ai-loading-box__text {
   margin-top: 14px;
   font-size: 0.8125rem;
-  color: #999;
+  color: var(--energy-text-muted);
   letter-spacing: 0.15em;
+  font-family: var(--font-ui);
 }
 
 /* ===== AI 健康态 ===== */
@@ -1615,27 +1678,28 @@ watch(activeTab, () => {
 }
 .ai-healthy-box__icon {
   width: 48px; height: 48px;
-  border: 2.5px solid #2E8B57;
+  border: 2.5px solid var(--accent-primary);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: 'ZCOOL KuaiLe', cursive;
   font-size: 1.25rem;
-  color: #2E8B57;
+  color: var(--accent-primary);
   opacity: 0.7;
   margin-bottom: 14px;
 }
 .ai-healthy-box__text {
-  font-family: 'Ma Shan Zheng', cursive;
-  font-size: 1.1rem;
-  color: #2E8B57;
-  letter-spacing: 0.08em;
+  font-family: var(--font-ui);
+  font-size: 1rem;
+  color: var(--accent-primary);
+  font-weight: 600;
+  letter-spacing: 0.04em;
   margin-bottom: 6px;
 }
 .ai-healthy-box__sub {
   font-size: 0.75rem;
-  color: #999;
+  color: var(--energy-text-muted);
   text-align: center;
   line-height: 1.7;
   max-width: 480px;
@@ -1644,7 +1708,7 @@ watch(activeTab, () => {
 /* ===== AI 空态/LLM未接入提示 ===== */
 .ai-empty-hint {
   font-size: 0.8125rem;
-  color: #999;
+  color: var(--energy-text-muted);
   padding: 20px 4px;
   text-align: center;
 }
@@ -1656,27 +1720,28 @@ watch(activeTab, () => {
 }
 .ai-empty-hint__icon {
   width: 48px; height: 48px;
-  border: 2.5px dashed rgba(91,75,140,0.35);
+  border: 2.5px dashed rgba(127, 142, 255, 0.32);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: 'ZCOOL KuaiLe', cursive;
   font-size: 1.25rem;
-  color: #5B4B8C;
+  color: var(--accent-primary);
   opacity: 0.5;
   margin-bottom: 14px;
 }
 .ai-empty-hint__text {
-  font-family: 'Ma Shan Zheng', cursive;
-  font-size: 1.1rem;
-  color: #5B4B8C;
-  letter-spacing: 0.08em;
+  font-family: var(--font-ui);
+  font-size: 1rem;
+  color: var(--accent-primary);
+  font-weight: 600;
+  letter-spacing: 0.04em;
   margin-bottom: 6px;
 }
 .ai-empty-hint__sub {
   font-size: 0.75rem;
-  color: #999;
+  color: var(--energy-text-muted);
   text-align: center;
   line-height: 1.7;
   max-width: 520px;

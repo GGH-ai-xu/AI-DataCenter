@@ -574,7 +574,7 @@ onMounted(() => {
                 </div>
                 <div class="risk-profile__item">
                   <div class="risk-profile__label">风险等级</div>
-                  <div class="risk-profile__value" :style="{ color: controlPlan.risk_level === 'high' ? '#C41E3A' : controlPlan.risk_level === 'medium' ? '#B8860B' : '#2E8B57' }">
+                  <div class="risk-profile__value" :class="`risk-profile__value--${controlPlan.risk_level || 'low'}`">
                     {{ controlRiskLabel }}
                   </div>
                 </div>
@@ -770,9 +770,11 @@ onMounted(() => {
 .ai-config__title,
 .control-console__title {
   margin-top: 8px;
-  font-family: var(--font-xingshu);
+  font-family: var(--font-ui);
   font-size: 1.02rem;
-  line-height: 1.6;
+  line-height: 1.55;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   color: var(--text-primary);
 }
 
@@ -793,9 +795,21 @@ onMounted(() => {
 .control-action,
 .control-result__item {
   padding: 12px 14px;
-  border-radius: 18px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(248, 245, 240, 0.62));
-  border: 1px solid rgba(58, 95, 75, 0.08);
+  border-radius: 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-card);
+  backdrop-filter: blur(12px) saturate(1.2);
+  transition: transform 0.24s ease, background 0.24s ease, border-color 0.24s ease, box-shadow 0.24s ease;
+}
+
+.ai-meta-card:hover,
+.control-action:hover,
+.control-result__item:hover {
+  transform: translateY(-1px);
+  background: var(--bg-card-hover);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-hover);
 }
 
 .ai-meta-card__label,
@@ -821,14 +835,15 @@ onMounted(() => {
 
 .ai-notice {
   padding: 14px 18px;
-  border-radius: 18px;
-  border: 1px solid rgba(184, 134, 11, 0.16);
-  background: rgba(212, 175, 55, 0.08);
+  border-radius: 14px;
+  border: 1px solid rgba(244, 185, 93, 0.22);
+  background: rgba(244, 185, 93, 0.12);
+  box-shadow: var(--shadow-card);
 }
 
 .ai-notice__title {
   font-size: 0.82rem;
-  color: #8b6b12;
+  color: var(--accent-warning);
   font-weight: 700;
 }
 
@@ -873,16 +888,19 @@ onMounted(() => {
   border-radius: 14px;
   font-size: 0.78rem;
   line-height: 1.7;
+  border: 1px solid transparent;
 }
 
 .ai-feedback--success {
-  background: rgba(46, 139, 87, 0.08);
-  color: #2b6d49;
+  background: linear-gradient(135deg, rgba(127, 142, 255, 0.16), rgba(110, 184, 255, 0.08));
+  border-color: rgba(127, 142, 255, 0.24);
+  color: var(--accent-primary);
 }
 
 .ai-feedback--error {
-  background: rgba(196, 30, 58, 0.08);
-  color: #8f1d34;
+  background: rgba(255, 111, 150, 0.12);
+  border-color: rgba(255, 111, 150, 0.22);
+  color: var(--accent-danger);
 }
 
 .control-console,
@@ -899,6 +917,7 @@ onMounted(() => {
   width: 100%;
   min-height: 54px;
   resize: vertical;
+  border-radius: 12px;
 }
 
 .control-console__quick,
@@ -943,8 +962,9 @@ onMounted(() => {
   margin-top: 12px;
   padding: 14px 16px;
   border-radius: 14px;
-  background: linear-gradient(135deg, rgba(196,30,58,0.03), rgba(184,134,11,0.04));
-  border: 1px solid rgba(184,134,11,0.12);
+  background: linear-gradient(135deg, rgba(255, 111, 150, 0.1), rgba(244, 185, 93, 0.08), rgba(18, 26, 46, 0.88));
+  border: 1px solid rgba(244, 185, 93, 0.22);
+  box-shadow: var(--shadow-card);
 }
 
 .risk-profile__head {
@@ -957,14 +977,14 @@ onMounted(() => {
 .risk-profile__icon {
   width: 24px;
   height: 24px;
-  border: 1.5px solid var(--ink-vermillion, #C41E3A);
+  border: 1.5px solid var(--accent-warning);
   border-radius: 3px;
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: var(--font-seal);
   font-size: 0.6rem;
-  color: var(--ink-vermillion, #C41E3A);
+  color: var(--accent-warning);
   opacity: 0.7;
   transform: rotate(-3deg);
 }
@@ -984,7 +1004,8 @@ onMounted(() => {
 .risk-profile__item {
   padding: 8px 10px;
   border-radius: 8px;
-  background: rgba(255,255,255,0.6);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-color);
 }
 
 .risk-profile__label {
@@ -998,6 +1019,18 @@ onMounted(() => {
   font-size: 0.82rem;
   color: var(--text-primary);
   font-weight: 600;
+}
+
+.risk-profile__value--low {
+  color: var(--accent-primary);
+}
+
+.risk-profile__value--medium {
+  color: var(--accent-warning);
+}
+
+.risk-profile__value--high {
+  color: var(--accent-danger);
 }
 
 .control-plan__title {
@@ -1028,8 +1061,8 @@ onMounted(() => {
 }
 
 .control-plan__warning {
-  border-color: rgba(212, 175, 55, 0.16);
-  background: rgba(212, 175, 55, 0.08);
+  border-color: rgba(244, 185, 93, 0.22);
+  background: rgba(244, 185, 93, 0.12);
 }
 
 .control-action__top,
@@ -1049,21 +1082,23 @@ onMounted(() => {
 .control-action__blocked {
   margin-top: 8px;
   font-size: 0.75rem;
-  color: #8f1d34;
+  color: var(--accent-danger);
   line-height: 1.6;
 }
 
 .control-action--invalid {
-  border-color: rgba(196, 30, 58, 0.12);
-  background: rgba(196, 30, 58, 0.05);
+  border-color: rgba(255, 111, 150, 0.22);
+  background: rgba(255, 111, 150, 0.12);
 }
 
 .control-result__item--ok {
-  border-color: rgba(46, 139, 87, 0.12);
+  border-color: rgba(127, 142, 255, 0.24);
+  background: linear-gradient(180deg, rgba(127, 142, 255, 0.14), rgba(18, 26, 46, 0.82));
 }
 
 .control-result__item--fail {
-  border-color: rgba(196, 30, 58, 0.12);
+  border-color: rgba(255, 111, 150, 0.22);
+  background: linear-gradient(180deg, rgba(255, 111, 150, 0.12), rgba(18, 26, 46, 0.82));
 }
 
 .ai-container {
@@ -1081,20 +1116,23 @@ onMounted(() => {
   width: 44px;
   height: 44px;
   border-radius: 14px;
-  background: linear-gradient(135deg, rgba(46, 139, 87, 0.14), rgba(91, 140, 126, 0.22));
-  border: 1px solid rgba(46, 139, 87, 0.14);
+  background: linear-gradient(135deg, rgba(151, 165, 255, 0.92), rgba(110, 184, 255, 0.84));
+  border: 1px solid rgba(127, 142, 255, 0.24);
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: var(--font-seal);
   font-size: 1rem;
-  color: var(--accent-primary);
+  color: var(--text-primary);
+  box-shadow: 0 14px 30px rgba(127, 142, 255, 0.22);
 }
 
 .ai-header__title {
-  font-family: var(--font-xingshu);
-  font-size: 1.18rem;
+  font-family: var(--font-ui);
+  font-size: 1.08rem;
   color: var(--text-primary);
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .ai-header__subtitle {
@@ -1138,13 +1176,21 @@ onMounted(() => {
   font-family: var(--font-seal);
   font-size: 0.8rem;
   flex-shrink: 0;
-  background: rgba(255, 255, 255, 0.5);
-  border: 1px solid rgba(26, 26, 26, 0.06);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
 }
 
 .msg--bot .msg__avatar {
   color: var(--accent-primary);
-  background: rgba(46, 139, 87, 0.08);
+  background: rgba(127, 142, 255, 0.14);
+  border-color: rgba(127, 142, 255, 0.22);
+}
+
+.msg--user .msg__avatar {
+  color: var(--text-primary);
+  background: linear-gradient(135deg, rgba(151, 165, 255, 0.9), rgba(110, 184, 255, 0.78));
+  border-color: transparent;
 }
 
 .msg__content {
@@ -1158,15 +1204,17 @@ onMounted(() => {
 }
 
 .msg--bot .msg__content {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(248, 245, 240, 0.7));
-  border: 1px solid rgba(58, 95, 75, 0.08);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
   border-radius: 8px 22px 22px 22px;
+  box-shadow: var(--shadow-card);
 }
 
 .msg--user .msg__content {
-  background: linear-gradient(135deg, #3A5F4B, #2E8B57);
-  color: #fffdf9;
+  background: linear-gradient(135deg, rgba(127, 142, 255, 0.9), rgba(110, 184, 255, 0.78));
+  color: var(--text-primary);
   border-radius: 22px 8px 22px 22px;
+  box-shadow: 0 12px 28px rgba(127, 142, 255, 0.18);
 }
 
 .typing span {
@@ -1203,6 +1251,13 @@ onMounted(() => {
   padding-top: 16px;
   border-top: 1px solid var(--border-color);
   align-items: flex-end;
+}
+
+.ai-form__tip {
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px dashed var(--border-color);
+  background: rgba(255, 255, 255, 0.03);
 }
 
 @media (max-width: 1024px) {

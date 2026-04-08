@@ -116,8 +116,8 @@ function severityLabel(severity = 'warning') {
 .alert-history-table__row {
   padding: 14px 16px;
   border-radius: 18px;
-  border: 1px solid rgba(26, 26, 26, 0.06);
-  background: rgba(255, 252, 247, 0.82);
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .alert-history-table__cell {
@@ -132,7 +132,7 @@ function severityLabel(severity = 'warning') {
   font-size: 0.6875rem;
   font-weight: 600;
   color: var(--accent-primary);
-  background: rgba(58, 95, 75, 0.1);
+  background: rgba(0, 212, 170, 0.1);
   padding: 2px 8px;
   border-radius: 4px;
 }
@@ -156,7 +156,7 @@ function severityLabel(severity = 'warning') {
   padding: 42px 18px;
   text-align: center;
   border-radius: 20px;
-  border: 1px dashed rgba(58, 95, 75, 0.14);
+  border: 1px dashed rgba(0, 212, 170, 0.16);
   color: var(--text-muted);
 }
 

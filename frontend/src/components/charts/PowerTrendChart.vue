@@ -14,7 +14,7 @@ use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, LegendComponent
 
 const props = defineProps({ gpus: { type: Array, default: () => [] } })
 
-const GPU_COLORS = ['#3A5F4B', '#5B4B8C', '#2E8B57', '#B8860B']
+const GPU_COLORS = ['#00D4AA', '#0EA5E9', '#38BDF8', '#F59E0B']
 const MAX_POINTS = 60
 
 // 历史数据缓存（每张GPU保留60个点）
@@ -23,12 +23,12 @@ const option = ref({
   backgroundColor: 'transparent',
   tooltip: {
     trigger: 'axis',
-    backgroundColor: 'rgba(248, 245, 240, 0.97)',
-    borderColor: 'rgba(58, 95, 75, 0.2)',
-    textStyle: { color: '#2C2C2C', fontSize: 12 },
+    backgroundColor: 'rgba(17, 21, 32, 0.96)',
+    borderColor: 'rgba(0, 212, 170, 0.18)',
+    textStyle: { color: '#E8ECF4', fontSize: 12 },
     formatter: (params) => {
       if (!params.length) return ''
-      let output = `<div style="font-size:11px;color:#999999;margin-bottom:4px">${new Date(params[0].value[0]).toLocaleTimeString('zh-CN')}</div>`
+      let output = `<div style="font-size:11px;color:#A0AABE;margin-bottom:4px">${new Date(params[0].value[0]).toLocaleTimeString('zh-CN')}</div>`
       params.forEach((item) => {
         output += `<div style="display:flex;align-items:center;gap:6px;margin:2px 0">
           <span style="width:8px;height:8px;border-radius:50%;background:${item.color}"></span>
@@ -39,7 +39,7 @@ const option = ref({
   },
   legend: {
     data: [],
-    textStyle: { color: '#666666', fontSize: 11 },
+    textStyle: { color: '#A0AABE', fontSize: 11 },
     top: 0,
     right: 0,
     itemWidth: 12,
@@ -50,16 +50,16 @@ const option = ref({
     type: 'time',
     axisLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } },
     axisTick: { show: false },
-    axisLabel: { color: '#999999', fontSize: 10 },
+    axisLabel: { color: '#6B7A94', fontSize: 10 },
     splitLine: { show: false },
   },
   yAxis: {
     type: 'value',
     name: 'W',
-    nameTextStyle: { color: '#999999', fontSize: 10 },
+    nameTextStyle: { color: '#6B7A94', fontSize: 10 },
     axisLine: { show: false },
     axisTick: { show: false },
-    axisLabel: { color: '#999999', fontSize: 10 },
+    axisLabel: { color: '#6B7A94', fontSize: 10 },
     splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } },
   },
   series: [],
@@ -87,13 +87,13 @@ function updateChartOption() {
       type: 'line',
       smooth: true,
       symbol: 'none',
-      lineStyle: { width: 2, color: GPU_COLORS[idx] || '#3A5F4B' },
+      lineStyle: { width: 2, color: GPU_COLORS[idx] || '#00D4AA' },
       areaStyle: {
         color: {
           type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
           colorStops: [
-            { offset: 0, color: (GPU_COLORS[idx] || '#3A5F4B') + '30' },
-            { offset: 1, color: (GPU_COLORS[idx] || '#3A5F4B') + '05' },
+            { offset: 0, color: (GPU_COLORS[idx] || '#00D4AA') + '30' },
+            { offset: 1, color: (GPU_COLORS[idx] || '#00D4AA') + '05' },
           ],
         },
       },

@@ -7,7 +7,6 @@ import {
   buildImportProviderPayload,
   IMPORT_STAGE_TABS,
   resolveImportAgentUrl,
-  resolveImportConnectionSummary,
 } from '../lib/importWorkbench.js'
 import {
   applySavedHostRecovery,
@@ -23,7 +22,7 @@ function createState() {
   return {
     providerType: ref('http_local'),
     agentUrl: ref(''),
-    agentLabel: ref('本机 Agent'),
+    agentLabel: ref('本机'),
     authType: ref('password'),
     hostFingerprint: ref(''),
     activeStage: ref('saved'),
@@ -37,6 +36,26 @@ function createState() {
     selectedGpuIndexes: ref([]),
   }
 }
+
+function resolveStepState(stepKey, state) {
+  if (stepKey === state.activeStage.value) return 'current'
+  if (stepKey === 'saved') {
+    return state.activeStage.value === 'saved' ? 'current' : 'done'
+  }
+  if (stepKey === 'source') {
+    return state.scanResult.value?.success ? 'done' : 'pending'
+  }
+  if (stepKey === 'hardware') {
+    if (!state.scanResult.value?.success) return 'pending'
+    return state.activeStage.value === 'selection' ? 'done' : 'pending'
+  }
+  if (stepKey === 'selection') {
+    if (!state.scanResult.value?.success) return 'pending'
+    return state.selectedGpuIndexes.value.length > 0 ? 'ready' : 'pending'
+  }
+  return 'pending'
+}
+
 function buildComputed(state, deps) {
   const currentContext = computed(() => deps.store.importContext)
   const currentReason = computed(() => currentContext.value?.invalid_reason || '')
@@ -49,24 +68,22 @@ function buildComputed(state, deps) {
     agentUrl: state.agentUrl.value,
     sshForm: state.sshForm,
   }))
-  const connectionSummary = computed(() => resolveImportConnectionSummary({
-    providerType: state.providerType.value,
-    currentAgentUrl: currentAgentUrl.value,
-    scanBusy: state.scanBusy.value,
-    scanResult: state.scanResult.value,
-  }))
   return {
     currentReason,
     hasCurrentScope,
     canViewAllSavedHosts,
     importedCountLabel,
     currentAgentUrl,
-    connectionSummary,
+    stepItems: computed(() => IMPORT_STAGE_TABS.map((tab, index) => ({
+      ...tab,
+      order: index + 1,
+      state: resolveStepState(tab.key, state),
+    }))),
     sidebarSelectedSummary: computed(() => state.selectedGpuIndexes.value.length > 0 ? importedCountLabel.value : '尚未选择 GPU'),
-    heroTitle: computed(() => hasCurrentScope.value ? '重新导入管理范围' : '进入控制台前的准备'),
+    heroTitle: computed(() => hasCurrentScope.value ? '调整治理范围' : '治理前准备'),
     heroDescription: computed(() => hasCurrentScope.value
-      ? '先看已保存主机或新建连接，再确认本次需要纳入治理的 GPU 范围。'
-      : '先从已保存主机或新建连接里选择目标，验看硬件后再勾选本次纳入治理的 GPU。'),
+      ? '按步骤检查目标来源、扫描结果与导入范围，再更新本次真正受控的 GPU 集合。'
+      : '先确认连接来源，再执行一次真实扫描，最后只导入本次需要纳入治理的 GPU。'),
     sidebarScopeSummary: computed(() => hasCurrentScope.value
       ? `当前有效范围：${formatImportedGpuLabel(currentContext.value?.imported_gpu_indexes || [])}`
       : '控制台只治理本次导入选中的卡'),
