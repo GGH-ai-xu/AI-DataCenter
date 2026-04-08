@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, win32 as win32Path } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
@@ -11,7 +11,6 @@ const ROLLDOWN_PACKAGE_JSON = join(
   'rolldown',
   'package.json',
 );
-const NPM_COMMAND = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const DIRECT_BINDINGS = Object.freeze({
   'android:arm64': '@rolldown/binding-android-arm64',
   'darwin:arm64': '@rolldown/binding-darwin-arm64',
@@ -29,6 +28,12 @@ const LINUX_LIBC_BINDINGS = Object.freeze({
   'x64:gnu': '@rolldown/binding-linux-x64-gnu',
   'x64:musl': '@rolldown/binding-linux-x64-musl',
 });
+const NPM_REGISTRY = process.env.npm_config_registry || '';
+const NPM_INSTALL_BASE_ARGS = Object.freeze([
+  'install',
+  '--no-save',
+  '--package-lock=false',
+]);
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
@@ -74,18 +79,98 @@ function hasBindingBinary(packageName) {
   return readdirSync(dir).some((entry) => entry.endsWith('.node'));
 }
 
-function installBinding(packageSpecifier) {
-  const args = ['install', '--no-save', '--package-lock=false', packageSpecifier];
-  const result = spawnSync(NPM_COMMAND, args, {
+function buildInstallArgs(packageSpecifier) {
+  return [...NPM_INSTALL_BASE_ARGS, packageSpecifier];
+}
+
+function npmCommandForPlatform(platform) {
+  return platform === 'win32' ? 'npm.cmd' : 'npm';
+}
+
+function resolveBundledWindowsNpmCli(processExecPath, existsSyncFn) {
+  const bundledCliPath = win32Path.join(
+    win32Path.dirname(processExecPath),
+    'node_modules',
+    'npm',
+    'bin',
+    'npm-cli.js',
+  );
+  return existsSyncFn(bundledCliPath) ? bundledCliPath : null;
+}
+
+export function resolveNpmInstallCommand(packageSpecifier, options = {}) {
+  const platform = options.platform ?? process.platform;
+  const processExecPath = options.processExecPath ?? process.execPath;
+  const npmExecPath = options.npmExecPath ?? process.env.npm_execpath;
+  const existsSyncFn = options.existsSyncFn ?? existsSync;
+  const installArgs = buildInstallArgs(packageSpecifier);
+
+  if (npmExecPath) {
+    return { filePath: processExecPath, args: [npmExecPath, ...installArgs] };
+  }
+  if (platform !== 'win32') {
+    return { filePath: npmCommandForPlatform(platform), args: installArgs };
+  }
+  const bundledNpmCliPath = resolveBundledWindowsNpmCli(processExecPath, existsSyncFn);
+  if (bundledNpmCliPath) {
+    return { filePath: processExecPath, args: [bundledNpmCliPath, ...installArgs] };
+  }
+  throw new Error(
+    `failed to resolve npm CLI for Windows install (process.execPath=${processExecPath})`,
+  );
+}
+
+export function buildInstallFailureMessage(packageSpecifier, result, registry = NPM_REGISTRY) {
+  const lines = [`failed to install ${packageSpecifier}`];
+  if (registry) {
+    lines.push(`registry: ${registry}`);
+  }
+  lines.push(`exit status: ${result.status ?? 'unknown'}`);
+  if (result.signal) {
+    lines.push(`signal: ${result.signal}`);
+  }
+  if (result.error) {
+    lines.push(`spawn error: ${result.error.message}`);
+    if (result.error.code) {
+      lines.push(`error code: ${result.error.code}`);
+    }
+    if (result.error.syscall) {
+      lines.push(`syscall: ${result.error.syscall}`);
+    }
+    if (result.error.path) {
+      lines.push(`path: ${result.error.path}`);
+    }
+    if (result.error.spawnargs?.length) {
+      lines.push(`spawn args: ${result.error.spawnargs.join(' ')}`);
+    }
+  }
+  const stdout = String(result.stdout ?? '').trim();
+  const stderr = String(result.stderr ?? '').trim();
+  if (stdout) {
+    lines.push(`stdout:\n${stdout}`);
+  }
+  if (stderr) {
+    lines.push(`stderr:\n${stderr}`);
+  }
+  return lines.join('\n');
+}
+
+export function installBinding(
+  packageSpecifier,
+  spawnSyncFn = spawnSync,
+  installCommand = resolveNpmInstallCommand(packageSpecifier),
+) {
+  const result = spawnSyncFn(installCommand.filePath, installCommand.args, {
     cwd: FRONTEND_ROOT,
-    stdio: 'inherit',
+    encoding: 'utf8',
+    stdio: 'pipe',
   });
-  if (result.status !== 0) {
-    throw new Error(`failed to install ${packageSpecifier}`);
+  if (result.error || result.status !== 0) {
+    throw new Error(buildInstallFailureMessage(packageSpecifier, result));
   }
 }
 
-function main() {
+export function main() {
   const bindingName = resolveBindingName();
   if (!bindingName) {
     console.warn(
@@ -109,4 +194,9 @@ function main() {
   }
 }
 
-main();
+const isDirectRun = process.argv[1]
+  && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isDirectRun) {
+  main();
+}

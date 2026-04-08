@@ -27,9 +27,9 @@ from app.services.alert_engine import AlertEngine
 from app.services.scheduler import SchedulerEngine
 from app.services.energy_analytics import EnergyAnalytics
 from app.services.governance import GovernanceService
+from app.services.logging_config import configure_application_logging
 from app.services.privacy import PrivacyService
 from app.services.collection_pipeline import (
-    apply_task_priorities,
     collect_agent_snapshot,
 )
 from app.services.connection_settings import ConnectionSettingsService
@@ -41,13 +41,18 @@ from app.services.llm_settings import LLMSettingsService
 from app.services.platform_auth_service import PlatformAuthService
 from app.services.platform_identity_store import PlatformIdentityStore
 from app.services.runtime_provider_manager import RuntimeProviderManager
-from app.services.runtime_scope import build_realtime_scope
+from app.services.runtime_overview import build_health_payload
+from app.services.runtime_snapshot import (
+    build_runtime_failure_snapshot,
+    build_runtime_snapshot,
+    empty_runtime_snapshot,
+)
 from app.services.saved_host_service import SavedHostService
 from app.services.ssh_linux_provider import SshLinuxProvider
 from app.ws.realtime import ws_manager
 
 load_dotenv()
-logging.basicConfig(level=logging.INFO)
+configure_application_logging()
 logger = logging.getLogger(__name__)
 RUNTIME_INVALID_REASON = "当前导入目标不可达，需要重新导入"
 
@@ -86,11 +91,13 @@ class AppState:
     import_context: ImportContextService
     llm_settings: LLMSettingsService
     runtime: RuntimeProviderManager
+    latest_runtime_snapshot: dict
     _collect_task: asyncio.Task | None = None
     _cleanup_task: asyncio.Task | None = None
 
 
 app_state = AppState()
+app_state.latest_runtime_snapshot = empty_runtime_snapshot()
 
 
 def resolve_runtime_dir() -> str:
@@ -180,6 +187,10 @@ async def handle_runtime_failure(reason: str) -> tuple[dict, dict]:
         assign_active_provider(await app_state.runtime.current_provider())
         logger.warning("运行时已恢复连接，provider=%s", runtime_status.get("provider_type") or "unknown")
         import_context = app_state.import_context.snapshot()
+        app_state.latest_runtime_snapshot = build_runtime_failure_snapshot(
+            runtime_status=runtime_status,
+            import_context_state=import_context,
+        )
         await broadcast_runtime_state(import_context)
         return runtime_status, import_context
 
@@ -187,6 +198,10 @@ async def handle_runtime_failure(reason: str) -> tuple[dict, dict]:
         import_context = app_state.import_context.mark_invalid(RUNTIME_INVALID_REASON)
     else:
         import_context = app_state.import_context.snapshot()
+    app_state.latest_runtime_snapshot = build_runtime_failure_snapshot(
+        runtime_status=runtime_status,
+        import_context_state=import_context,
+    )
     await broadcast_runtime_state(import_context)
     return runtime_status, import_context
 
@@ -202,6 +217,19 @@ def resolve_import_context_snapshot(
     if status == "invalid":
         return app_state.import_context.mark_invalid(RUNTIME_INVALID_REASON)
     return app_state.import_context.snapshot()
+
+
+async def _load_health_runtime_state(runtime_status: dict) -> tuple[dict | None, dict]:
+    try:
+        agent_health = await app_state.agent.health_check()
+        gpus = await app_state.agent.get_all_gpus() if agent_health else []
+        import_context = resolve_import_context_snapshot(runtime_status, agent_health, gpus)
+        return agent_health, import_context
+    except Exception as exc:
+        logger.warning("健康检查读取运行时失败: %s", exc)
+        if runtime_status.get("status") == "invalid":
+            return None, app_state.import_context.mark_invalid(RUNTIME_INVALID_REASON)
+        return None, app_state.import_context.snapshot()
 
 
 async def collect_loop():
@@ -226,14 +254,19 @@ async def collect_loop():
 
             if runtime_online:
                 runtime_status = await app_state.runtime.record_success()
-                enriched_processes = apply_task_priorities(processes, priorities)
-                scoped = build_realtime_scope(
+                runtime_snapshot = build_runtime_snapshot(
                     import_context=app_state.import_context,
                     privacy=app_state.privacy,
                     system=system,
                     gpus=gpus,
-                    processes=enriched_processes,
+                    processes=processes,
+                    priorities=priorities,
+                    agent_health={"status": "ok"},
+                    runtime_status=runtime_status,
+                    import_context_state=import_context,
                 )
+                app_state.latest_runtime_snapshot = runtime_snapshot
+                scoped = runtime_snapshot["scoped"]
                 alerts = app_state.alert_engine.check_all_gpus(scoped["gpus"])
 
                 await app_state.store.save_collection_cycle(
@@ -462,30 +495,15 @@ app.include_router(hosts_router)
 async def health():
     """健康检查"""
     runtime_status = await runtime_status_payload()
-    try:
-        agent_health = await app_state.agent.health_check()
-        gpus = await app_state.agent.get_all_gpus() if agent_health else []
-        import_context = resolve_import_context_snapshot(runtime_status, agent_health, gpus)
-    except Exception as exc:
-        logger.warning("健康检查读取运行时失败: %s", exc)
-        agent_health = None
-        gpus = []
-        if runtime_status.get("status") == "invalid":
-            import_context = app_state.import_context.mark_invalid(RUNTIME_INVALID_REASON)
-        else:
-            import_context = app_state.import_context.snapshot()
-    return {
-        "status": "ok",
-        "agent_connected": agent_health is not None,
-        "agent_info": agent_health,
-        "ws_connections": ws_manager.connection_count,
-        "llm_available": app_state.llm is not None,
-        "connection": app_state.connection.snapshot(agent_health),
-        "runtime": runtime_status,
-        "import_context": import_context,
-        "workspace_ready": bool(import_context.get("valid")),
-        "llm": app_state.llm_settings.snapshot(app_state.llm is not None),
-    }
+    return await build_health_payload(
+        runtime_status=runtime_status,
+        snapshot=app_state.latest_runtime_snapshot,
+        connection_factory=app_state.connection.snapshot,
+        llm_available=app_state.llm is not None,
+        llm_snapshot=app_state.llm_settings.snapshot(app_state.llm is not None),
+        ws_connections=ws_manager.connection_count,
+        fallback_loader=lambda: _load_health_runtime_state(runtime_status),
+    )
 
 
 @app.websocket("/ws")

@@ -10,6 +10,8 @@ class GPUStatus(BaseModel):
     """单张GPU实时状态"""
     index: int
     name: str
+    uuid: str = ""
+    pci_bus_id: str = ""
     temperature: int
     power_usage: float
     power_limit: float
@@ -21,6 +23,9 @@ class GPUStatus(BaseModel):
     fan_speed: int
     clock_sm: int
     clock_mem: int
+    available: bool = True
+    status: str = "ok"
+    error: str = ""
     timestamp: float
 
 

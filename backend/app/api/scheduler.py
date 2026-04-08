@@ -6,6 +6,11 @@ from datetime import datetime
 from fastapi import APIRouter, Body, HTTPException
 
 from app.models.schemas import PowerBudgetConfigRequest, PowerLimitRequest, ScheduleRunRequest
+from app.services.runtime_snapshot import (
+    has_runtime_snapshot,
+    snapshot_scoped_gpus,
+    snapshot_scoped_processes,
+)
 
 router = APIRouter(prefix="/api/scheduler", tags=["Scheduler"])
 
@@ -164,11 +169,17 @@ def build_fallback_report(summary: dict, alerts: list[dict]) -> str:
 
 
 async def _scoped_gpus(app_state) -> list[dict]:
+    snapshot = getattr(app_state, "latest_runtime_snapshot", {})
+    if has_runtime_snapshot(snapshot):
+        return snapshot_scoped_gpus(snapshot)
     gpus = await app_state.agent.get_all_gpus()
     return app_state.import_context.filter_gpus(gpus)
 
 
 async def _scoped_processes(app_state) -> list[dict]:
+    snapshot = getattr(app_state, "latest_runtime_snapshot", {})
+    if has_runtime_snapshot(snapshot):
+        return snapshot_scoped_processes(snapshot)
     processes = await app_state.agent.get_processes()
     return app_state.import_context.filter_processes(processes)
 

@@ -1,0 +1,54 @@
+<?xml version="1.0" ?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <linearGradient id="titleGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#17313A"/>
+      <stop offset="100%" stop-color="#19A38C"/>
+    </linearGradient>
+    <radialGradient id="bgDecor" cx="80%" cy="12%" r="42%">
+      <stop offset="0%" stop-color="#5B8DEF" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#5B8DEF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="0" y="0" width="1280" height="720" rx="0" fill="#F7F9FB"/>
+  <rect x="0" y="0" width="1280" height="720" rx="0" fill="url(#bgDecor)"/>
+  <rect x="0" y="0" width="1280" height="6" rx="0" fill="url(#titleGradient)"/>
+  <text x="56" y="45" font-family="Microsoft YaHei, Arial, sans-serif" font-size="29" font-weight="bold" fill="#17313A" text-anchor="start">平台可向多机与智能调度演进</text>
+  <rect x="56" y="64" width="1168" height="44" rx="10" fill="#17313A"/>
+  <text x="78" y="92" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="bold" fill="#FFFFFF" text-anchor="start">当前版本已经完成治理闭环，后续扩展空间则指向更大范围的资源协同能力。</text>
+  <line x1="0" y1="694" x2="1280" y2="694" stroke="#D8E0E8" stroke-width="1"/>
+  <text x="40" y="711" font-family="Microsoft YaHei, Arial, sans-serif" font-size="10" font-weight="normal" fill="#8A94A3" text-anchor="start">Source: AI DataCenter repository and implemented product features</text>
+  <text x="640" y="711" font-family="Microsoft YaHei, Arial, sans-serif" font-size="10" font-weight="normal" fill="#8A94A3" text-anchor="middle">STRICTLY CONFIDENTIAL  |  AI DATACENTER SHOWCASE</text>
+  <text x="1240" y="711" font-family="Microsoft YaHei, Arial, sans-serif" font-size="10" font-weight="normal" fill="#8A94A3" text-anchor="end">25</text>
+  <rect x="88" y="188" width="1112" height="280" rx="12" fill="#17313A" fill-opacity="0.05"/>
+  <rect x="84" y="182" width="1112" height="280" rx="12" fill="#FFFFFF" stroke="#D8E0E8" stroke-width="1"/>
+  <rect x="84" y="182" width="1112" height="6" rx="12" fill="#17313A"/>
+  <circle cx="180" cy="320" r="28" fill="#17313A"/>
+  <text x="180" y="328" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="bold" fill="#FFFFFF" text-anchor="middle">当前</text>
+  <text x="180" y="390" font-family="Microsoft YaHei, Arial, sans-serif" font-size="10.8" font-weight="normal" fill="#17313A" text-anchor="middle">
+    <tspan x="180" dy="0">完成登录、导入层、SSH Linux 接入与控制台治理闭环</tspan>
+  </text>
+  <circle cx="640" cy="320" r="28" fill="#19A38C"/>
+  <text x="640" y="328" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="bold" fill="#FFFFFF" text-anchor="middle">下一步</text>
+  <text x="640" y="390" font-family="Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="normal" fill="#17313A" text-anchor="middle">
+    <tspan x="640" dy="0">扩展多机导入、组织级资源视图与更多治理动作</tspan>
+  </text>
+  <circle cx="1098" cy="320" r="28" fill="#5B8DEF"/>
+  <text x="1098" y="328" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="bold" fill="#FFFFFF" text-anchor="middle">长期</text>
+  <text x="1098" y="390" font-family="Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="normal" fill="#17313A" text-anchor="middle">
+    <tspan x="1098" dy="0">引入智能调度、策略推荐和组织级运营能力</tspan>
+  </text>
+  <line x1="208" y1="320" x2="612" y2="320" stroke="#5B8DEF" stroke-width="5"/>
+  <polygon points="612,320 596,312 596,328" fill="#5B8DEF"/>
+  <line x1="668" y1="320" x2="1070" y2="320" stroke="#5B8DEF" stroke-width="5"/>
+  <polygon points="1070,320 1054,312 1054,328" fill="#5B8DEF"/>
+  <rect x="88" y="506" width="1112" height="116" rx="12" fill="#17313A" fill-opacity="0.05"/>
+  <rect x="84" y="500" width="1112" height="116" rx="12" fill="#FFFFFF" stroke="#D8E0E8" stroke-width="1"/>
+  <rect x="84" y="500" width="1112" height="6" rx="12" fill="#19A38C"/>
+  <text x="640" y="540" font-family="Microsoft YaHei, Arial, sans-serif" font-size="20" font-weight="bold" fill="#17313A" text-anchor="middle">
+    <tspan x="640" dy="0">AI DataCenter 的核心价值，不只是把状态读出来，</tspan>
+    <tspan x="640" dy="28">而是把“谁来接入、导入哪些卡、如何安全治理”</tspan>
+    <tspan x="640" dy="28">这三件事产品化、工程化并且可展示化。</tspan>
+  </text>
+  <text x="640" y="606" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="bold" fill="#19A38C" text-anchor="middle" letter-spacing="3.0">THANK YOU</text>
+</svg>

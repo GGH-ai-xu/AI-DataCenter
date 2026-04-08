@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue'
+import { isImportableGpu } from '../../lib/importGpuAvailability.js'
 import ImportHardwareSummary from './ImportHardwareSummary.vue'
 import ImportSavedHostSummaryBar from './ImportSavedHostSummaryBar.vue'
 import { formatGpuMemoryBytes } from '../../lib/importHardwareFormatting.js'
@@ -16,13 +17,15 @@ const props = defineProps({
 })
 
 const activeView = ref('cards')
-
-const busyCount = computed(() => props.gpus.filter((gpu) => Number(gpu.gpu_utilization || 0) > 0).length)
-const idleCount = computed(() => Math.max(props.gpus.length - busyCount.value, 0))
+const availableGpus = computed(() => props.gpus.filter((gpu) => isImportableGpu(gpu)))
+const unavailableCount = computed(() => Math.max(props.gpus.length - availableGpus.value.length, 0))
+const busyCount = computed(() =>
+  availableGpus.value.filter((gpu) => Number(gpu.gpu_utilization || 0) > 0).length)
+const idleCount = computed(() => Math.max(availableGpus.value.length - busyCount.value, 0))
 const totalMemory = computed(() =>
-  props.gpus.reduce((sum, gpu) => sum + Number(gpu.memory_total || 0), 0))
+  availableGpus.value.reduce((sum, gpu) => sum + Number(gpu.memory_total || 0), 0))
 const totalMemoryUsed = computed(() =>
-  props.gpus.reduce((sum, gpu) => sum + Number(gpu.memory_used || 0), 0))
+  availableGpus.value.reduce((sum, gpu) => sum + Number(gpu.memory_used || 0), 0))
 </script>
 
 <template>
@@ -44,7 +47,7 @@ const totalMemoryUsed = computed(() =>
             <div>
               <div class="section-title">GPU 总览</div>
               <p class="import-hardware-stage__panel-copy">
-                先确认这次扫描出的卡池和主机状态是否可信，再进入选卡导入阶段。
+                坏卡会保留在结果里并标成不可用，可用卡仍然可以进入下一步选卡导入。
               </p>
             </div>
             <div class="import-hardware-stage__view-toggle">
@@ -76,14 +79,22 @@ const totalMemoryUsed = computed(() =>
               v-for="gpu in props.gpus"
               :key="gpu.index"
               class="import-hardware-stage__card"
+              :class="{ 'import-hardware-stage__card--disabled': !isImportableGpu(gpu) }"
             >
               <div class="import-hardware-stage__card-head">
                 <div>
                   <div class="import-hardware-stage__badge">GPU {{ gpu.index }}</div>
                   <strong>{{ gpu.name }}</strong>
                 </div>
-                <span class="status-badge" :class="Number(gpu.gpu_utilization || 0) > 0 ? 'status-badge--ok' : 'status-badge--warning'">
-                  {{ Number(gpu.gpu_utilization || 0) > 0 ? '运行中' : '空闲' }}
+                <span
+                  class="status-badge"
+                  :class="!isImportableGpu(gpu)
+                    ? 'status-badge--critical'
+                    : Number(gpu.gpu_utilization || 0) > 0
+                      ? 'status-badge--ok'
+                      : 'status-badge--warning'"
+                >
+                  {{ !isImportableGpu(gpu) ? '不可用' : (Number(gpu.gpu_utilization || 0) > 0 ? '运行中' : '空闲') }}
                 </span>
               </div>
 
@@ -105,6 +116,8 @@ const totalMemoryUsed = computed(() =>
                   <strong>{{ formatGpuMemoryBytes(gpu.memory_used) }} / {{ formatGpuMemoryBytes(gpu.memory_total) }}</strong>
                 </div>
               </div>
+
+              <p v-if="gpu.error" class="import-hardware-stage__error">{{ gpu.error }}</p>
             </article>
           </div>
 
@@ -112,6 +125,14 @@ const totalMemoryUsed = computed(() =>
             <article class="import-hardware-stage__summary-card">
               <span>发现 GPU</span>
               <strong>{{ props.gpus.length }} 张</strong>
+            </article>
+            <article class="import-hardware-stage__summary-card">
+              <span>可用 GPU</span>
+              <strong>{{ availableGpus.length }} 张</strong>
+            </article>
+            <article class="import-hardware-stage__summary-card">
+              <span>异常 GPU</span>
+              <strong>{{ unavailableCount }} 张</strong>
             </article>
             <article class="import-hardware-stage__summary-card">
               <span>繁忙 GPU</span>
@@ -141,8 +162,8 @@ const totalMemoryUsed = computed(() =>
             <strong>{{ props.agentUrl || '目标地址待识别' }}</strong>
           </article>
           <article class="import-hardware-stage__fact">
-            <span>GPU 数量</span>
-            <strong>{{ props.gpus.length }} 张</strong>
+            <span>可导入范围</span>
+            <strong>{{ availableGpus.length }} 张可用，{{ unavailableCount }} 张异常</strong>
           </article>
           <article class="import-hardware-stage__fact">
             <span>最近结果</span>
@@ -192,7 +213,6 @@ const totalMemoryUsed = computed(() =>
 
 .import-hardware-stage__panel-copy,
 .import-hardware-stage__fact span,
-.import-hardware-stage__metrics span,
 .import-hardware-stage__empty {
   font-size: 0.78rem;
   line-height: 1.7;
@@ -220,25 +240,34 @@ const totalMemoryUsed = computed(() =>
   color: var(--import-text, var(--text-primary));
 }
 
-.import-hardware-stage__cards,
-.import-hardware-stage__summary-grid {
+.import-hardware-stage__cards {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
 }
 
-.import-hardware-stage__cards {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.import-hardware-stage__card {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  border-radius: 22px;
+  border: 1px solid var(--import-border, var(--border-color));
+  background: var(--import-surface-soft, rgba(255, 255, 255, 0.03));
+  text-align: left;
+  transition: border-color 0.24s ease, background 0.24s ease, transform 0.24s ease, box-shadow 0.24s ease;
 }
 
-.import-hardware-stage__card,
-.import-hardware-stage__summary-card,
-.import-hardware-stage__fact {
-  display: grid;
-  gap: 8px;
-  padding: 16px;
-  border-radius: 20px;
-  background: var(--import-surface-soft, rgba(255, 255, 255, 0.03));
-  border: 1px solid var(--import-border, var(--border-color));
+.import-hardware-stage__card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: none;
+}
+
+.import-hardware-stage__card--disabled {
+  border-color: rgba(255, 120, 148, 0.22);
+  background: rgba(255, 120, 148, 0.08);
+  box-shadow: none;
 }
 
 .import-hardware-stage__card-head {
@@ -249,9 +278,9 @@ const totalMemoryUsed = computed(() =>
 }
 
 .import-hardware-stage__badge {
-  margin-bottom: 6px;
   font-size: 0.74rem;
-  color: var(--accent-primary);
+  color: var(--import-accent, var(--accent-primary));
+  margin-bottom: 6px;
 }
 
 .import-hardware-stage__metrics {
@@ -262,10 +291,50 @@ const totalMemoryUsed = computed(() =>
 
 .import-hardware-stage__metrics div {
   display: grid;
-  gap: 4px;
+  gap: 5px;
+}
+
+.import-hardware-stage__metrics span {
+  font-size: 0.78rem;
+  line-height: 1.7;
+  color: var(--text-muted);
 }
 
 .import-hardware-stage__card strong,
+.import-hardware-stage__metrics strong {
+  font-size: 0.94rem;
+  line-height: 1.55;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.import-hardware-stage__error {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.7;
+  color: #ffd2de;
+}
+
+.import-hardware-stage__summary-grid,
+.import-hardware-stage__facts {
+  display: grid;
+  gap: 12px;
+}
+
+.import-hardware-stage__summary-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.import-hardware-stage__summary-card,
+.import-hardware-stage__fact {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 20px;
+  background: var(--import-surface-soft, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--import-border, var(--border-color));
+}
+
 .import-hardware-stage__summary-card strong,
 .import-hardware-stage__fact strong {
   font-size: 0.94rem;
@@ -274,13 +343,9 @@ const totalMemoryUsed = computed(() =>
   word-break: break-word;
 }
 
-.import-hardware-stage__facts {
-  display: grid;
-  gap: 12px;
-}
-
 @media (max-width: 960px) {
   .import-hardware-stage__shell,
+  .import-hardware-stage__summary-grid,
   .import-hardware-stage__cards,
   .import-hardware-stage__metrics {
     grid-template-columns: 1fr;

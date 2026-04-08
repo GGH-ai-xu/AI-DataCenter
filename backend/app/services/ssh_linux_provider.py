@@ -1,16 +1,23 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 
 from app.services.ssh_command_executor import SshCommandExecutor
+from app.services.ssh_linux_gpu_collection import (
+    GPU_LIST_QUERY,
+    collect_gpu_process_output,
+    collect_gpu_rows,
+    command_error_message,
+    parse_gpu_inventory,
+)
 from app.services.ssh_linux_parsers import (
     build_system_info,
     calculate_cpu_percent,
     merge_process_rows,
     parse_compute_process_rows,
     parse_gpu_rows,
-    parse_gpu_uuid_map,
     parse_load_average,
     parse_meminfo,
     parse_ps_rows,
@@ -26,18 +33,7 @@ from app.services.ssh_linux_system_detail import (
 from app.services.ssh_linux_training import SshLinuxTrainingCollector
 
 
-GPU_QUERY = (
-    "nvidia-smi "
-    "--query-gpu=index,uuid,name,temperature.gpu,power.draw,power.limit,"
-    "utilization.gpu,utilization.memory,memory.used,memory.total,memory.free,"
-    "fan.speed,clocks.current.sm,clocks.current.memory "
-    "--format=csv,noheader,nounits"
-)
-GPU_UUID_QUERY = "nvidia-smi --query-gpu=index,uuid --format=csv,noheader,nounits"
-GPU_PROCESS_QUERY = (
-    "nvidia-smi --query-compute-apps=pid,gpu_uuid,used_memory "
-    "--format=csv,noheader,nounits"
-)
+logger = logging.getLogger(__name__)
 PROC_STAT_QUERY = "cat /proc/stat"
 MEMINFO_QUERY = "cat /proc/meminfo"
 LOADAVG_QUERY = "cat /proc/loadavg"
@@ -73,8 +69,11 @@ class SshLinuxProvider:
         return {"status": "ok"}
 
     async def get_all_gpus(self) -> list[dict]:
-        result = await self._run_checked(GPU_QUERY)
-        return parse_gpu_rows(result.stdout, time.time())
+        return await collect_gpu_rows(
+            run_command=self._run_command,
+            log_failed_command=self._log_failed_command,
+            timestamp=time.time(),
+        )
 
     async def get_system_info(self) -> dict | None:
         cpu_percent, _ = await self._read_cpu_metrics()
@@ -129,9 +128,24 @@ class SshLinuxProvider:
         return await collector.collect()
 
     async def get_processes(self) -> list[dict]:
-        gpu_map = parse_gpu_uuid_map((await self._run_checked(GPU_UUID_QUERY)).stdout)
+        inventory_result = await self._run_command(GPU_LIST_QUERY)
+        identities, _, _ = parse_gpu_inventory(inventory_result, time.time())
+        if inventory_result.code != 0:
+            if not identities:
+                self._log_failed_command(inventory_result, GPU_LIST_QUERY)
+                raise RuntimeError(command_error_message(inventory_result, GPU_LIST_QUERY))
+        gpu_map = {
+            item["uuid"]: int(item["index"])
+            for item in identities
+            if item.get("uuid")
+        }
+        compute_output = await collect_gpu_process_output(
+            run_command=self._run_command,
+            log_failed_command=self._log_failed_command,
+            identities=identities,
+        )
         compute_rows = parse_compute_process_rows(
-            (await self._run_checked(GPU_PROCESS_QUERY)).stdout,
+            compute_output,
             gpu_map,
         )
         if not compute_rows:
@@ -174,13 +188,16 @@ class SshLinuxProvider:
             or self._host_fingerprint
         )
 
-    async def _run_checked(self, command: str, use_sudo: bool = False):
+    async def _run_command(self, command: str, use_sudo: bool = False):
         await self._ensure_connected()
-        result = await self.executor.run(command, use_sudo=use_sudo)
+        return await self.executor.run(command, use_sudo=use_sudo)
+
+    async def _run_checked(self, command: str, use_sudo: bool = False):
+        result = await self._run_command(command, use_sudo=use_sudo)
         if result.code == 0:
             return result
-        error = result.stderr.strip() or f"command failed: {command}"
-        raise RuntimeError(error)
+        self._log_failed_command(result, command)
+        raise RuntimeError(command_error_message(result, command))
 
     async def _probe_sudo_ready(self) -> bool:
         if not self.target.sudo_enabled:
@@ -227,8 +244,7 @@ class SshLinuxProvider:
         return (await self._run_checked(command)).stdout
 
     async def _read_optional_stdout(self, command: str) -> str:
-        await self._ensure_connected()
-        result = await self.executor.run(command)
+        result = await self._run_command(command)
         if result.code != 0:
             return ""
         return result.stdout.strip()
@@ -239,6 +255,15 @@ class SshLinuxProvider:
             for item in compute_rows
         )
         return PS_QUERY_TEMPLATE.format(pid_list=pid_list)
+
+    def _log_failed_command(self, result, command: str) -> None:
+        logger.warning(
+            "SSH command failed: code=%s command=%s stdout=%s stderr=%s",
+            result.code,
+            command,
+            result.stdout.strip(),
+            result.stderr.strip(),
+        )
 
     async def _run_signal(self, pid: int, signal: str) -> dict:
         await self._ensure_connected()

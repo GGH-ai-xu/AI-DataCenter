@@ -1,0 +1,72 @@
+<?xml version="1.0" ?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <linearGradient id="titleGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#17313A"/>
+      <stop offset="100%" stop-color="#19A38C"/>
+    </linearGradient>
+    <radialGradient id="bgDecor" cx="80%" cy="12%" r="42%">
+      <stop offset="0%" stop-color="#5B8DEF" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#5B8DEF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="0" y="0" width="1280" height="720" rx="0" fill="#F7F9FB"/>
+  <rect x="0" y="0" width="1280" height="720" rx="0" fill="url(#bgDecor)"/>
+  <rect x="0" y="0" width="1280" height="6" rx="0" fill="url(#titleGradient)"/>
+  <text x="56" y="45" font-family="Microsoft YaHei, Arial, sans-serif" font-size="29" font-weight="bold" fill="#17313A" text-anchor="start">Agent 与 SSH Linux 双路径并行</text>
+  <rect x="56" y="64" width="1168" height="44" rx="10" fill="#17313A"/>
+  <text x="78" y="92" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="bold" fill="#FFFFFF" text-anchor="start">系统对外是一套产品流程，对内则由不同 provider 承担不同协议能力。</text>
+  <line x1="0" y1="694" x2="1280" y2="694" stroke="#D8E0E8" stroke-width="1"/>
+  <text x="40" y="711" font-family="Microsoft YaHei, Arial, sans-serif" font-size="10" font-weight="normal" fill="#8A94A3" text-anchor="start">Source: AI DataCenter repository and implemented product features</text>
+  <text x="640" y="711" font-family="Microsoft YaHei, Arial, sans-serif" font-size="10" font-weight="normal" fill="#8A94A3" text-anchor="middle">STRICTLY CONFIDENTIAL  |  AI DATACENTER SHOWCASE</text>
+  <text x="1240" y="711" font-family="Microsoft YaHei, Arial, sans-serif" font-size="10" font-weight="normal" fill="#8A94A3" text-anchor="end">20</text>
+  <rect x="88" y="176" width="520" height="420" rx="12" fill="#17313A" fill-opacity="0.05"/>
+  <rect x="84" y="170" width="520" height="420" rx="12" fill="#FFFFFF" stroke="#D8E0E8" stroke-width="1"/>
+  <rect x="84" y="170" width="520" height="6" rx="12" fill="#5B8DEF"/>
+  <rect x="642" y="176" width="556" height="420" rx="12" fill="#17313A" fill-opacity="0.05"/>
+  <rect x="638" y="170" width="556" height="420" rx="12" fill="#FFFFFF" stroke="#D8E0E8" stroke-width="1"/>
+  <rect x="638" y="170" width="556" height="6" rx="12" fill="#19A38C"/>
+  <text x="112" y="204" font-family="Microsoft YaHei, Arial, sans-serif" font-size="22" font-weight="bold" fill="#17313A" text-anchor="start">接入定位矩阵</text>
+  <line x1="170" y1="520" x2="542" y2="520" stroke="#8A94A3" stroke-width="2"/>
+  <line x1="170" y1="520" x2="170" y2="238" stroke="#8A94A3" stroke-width="2"/>
+  <text x="356" y="552" font-family="Microsoft YaHei, Arial, sans-serif" font-size="15" font-weight="normal" fill="#5B6776" text-anchor="middle">部署负担 -&gt;</text>
+  <text x="134" y="380" font-family="Microsoft YaHei, Arial, sans-serif" font-size="15" font-weight="normal" fill="#5B6776" text-anchor="middle">治理深度</text>
+  <circle cx="262" cy="326" r="14" fill="#17313A"/>
+  <text x="262" y="361" font-family="Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="normal" fill="#17313A" text-anchor="middle">本机 Agent</text>
+  <circle cx="366" cy="286" r="14" fill="#5B8DEF"/>
+  <text x="366" y="321" font-family="Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="normal" fill="#5B8DEF" text-anchor="middle">远程 Agent</text>
+  <circle cx="468" cy="376" r="14" fill="#19A38C"/>
+  <text x="468" y="411" font-family="Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="normal" fill="#19A38C" text-anchor="middle">SSH Linux</text>
+  <line x1="170" y1="378" x2="542" y2="378" stroke="#D8E0E8" stroke-width="1" stroke-dasharray="6,4"/>
+  <line x1="356" y1="238" x2="356" y2="520" stroke="#D8E0E8" stroke-width="1" stroke-dasharray="6,4"/>
+  <text x="666" y="204" font-family="Microsoft YaHei, Arial, sans-serif" font-size="22" font-weight="bold" fill="#17313A" text-anchor="start">两条真实接入链路</text>
+  <rect x="674" y="256" width="232" height="170" rx="14" fill="#17313A" fill-opacity="0.05"/>
+  <rect x="670" y="250" width="232" height="170" rx="14" fill="#EDF2F6" stroke="#D8E0E8" stroke-width="1"/>
+  <rect x="670" y="250" width="232" height="6" rx="12" fill="#17313A"/>
+  <use data-icon="server" x="700" y="278" width="28" height="28" fill="#17313A"/>
+  <text x="742" y="300" font-family="Microsoft YaHei, Arial, sans-serif" font-size="20" font-weight="bold" fill="#17313A" text-anchor="start">Agent 模式</text>
+  <circle cx="704" cy="332" r="5" fill="#17313A"/>
+  <text x="720" y="338" font-family="Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="normal" fill="#1F2937" text-anchor="start">HTTP 接入</text>
+  <circle cx="704" cy="358" r="5" fill="#17313A"/>
+  <text x="720" y="364" font-family="Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="normal" fill="#1F2937" text-anchor="start">适合长期驻留采集</text>
+  <circle cx="704" cy="384" r="5" fill="#17313A"/>
+  <text x="720" y="390" font-family="Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="normal" fill="#1F2937" text-anchor="start">控制动作更自然</text>
+  <rect x="936" y="256" width="232" height="170" rx="14" fill="#17313A" fill-opacity="0.05"/>
+  <rect x="932" y="250" width="232" height="170" rx="14" fill="#EDF2F6" stroke="#D8E0E8" stroke-width="1"/>
+  <rect x="932" y="250" width="232" height="6" rx="12" fill="#19A38C"/>
+  <use data-icon="key" x="962" y="278" width="28" height="28" fill="#19A38C"/>
+  <text x="1004" y="300" font-family="Microsoft YaHei, Arial, sans-serif" font-size="20" font-weight="bold" fill="#17313A" text-anchor="start">SSH Linux</text>
+  <circle cx="966" cy="332" r="5" fill="#19A38C"/>
+  <text x="982" y="338" font-family="Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="normal" fill="#1F2937" text-anchor="start">零部署</text>
+  <circle cx="966" cy="358" r="5" fill="#19A38C"/>
+  <text x="982" y="364" font-family="Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="normal" fill="#1F2937" text-anchor="start">直接执行系统命令</text>
+  <circle cx="966" cy="384" r="5" fill="#19A38C"/>
+  <text x="982" y="390" font-family="Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="normal" fill="#1F2937" text-anchor="start">适合快速接入目标机</text>
+  <rect x="674" y="460" width="494" height="100" rx="14" fill="#17313A" fill-opacity="0.05"/>
+  <rect x="670" y="454" width="494" height="100" rx="14" fill="#FFFFFF" stroke="#D8E0E8" stroke-width="1"/>
+  <rect x="670" y="454" width="494" height="6" rx="12" fill="#5B8DEF"/>
+  <text x="696" y="492" font-family="Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="normal" fill="#5B6776" text-anchor="start">
+    <tspan x="696" dy="0">两种模式在前端都被抽象成同一套导入语义</tspan>
+    <tspan x="696" dy="24">先扫描、再选卡、最后进入同一个控制台。</tspan>
+  </text>
+</svg>

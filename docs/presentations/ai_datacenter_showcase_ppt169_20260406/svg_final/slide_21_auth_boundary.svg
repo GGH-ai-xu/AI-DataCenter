@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <linearGradient id="titleGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#17313A" />
+      <stop offset="100%" stop-color="#19A38C" />
+    </linearGradient>
+    <radialGradient id="bgDecor" cx="80%" cy="12%" r="42%">
+      <stop offset="0%" stop-color="#5B8DEF" stop-opacity="0.08" />
+      <stop offset="100%" stop-color="#5B8DEF" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+  <rect x="0" y="0" width="1280" height="720" rx="0" fill="#F7F9FB" />
+  <rect x="0" y="0" width="1280" height="720" rx="0" fill="url(#bgDecor)" />
+  <rect x="0" y="0" width="1280" height="6" rx="0" fill="url(#titleGradient)" />
+  <text x="56" y="45" font-family="Microsoft YaHei, Arial, sans-serif" font-size="29" font-weight="bold" fill="#17313A" text-anchor="start">平台登录与 SSH 认证解耦</text>
+  <rect x="56" y="64" width="1168" height="44" rx="10" fill="#17313A" />
+  <text x="78" y="92" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="bold" fill="#FFFFFF" text-anchor="start">平台用户身份决定 API 与主机可见范围，目标主机连接则继续使用独立 SSH 凭据。</text>
+  <line x1="0" y1="694" x2="1280" y2="694" stroke="#D8E0E8" stroke-width="1" />
+  <text x="40" y="711" font-family="Microsoft YaHei, Arial, sans-serif" font-size="10" font-weight="normal" fill="#8A94A3" text-anchor="start">Source: AI DataCenter repository and implemented product features</text>
+  <text x="640" y="711" font-family="Microsoft YaHei, Arial, sans-serif" font-size="10" font-weight="normal" fill="#8A94A3" text-anchor="middle">STRICTLY CONFIDENTIAL  |  AI DATACENTER SHOWCASE</text>
+  <text x="1240" y="711" font-family="Microsoft YaHei, Arial, sans-serif" font-size="10" font-weight="normal" fill="#8A94A3" text-anchor="end">21</text>
+  <rect x="88" y="174" width="514" height="430" rx="12" fill="#17313A" fill-opacity="0.05" />
+  <rect x="84" y="168" width="514" height="430" rx="12" fill="#FFFFFF" stroke="#D8E0E8" stroke-width="1" />
+  <rect x="84" y="168" width="514" height="6" rx="12" fill="#17313A" />
+  <text x="112" y="202" font-family="Microsoft YaHei, Arial, sans-serif" font-size="22" font-weight="bold" fill="#17313A" text-anchor="start">两条认证链路</text>
+  <rect x="120" y="252" width="188" height="110" rx="14" fill="#17313A" fill-opacity="0.05" />
+  <rect x="116" y="246" width="188" height="110" rx="14" fill="#EDF2F6" stroke="#D8E0E8" stroke-width="1" />
+  <rect x="116" y="246" width="188" height="6" rx="12" fill="#17313A" />
+  
+  <g transform="translate(142.0, 274.0) scale(1.625)" fill="#17313A">
+    <path d="M8 7C9.65685 7 11 5.65685 11 4C11 2.34315 9.65685 1 8 1C6.34315 1 5 2.34315 5 4C5 5.65685 6.34315 7 8 7Z" />
+    <path d="M14 12C14 10.3431 12.6569 9 11 9H5C3.34315 9 2 10.3431 2 12V15H14V12Z" />
+  </g>
+  <text x="182" y="296" font-family="Microsoft YaHei, Arial, sans-serif" font-size="20" font-weight="bold" fill="#17313A" text-anchor="start">平台用户</text>
+  <rect x="334" y="252" width="220" height="110" rx="14" fill="#17313A" fill-opacity="0.05" />
+  <rect x="330" y="246" width="220" height="110" rx="14" fill="#EDF2F6" stroke="#D8E0E8" stroke-width="1" />
+  <rect x="330" y="246" width="220" height="6" rx="12" fill="#5B8DEF" />
+  
+  <g transform="translate(358.0, 274.0) scale(1.625)" fill="#5B8DEF">
+    <path d="M4.35009 13.3929L8 16L11.6499 13.3929C13.7523 11.8912 15 9.46667 15 6.88306V3L8 0L1 3V6.88306C1 9.46667 2.24773 11.8912 4.35009 13.3929Z" />
+  </g>
+  <text x="398" y="296" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="bold" fill="#17313A" text-anchor="start">平台会话 / API 鉴权</text>
+  <rect x="228" y="420" width="218" height="110" rx="14" fill="#17313A" fill-opacity="0.05" />
+  <rect x="224" y="414" width="218" height="110" rx="14" fill="#EDF2F6" stroke="#D8E0E8" stroke-width="1" />
+  <rect x="224" y="414" width="218" height="6" rx="12" fill="#19A38C" />
+  
+  <g transform="translate(252.0, 442.0) scale(1.625)" fill="#19A38C">
+    <path fill-rule="evenodd" clip-rule="evenodd" d="M16 5.5C16 8.53757 13.5376 11 10.5 11H7V13H5V15L4 16H0V12L5.16351 6.83649C5.0567 6.40863 5 5.96094 5 5.5C5 2.46243 7.46243 0 10.5 0C13.5376 0 16 2.46243 16 5.5ZM13 4C13 4.55228 12.5523 5 12 5C11.4477 5 11 4.55228 11 4C11 3.44772 11.4477 3 12 3C12.5523 3 13 3.44772 13 4Z" />
+  </g>
+  <text x="292" y="464" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="bold" fill="#17313A" text-anchor="start">目标主机 SSH 认证</text>
+  <line x1="304" y1="302" x2="330" y2="302" stroke="#5B8DEF" stroke-width="4" />
+  <polygon points="330,302 318,294 318,310" fill="#5B8DEF" />
+  <line x1="416" y1="356" x2="334" y2="414" stroke="#19A38C" stroke-width="4" />
+  <polygon points="334,414 340,400 350,414" fill="#19A38C" />
+  <rect x="638" y="174" width="560" height="430" rx="12" fill="#17313A" fill-opacity="0.05" />
+  <rect x="634" y="168" width="560" height="430" rx="12" fill="#FFFFFF" stroke="#D8E0E8" stroke-width="1" />
+  <rect x="634" y="168" width="560" height="6" rx="12" fill="#19A38C" />
+  <text x="662" y="202" font-family="Microsoft YaHei, Arial, sans-serif" font-size="22" font-weight="bold" fill="#17313A" text-anchor="start">权限可见范围</text>
+  <rect x="662" y="246" width="504" height="54" rx="14" fill="#EDF2F6" stroke="#D8E0E8" stroke-width="1" />
+  <text x="742" y="280" font-family="Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="bold" fill="#17313A" text-anchor="middle">角色</text>
+  <text x="900" y="280" font-family="Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="bold" fill="#17313A" text-anchor="middle">主机记录可见范围</text>
+  <text x="1080" y="280" font-family="Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="bold" fill="#17313A" text-anchor="middle">典型动作</text>
+  <rect x="662" y="320" width="504" height="62" rx="12" fill="#FFFFFF" stroke="#D8E0E8" stroke-width="1" />
+  <text x="742" y="358" font-family="Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="bold" fill="#17313A" text-anchor="middle">管理员</text>
+  <text x="900" y="358" font-family="Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="normal" fill="#5B6776" text-anchor="middle">全部用户主机</text>
+  <text x="1080" y="358" font-family="Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="normal" fill="#5B6776" text-anchor="middle">创建用户、查看全部记录</text>
+  <rect x="662" y="406" width="504" height="62" rx="12" fill="#FFFFFF" stroke="#D8E0E8" stroke-width="1" />
+  <text x="742" y="444" font-family="Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="bold" fill="#17313A" text-anchor="middle">普通用户</text>
+  <text x="900" y="444" font-family="Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="normal" fill="#5B6776" text-anchor="middle">仅自己的主机</text>
+  <text x="1080" y="444" font-family="Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="normal" fill="#5B6776" text-anchor="middle">复用自己的已保存主机</text>
+  <rect x="666" y="512" width="504" height="64" rx="14" fill="#17313A" fill-opacity="0.05" />
+  <rect x="662" y="506" width="504" height="64" rx="14" fill="#EDF2F6" stroke="#D8E0E8" stroke-width="1" />
+  <rect x="662" y="506" width="504" height="6" rx="12" fill="#17313A" />
+  <text text-anchor="start" fill="#5B6776" font-weight="normal" font-family="Microsoft YaHei, Arial, sans-serif" font-size="15" x="688" y="530">平台登录负责“谁在使用平台”，</text><text text-anchor="start" fill="#5B6776" font-weight="normal" font-family="Microsoft YaHei, Arial, sans-serif" font-size="15" x="688" y="554">SSH 认证负责“如何连接目标机器”，两者职责完全解耦。</text></svg>

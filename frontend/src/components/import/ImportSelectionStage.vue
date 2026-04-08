@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue'
+import { selectableGpuIndexes } from '../../lib/importGpuAvailability.js'
 import { formatImportedGpuLabel } from '../../lib/importContext.js'
 import ImportGpuGrid from './ImportGpuGrid.vue'
 import ImportSavedHostSummaryBar from './ImportSavedHostSummaryBar.vue'
@@ -21,7 +22,7 @@ const visibleGpus = computed(() =>
 const selectedSummary = computed(() => formatImportedGpuLabel(props.modelValue))
 
 function selectAll() {
-  emit('update:modelValue', props.gpus.map((gpu) => Number(gpu.index)))
+  emit('update:modelValue', selectableGpuIndexes(props.gpus))
 }
 
 function clearSelection() {

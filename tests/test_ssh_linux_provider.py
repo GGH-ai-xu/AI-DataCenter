@@ -1,15 +1,24 @@
 import os
 import sys
+import types
 import unittest
 from unittest import mock
 
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(ROOT, "backend"))
+sys.modules.setdefault(
+    "asyncssh",
+    types.SimpleNamespace(
+        import_private_key=lambda *args, **kwargs: None,
+        connect=lambda *args, **kwargs: None,
+    ),
+)
 
 from app.services.runtime_provider import RuntimeTarget  # noqa: E402
 from app.services.ssh_command_executor import CommandResult, SshCommandExecutor  # noqa: E402
 from app.services.ssh_linux_parsers import parse_gpu_rows  # noqa: E402
+from app.services.ssh_linux_gpu_collection import build_gpu_process_query  # noqa: E402
 from app.services.ssh_linux_provider import SshLinuxProvider  # noqa: E402
 
 
@@ -359,11 +368,15 @@ class SshLinuxProviderTests(unittest.IsolatedAsyncioTestCase):
         provider.executor = FakeScriptedExecutor(
             [
                 (
-                    ("startswith", "nvidia-smi --query-gpu=index,uuid"),
-                    CommandResult(code=0, stdout="0, GPU-aaa\n", stderr=""),
+                    "nvidia-smi -L",
+                    CommandResult(
+                        code=0,
+                        stdout="GPU 0: NVIDIA GeForce RTX 4090 (UUID: GPU-aaa)\n",
+                        stderr="",
+                    ),
                 ),
                 (
-                    ("startswith", "nvidia-smi --query-compute-apps=pid,gpu_uuid,used_memory"),
+                    build_gpu_process_query(0),
                     CommandResult(code=0, stdout="1234, GPU-aaa, 4096\n", stderr=""),
                 ),
                 (
@@ -422,20 +435,23 @@ class SshLinuxProviderTests(unittest.IsolatedAsyncioTestCase):
         provider.executor = FakeScriptedExecutor(
             [
                 (
-                    ("startswith", "nvidia-smi --query-gpu=index,uuid"),
+                    "nvidia-smi -L",
                     CommandResult(
                         code=0,
-                        stdout="0, GPU-aaa\n1, GPU-bbb\n",
+                        stdout=(
+                            "GPU 0: NVIDIA GeForce RTX 4090 (UUID: GPU-aaa)\n"
+                            "GPU 1: NVIDIA GeForce RTX 4090 (UUID: GPU-bbb)\n"
+                        ),
                         stderr="",
                     ),
                 ),
                 (
-                    ("startswith", "nvidia-smi --query-compute-apps=pid,gpu_uuid,used_memory"),
-                    CommandResult(
-                        code=0,
-                        stdout="1234, GPU-aaa, 4096\n2345, GPU-bbb, 2048\n",
-                        stderr="",
-                    ),
+                    build_gpu_process_query(0),
+                    CommandResult(code=0, stdout="1234, GPU-aaa, 4096\n", stderr=""),
+                ),
+                (
+                    build_gpu_process_query(1),
+                    CommandResult(code=0, stdout="2345, GPU-bbb, 2048\n", stderr=""),
                 ),
                 (
                     lambda command, calls: command.startswith("ps -ww -p 1234,2345 "),
