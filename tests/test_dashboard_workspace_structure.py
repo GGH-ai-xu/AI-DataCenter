@@ -21,6 +21,13 @@ class DashboardWorkspaceStructureTests(unittest.TestCase):
         self.assertIn("key: 'health'", composable)
         self.assertNotIn("key: 'governance'", composable)
 
+    def test_live_workspace_no_longer_renders_governance_copy(self):
+        live = (ROOT / 'frontend/src/components/dashboard/DashboardLiveWorkspace.vue').read_text(encoding='utf-8')
+        self.assertNotIn('治理建议', live)
+        self.assertNotIn('公平与来源', live)
+        self.assertNotIn('props.governance', live)
+        self.assertNotIn('governance:', live)
+
 
 if __name__ == '__main__':
     unittest.main()

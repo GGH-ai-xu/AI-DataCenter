@@ -177,19 +177,6 @@ function applyHealthPayload(payload = {}) {
           v-else-if="activeTab === 'live'"
           :store="store"
           :summary="liveSummary"
-          :governance="{
-            budget: schedulerState.budget,
-            boardTone: summaryTone,
-            governanceTip: overviewModel.summaryLine,
-            fairnessOverview: fairnessState.overview,
-            fairnessTone: overviewModel.signalCards?.[2] || { tone: 'ok', label: '公平稳定' },
-            recommendationList: [],
-            yieldQueue: [],
-            sourceState: {
-              connected: workspaceReady,
-              detail: workspaceReady ? `${store.gpus.length} 张已导入 GPU 正在由控制台实时监控。` : '当前还没有有效的导入范围。',
-            },
-          }"
         />
         <DashboardHealthTab v-else :model="healthModel" />
       </div>
