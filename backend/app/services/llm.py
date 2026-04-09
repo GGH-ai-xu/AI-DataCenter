@@ -138,6 +138,14 @@ class LLMService:
         self.client = AsyncOpenAI(api_key=api_key, base_url=base_url)
         self.model = model
 
+    @staticmethod
+    def _chunk_text(chunk) -> str:
+        choices = getattr(chunk, "choices", []) or []
+        if not choices:
+            return ""
+        delta = getattr(choices[0], "delta", None)
+        return getattr(delta, "content", "") or ""
+
     async def _call_with_retry(self, max_retries: int = 2, **kwargs) -> str:
         """带重试的LLM调用，区分暂时性和永久性错误"""
         last_error = None
@@ -156,6 +164,36 @@ class LLMService:
                     logger.warning(f"LLM调用失败(第{attempt+1}次)，{wait}s后重试: {e}")
                     await asyncio.sleep(wait)
         raise last_error
+
+    async def _stream_with_retry(self, max_retries: int = 2, **kwargs):
+        last_error = None
+        for attempt in range(max_retries + 1):
+            try:
+                response = await self.client.chat.completions.create(
+                    stream=True,
+                    **kwargs,
+                )
+                async for chunk in response:
+                    text = self._chunk_text(chunk)
+                    if text:
+                        yield text
+                return
+            except Exception as e:
+                last_error = e
+                err_str = str(e).lower()
+                if any(k in err_str for k in ("401", "403", "invalid_api_key", "quota")):
+                    raise
+                if attempt < max_retries:
+                    wait = 2 ** attempt
+                    logger.warning(f"LLM流式调用失败(第{attempt+1}次)，{wait}s后重试: {e}")
+                    await asyncio.sleep(wait)
+        raise last_error
+
+    def supports_chat_stream(self) -> bool:
+        return True
+
+    def supports_control_plan_stream(self) -> bool:
+        return True
 
     async def chat(self, user_message: str, gpu_context: str = "") -> dict:
         """AI对话 - 基于实时数据回答用户问题"""
@@ -186,6 +224,22 @@ class LLMService:
                 "reply": f"AI服务暂时不可用：{str(e)}",
                 "suggestions": [],
             }
+
+    async def chat_stream(self, user_message: str, gpu_context: str = ""):
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        if gpu_context:
+            messages.append({
+                "role": "system",
+                "content": f"当前GPU集群实时状态：\n{gpu_context}",
+            })
+        messages.append({"role": "user", "content": user_message})
+        async for item in self._stream_with_retry(
+            model=self.model,
+            messages=messages,
+            temperature=0.7,
+            max_tokens=2000,
+        ):
+            yield item
 
     async def generate_schedule(
         self, gpu_data: list[dict], task_data: list[dict], time_period: str
@@ -361,6 +415,27 @@ class LLMService:
         except Exception as e:
             logger.error(f"AI执行控制台计划生成失败: {e}")
             return None
+
+    async def generate_control_plan_stream(
+        self,
+        user_message: str,
+        control_context: str,
+    ):
+        prompt = (
+            f"用户指令：{user_message}\n\n"
+            f"当前工作台上下文：\n{control_context}\n\n"
+            "请输出结构化动作计划 JSON。"
+        )
+        async for item in self._stream_with_retry(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": CONTROL_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.2,
+            max_tokens=1500,
+        ):
+            yield item
 
     @staticmethod
     def _extract_suggestions(text: str) -> list[str]:
