@@ -2,22 +2,130 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from app.services.goal_runtime.control_heuristics import build_control_heuristic
 from app.services.goal_runtime.executor import execute_capability
 
 TRACE_ROUND_INDEX = 1
+SNAPSHOT_FLUSH_INTERVAL_CHARS = 48
+PlanSnapshotCallback = Callable[[str, int], Awaitable[None]]
+PlanDeltaCallback = Callable[[str], Awaitable[None]]
 
 
 def _duration_ms(started_at: float) -> int:
     return max(0, int((time.monotonic() - started_at) * 1000))
 
 
-def _preview(value, limit: int = 320) -> str:
+def _preview(value: Any, limit: int = 320) -> str:
     text = json.dumps(value, ensure_ascii=False) if not isinstance(value, str) else value
     if len(text) <= limit:
         return text
     return f"{text[:limit]}..."
+
+
+def _supports_control_plan_stream(llm_service: Any) -> bool:
+    checker = getattr(llm_service, "supports_control_plan_stream", None)
+    return bool(callable(checker) and checker())
+
+
+async def _maybe_emit_snapshot(
+    text: str,
+    last_char_count: int,
+    revision: int,
+    on_llm_snapshot: PlanSnapshotCallback | None,
+    *,
+    force: bool = False,
+) -> tuple[int, int]:
+    if on_llm_snapshot is None:
+        return last_char_count, revision
+    current_count = len(text)
+    if current_count == last_char_count:
+        return last_char_count, revision
+    should_flush = force or current_count - last_char_count >= SNAPSHOT_FLUSH_INTERVAL_CHARS
+    if not should_flush:
+        return last_char_count, revision
+    next_revision = revision + 1
+    await on_llm_snapshot(text, next_revision)
+    return current_count, next_revision
+
+
+async def _collect_streamed_plan(
+    llm_service: Any,
+    message: str,
+    control_context: str,
+    on_llm_delta: PlanDeltaCallback | None,
+    on_llm_snapshot: PlanSnapshotCallback | None,
+) -> dict | None:
+    revision = 0
+    streamed_text = ""
+    last_char_count = 0
+    async for delta in llm_service.generate_control_plan_stream(message, control_context):
+        streamed_text += delta
+        if on_llm_delta is not None:
+            await on_llm_delta(delta)
+        last_char_count, revision = await _maybe_emit_snapshot(
+            streamed_text,
+            last_char_count,
+            revision,
+            on_llm_snapshot,
+        )
+    await _maybe_emit_snapshot(
+        streamed_text,
+        last_char_count,
+        revision,
+        on_llm_snapshot,
+        force=True,
+    )
+    if not streamed_text.strip():
+        return None
+    return json.loads(streamed_text)
+
+
+async def _load_llm_plan(
+    llm_service: Any,
+    message: str,
+    control_context: str,
+    on_llm_delta: PlanDeltaCallback | None,
+    on_llm_snapshot: PlanSnapshotCallback | None,
+) -> dict | None:
+    if _supports_control_plan_stream(llm_service):
+        return await _collect_streamed_plan(
+            llm_service,
+            message,
+            control_context,
+            on_llm_delta,
+            on_llm_snapshot,
+        )
+    return await llm_service.generate_control_plan(message, control_context)
+
+
+def _build_fallback_events(summary: str, actions: list[dict], error: str) -> list[dict]:
+    return [
+        {
+            "event_type": "LLMCallFailed",
+            "payload": {
+                "summary": "LLM 未返回有效结构化计划，切换到规则解析",
+                "error": error,
+            },
+            "round_index": TRACE_ROUND_INDEX,
+            "sequence": 3,
+            "source": "llm",
+            "duration_ms": 0,
+        },
+        {
+            "event_type": "RuleFallbackUsed",
+            "payload": {
+                "summary": summary or "已切换到规则解析",
+                "actions": actions,
+            },
+            "round_index": TRACE_ROUND_INDEX,
+            "sequence": 4,
+            "source": "planner",
+            "duration_ms": 0,
+        },
+    ]
 
 
 async def build_reasoning_trace(
@@ -26,6 +134,8 @@ async def build_reasoning_trace(
     permission_mode: str,
     registry,
     llm_service,
+    on_llm_delta: PlanDeltaCallback | None = None,
+    on_llm_snapshot: PlanSnapshotCallback | None = None,
 ) -> tuple[dict, list[dict]]:
     snapshot_started = time.monotonic()
     snapshot_result = await execute_capability(registry, "runtime.snapshot.read", {}, {})
@@ -91,43 +201,34 @@ async def build_reasoning_trace(
     )
     llm_started = time.monotonic()
     try:
-        llm_plan = await llm_service.generate_control_plan(
+        llm_plan = await _load_llm_plan(
+            llm_service,
             message,
             _preview(request_payload, limit=1200),
+            on_llm_delta,
+            on_llm_snapshot,
         )
     except Exception as exc:
-        llm_plan = None
-        llm_error = str(exc)
-    else:
-        llm_error = "llm returned no structured plan"
+        heuristic = build_control_heuristic(message)
+        events.extend(
+            _build_fallback_events(
+                heuristic.get("summary") or "",
+                heuristic.get("actions") or [],
+                str(exc),
+            )
+        )
+        events[-2]["duration_ms"] = _duration_ms(llm_started)
+        return heuristic, events
     if llm_plan is None:
         heuristic = build_control_heuristic(message)
         events.extend(
-            (
-                {
-                    "event_type": "LLMCallFailed",
-                    "payload": {
-                        "summary": "LLM 未返回有效结构化计划，切换到规则解析",
-                        "error": llm_error,
-                    },
-                    "round_index": TRACE_ROUND_INDEX,
-                    "sequence": 3,
-                    "source": "llm",
-                    "duration_ms": _duration_ms(llm_started),
-                },
-                {
-                    "event_type": "RuleFallbackUsed",
-                    "payload": {
-                        "summary": heuristic.get("summary") or "已切换到规则解析",
-                        "actions": heuristic.get("actions") or [],
-                    },
-                    "round_index": TRACE_ROUND_INDEX,
-                    "sequence": 4,
-                    "source": "planner",
-                    "duration_ms": 0,
-                },
+            _build_fallback_events(
+                heuristic.get("summary") or "",
+                heuristic.get("actions") or [],
+                "llm returned no structured plan",
             )
         )
+        events[-2]["duration_ms"] = _duration_ms(llm_started)
         return heuristic, events
 
     events.extend(

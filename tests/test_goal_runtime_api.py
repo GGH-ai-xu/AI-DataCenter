@@ -1,3 +1,4 @@
+import asyncio
 import os
 import sys
 import types
@@ -13,6 +14,7 @@ from app.api.agent_runtime import (  # noqa: E402
     get_agent_runtime_events,
     get_agent_runtime_session,
     start_agent_runtime_session,
+    stream_agent_runtime_session,
 )
 from app.models.schemas import (  # noqa: E402
     AgentRuntimeApprovalRequest,
@@ -32,6 +34,7 @@ class FakeStore:
     def __init__(self):
         self.sessions = {}
         self.events = {}
+        self.stream_states = {}
 
     async def create_agent_session(
         self,
@@ -46,12 +49,21 @@ class FakeStore:
             "goal_json": dict(goal_json),
             "permission_mode": permission_mode,
             "status": status,
+            "live_phase": "planning",
             "summary": summary,
         }
 
-    async def update_agent_session_status(self, session_id, status, summary=""):
+    async def update_agent_session_status(
+        self,
+        session_id,
+        status,
+        summary="",
+        live_phase=None,
+    ):
         self.sessions[session_id]["status"] = status
         self.sessions[session_id]["summary"] = summary
+        if live_phase is not None:
+            self.sessions[session_id]["live_phase"] = live_phase
 
     async def append_agent_event(self, session_id, event_type, payload, **metadata):
         self.events.setdefault(session_id, []).append(
@@ -68,6 +80,26 @@ class FakeStore:
 
     async def get_agent_events(self, session_id):
         return list(self.events.get(session_id, []))
+
+    async def upsert_agent_stream_state(
+        self,
+        session_id,
+        stream_kind,
+        *,
+        latest_text,
+        latest_char_count,
+        revision,
+    ):
+        self.stream_states[(session_id, stream_kind)] = {
+            "session_id": session_id,
+            "stream_kind": stream_kind,
+            "latest_text": latest_text,
+            "latest_char_count": latest_char_count,
+            "revision": revision,
+        }
+
+    async def get_agent_stream_state(self, session_id, stream_kind):
+        return self.stream_states.get((session_id, stream_kind))
 
 
 def build_registry():
@@ -118,7 +150,11 @@ class FakeGoalRuntimeService:
 
     async def start_session(self, message, permission_mode):
         self.calls.append(("start", message, permission_mode))
-        return {"session_id": "sess-route", "status": "awaiting_approval"}
+        return {
+            "session_id": "sess-route",
+            "status": "running",
+            "live_phase": "planning",
+        }
 
     async def resolve_approval(self, session_id, approved):
         self.calls.append(("approve", session_id, approved))
@@ -129,17 +165,31 @@ class FakeGoalRuntimeService:
         return {
             "session_id": session_id,
             "status": "completed",
+            "live_phase": "completed",
             "event_count": 1,
             "current_round": 1,
             "llm_call_count": 0,
             "awaiting_approval": False,
             "pending_approval": None,
             "latest_error": "",
+            "planner_stream": None,
         }
 
     async def get_events(self, session_id):
         self.calls.append(("events", session_id))
         return [{"event_type": "GoalParsed"}]
+
+    async def stream_session(self, session_id):
+        self.calls.append(("stream", session_id))
+        yield {"event": "session_started", "data": {"session_id": session_id}}
+        yield {
+            "event": "planner_snapshot",
+            "data": {"latest_text": "正在生成计划", "revision": 1},
+        }
+        yield {
+            "event": "completed",
+            "data": {"session_id": session_id, "status": "awaiting_approval"},
+        }
 
 
 class GoalRuntimeServiceTests(unittest.IsolatedAsyncioTestCase):
@@ -165,15 +215,19 @@ class GoalRuntimeServiceTests(unittest.IsolatedAsyncioTestCase):
                     ],
                 }
             ),
+            task_spawner=lambda coro: asyncio.create_task(coro),
         )
 
         result = await runtime.start_session(
             "把 GPU 0 的功耗上限调到 220W",
             "low",
         )
+        await runtime.wait_for_idle()
         events = await runtime.get_events(result["session_id"])
         event_types = [item["event_type"] for item in events]
 
+        self.assertEqual(result["status"], "running")
+        self.assertEqual(result["live_phase"], "planning")
         self.assertIn("ContextSnapshotCaptured", event_types)
         self.assertIn("LLMRequestPrepared", event_types)
         self.assertIn("LLMResponseReceived", event_types)
@@ -187,19 +241,53 @@ class GoalRuntimeServiceTests(unittest.IsolatedAsyncioTestCase):
             import_context=FakeImportContext(),
             runtime_status_reader=None,
             llm_service_reader=lambda: None,
+            task_spawner=lambda coro: asyncio.create_task(coro),
         )
 
         result = await runtime.start_session(
             "执行一次调度",
             "high",
         )
+        await runtime.wait_for_idle()
         events = await runtime.get_events(result["session_id"])
         event_types = [item["event_type"] for item in events]
 
         self.assertIn("LLMUnavailable", event_types)
         self.assertIn("RuleFallbackUsed", event_types)
 
-    async def test_start_session_persists_and_returns_awaiting_approval_for_low_mode(self):
+    async def test_start_session_returns_running_planning_before_background_finishes(self):
+        class SlowStreamingLLM:
+            def supports_control_plan_stream(self):
+                return True
+
+            async def generate_control_plan_stream(self, _message, _context):
+                yield '{"summary":"执行一次调度","risk_level":"low",'
+                await asyncio.sleep(0)
+                yield '"requires_confirmation":false,"warnings":[],"actions":[]}'
+
+        store = FakeStore()
+        runtime = GoalRuntimeService(
+            store=store,
+            registry=build_registry(),
+            import_context=FakeImportContext(),
+            runtime_status_reader=None,
+            llm_service_reader=lambda: SlowStreamingLLM(),
+            task_spawner=lambda coro: asyncio.create_task(coro),
+        )
+
+        result = await runtime.start_session(
+            "执行一次调度",
+            "low",
+        )
+        self.assertEqual(result["status"], "running")
+        self.assertEqual(result["live_phase"], "planning")
+        await runtime.wait_for_idle()
+
+        session = await runtime.get_session(result["session_id"])
+        self.assertIn("live_phase", session)
+        self.assertIn("planner_stream", session)
+
+    async def test_start_session_reaches_awaiting_approval_after_background_run(self):
         store = FakeStore()
         runtime = GoalRuntimeService(
             store=store,
@@ -207,14 +295,15 @@ class GoalRuntimeServiceTests(unittest.IsolatedAsyncioTestCase):
             import_context=FakeImportContext(),
             runtime_status_reader=None,
             llm_service_reader=lambda: None,
+            task_spawner=lambda coro: asyncio.create_task(coro),
         )
 
         result = await runtime.start_session(
             "把 GPU 0 的功耗上限调到 220W",
             "low",
         )
+        await runtime.wait_for_idle()
 
-        self.assertEqual(result["status"], "awaiting_approval")
         session = await runtime.get_session(result["session_id"])
         self.assertEqual(session["status"], "awaiting_approval")
         self.assertIn("event_count", session)
@@ -222,6 +311,7 @@ class GoalRuntimeServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("llm_call_count", session)
         self.assertIn("awaiting_approval", session)
         self.assertIn("pending_approval", session)
+        self.assertIn("planner_stream", session)
         self.assertGreaterEqual(len(await runtime.get_events(result["session_id"])), 2)
 
     async def test_resolve_approval_completes_pending_runtime_action(self):
@@ -232,11 +322,13 @@ class GoalRuntimeServiceTests(unittest.IsolatedAsyncioTestCase):
             import_context=FakeImportContext(),
             runtime_status_reader=None,
             llm_service_reader=lambda: None,
+            task_spawner=lambda coro: asyncio.create_task(coro),
         )
         started = await runtime.start_session(
             "把 GPU 0 的功耗上限调到 220W",
             "low",
         )
+        await runtime.wait_for_idle()
 
         resolved = await runtime.resolve_approval(started["session_id"], True)
 
@@ -263,12 +355,27 @@ class GoalRuntimeRouteTests(unittest.IsolatedAsyncioTestCase):
             session = await get_agent_runtime_session("sess-route")
             events = await get_agent_runtime_events("sess-route")
 
-        self.assertEqual(started["status"], "awaiting_approval")
+        self.assertEqual(started["status"], "running")
+        self.assertEqual(started["live_phase"], "planning")
         self.assertEqual(approved["status"], "completed")
         self.assertEqual(session["status"], "completed")
         self.assertIn("event_count", session)
         self.assertIn("awaiting_approval", session)
         self.assertEqual(events["events"][0]["event_type"], "GoalParsed")
+
+    async def test_stream_route_delegates_to_goal_runtime_service(self):
+        fake_runtime = FakeGoalRuntimeService()
+        fake_main = types.SimpleNamespace(app_state=types.SimpleNamespace(goal_runtime=fake_runtime))
+
+        with mock.patch.dict(sys.modules, {"app.main": fake_main}):
+            response = await stream_agent_runtime_session("sess-route")
+            chunks = []
+            async for item in response.body_iterator:
+                chunks.append(item.decode("utf-8"))
+
+        payload = "".join(chunks)
+        self.assertIn("event: planner_snapshot", payload)
+        self.assertIn('"latest_text": "正在生成计划"', payload)
 
 
 if __name__ == "__main__":
