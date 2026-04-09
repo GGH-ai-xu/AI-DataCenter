@@ -130,6 +130,58 @@ CONTROL_PROMPT = """你是 GPU 治理工作台里的 AI 执行控制台规划器
   ]
 }}"""
 
+GRAPH_EXTRACT_PROMPT = """你是知识图谱抽取助手。你的任务是把论文或技术资料整理成固定结构的图谱草稿。
+
+只允许以下节点类型：
+- Paper
+- Method
+- Task
+- Dataset
+- Metric
+
+只允许以下关系类型：
+- PROPOSES
+- SOLVES
+- USES
+- ACHIEVES
+
+输出要求：
+1. 只返回 JSON，不要返回 Markdown，不要解释。
+2. 节点字段只允许：id, label, name, description
+3. 关系字段只允许：from_id, to_id, type, description
+4. 必须包含一个 Paper 节点，并让其他节点围绕它展开。
+5. 如果信息不足，不要编造；可以减少节点和关系数量。
+
+返回格式：
+{
+  "nodes": [
+    {"id": "paper_1", "label": "Paper", "name": "论文标题", "description": "一句话摘要"},
+    {"id": "method_1", "label": "Method", "name": "方法名", "description": "方法简介"}
+  ],
+  "relations": [
+    {"from_id": "paper_1", "to_id": "method_1", "type": "PROPOSES", "description": "论文提出该方法"}
+  ]
+}"""
+
+GRAPH_QA_PROMPT = """你是 GPU 治理平台里的图谱问答助手。
+
+你只能依据给定的图谱证据回答，不允许引用图外知识，不允许把常识当成图谱事实。
+
+回答规则：
+1. 如果证据足够，先给一句结论，再给 2-4 句解释。
+2. 如果证据不足，必须明确说“当前图库里没有足够证据”。
+3. 证据项要尽量引用图里的节点名、关系类型和论文名。
+4. 只返回 JSON，不要返回 Markdown。
+
+返回格式：
+{
+  "summary": "一句话结论",
+  "answer": "详细回答",
+  "confidence": "high|medium|low",
+  "evidence": ["证据1", "证据2"],
+  "follow_ups": ["后续问题1", "后续问题2"]
+}"""
+
 
 class LLMService:
     """LLM服务 - 支持对话和调度策略生成"""
@@ -360,6 +412,74 @@ class LLMService:
             return self._parse_json_response(content)
         except Exception as e:
             logger.error(f"AI执行控制台计划生成失败: {e}")
+            return None
+
+    async def generate_graph_draft(
+        self,
+        title: str,
+        abstract: str = "",
+        content: str = "",
+        source: str = "paper",
+    ) -> Optional[dict]:
+        """根据论文内容生成知识图谱草稿。"""
+        excerpt = (content or "").strip()
+        if len(excerpt) > 12000:
+            excerpt = excerpt[:12000].strip() + "\n...(已截断)"
+        prompt = (
+            f"来源：{source}\n"
+            f"标题：{title.strip()}\n\n"
+            f"摘要：\n{(abstract or '').strip()}\n\n"
+            f"正文片段：\n{excerpt}\n\n"
+            "请严格输出固定 JSON。"
+        )
+        try:
+            content = await self._call_with_retry(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": GRAPH_EXTRACT_PROMPT},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.2,
+                max_tokens=2000,
+            )
+            return self._parse_json_response(content)
+        except Exception as e:
+            logger.error(f"知识图谱草稿生成失败: {e}")
+            return None
+
+    async def answer_graph_question(
+        self,
+        question: str,
+        context_text: str,
+    ) -> Optional[dict]:
+        """基于图谱证据回答问题。"""
+        prompt = (
+            f"用户问题：{question.strip()}\n\n"
+            f"图谱证据：\n{context_text.strip()}\n\n"
+            "请严格输出 JSON。"
+        )
+        try:
+            content = await self._call_with_retry(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": GRAPH_QA_PROMPT},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.2,
+                max_tokens=1500,
+            )
+            parsed = self._parse_json_response(content)
+            if parsed is not None:
+                return parsed
+            return {
+                "summary": "图谱问答已生成",
+                "answer": content.strip(),
+                "confidence": "medium",
+                "evidence": [],
+                "follow_ups": [],
+            }
+        except Exception as e:
+            logger.error(f"图谱问答生成失败: {e}")
             return None
 
     @staticmethod

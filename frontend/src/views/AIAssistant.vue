@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, proxyRefs, ref, watch } from 'vue'
 import {
   aiChat,
   aiControlExecute,
@@ -8,8 +8,14 @@ import {
   testLlmConfig,
   updateLlmConfig,
 } from '../services/api'
+import GraphCypherPreview from '../components/ai/GraphCypherPreview.vue'
+import GraphExecuteResult from '../components/ai/GraphExecuteResult.vue'
+import GraphCatalogViewer from '../components/ai/GraphCatalogViewer.vue'
+import GraphImportPanel from '../components/ai/GraphImportPanel.vue'
+import GraphQAPanel from '../components/ai/GraphQAPanel.vue'
 import WorkspaceSummary from '../components/workspace/WorkspaceSummary.vue'
 import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
+import { useGraphWorkspace } from '../composables/useGraphWorkspace.js'
 
 const DEFAULT_INTRO = '你好，我是 AI 治理助手。我可以解释当前 GPU 状态，也可以在上方“AI 执行控制台”里把自然语言指令转换成可审核、可执行的治理动作。'
 const BLOCKED_INTRO = 'AI 对话助手当前未启用。你可以继续使用上方的“AI 执行控制台”第一版，它支持规则解析；如果想获得更强的自然语言规划能力，请先在左侧接入 LLM。'
@@ -22,14 +28,21 @@ const QUICK_CONTROLS = [
   '执行一次调度',
 ]
 const activeTab = ref('control')
+const knowledgeTab = ref('import')
 const assistantTabs = [
   { key: 'control', label: '执行控制', desc: '规划、执行' },
   { key: 'chat', label: '对话解释', desc: '问答与说明' },
+  { key: 'knowledge', label: '知识入图', desc: '论文 -> Cypher' },
   { key: 'model', label: '模型配置', desc: 'LLM 接入与测试' },
 ]
 const activeTabLabel = computed(() => (
   assistantTabs.find((item) => item.key === activeTab.value)?.label || '执行控制台'
 ))
+const knowledgeTabs = [
+  { key: 'import', label: '入图工作台', desc: '草稿与写入' },
+  { key: 'catalog', label: '答辩展示台', desc: '总览与讲解' },
+  { key: 'qa', label: '图谱问答', desc: '证据化回答' },
+]
 
 const messages = ref([{ role: 'assistant', content: DEFAULT_INTRO }])
 const input = ref('')
@@ -64,6 +77,7 @@ const controlExecuting = ref(false)
 const controlPlan = ref(null)
 const controlResult = ref(null)
 const controlRiskAcknowledged = ref(false)
+const graphWorkspace = proxyRefs(useGraphWorkspace())
 
 const llmSourceLabel = computed(() => {
   const source = llmConfig.value.source
@@ -370,8 +384,36 @@ function handleKeydown(e) {
   }
 }
 
+function openGraphQa(question = '') {
+  knowledgeTab.value = 'qa'
+  const normalizedQuestion = String(question || '').trim()
+  if (!normalizedQuestion) return
+  graphWorkspace.qaForm.question = normalizedQuestion
+  void graphWorkspace.askGraphQuestion(normalizedQuestion)
+}
+
 onMounted(() => {
   loadAssistantCapability()
+  void graphWorkspace.refreshSummary({ silent: true })
+})
+
+watch(activeTab, (tab) => {
+  if (tab === 'knowledge') {
+    void graphWorkspace.refreshSummary({ silent: true })
+    if (knowledgeTab.value === 'catalog') {
+      void graphWorkspace.refreshGraphView({ silent: true })
+    }
+  }
+})
+
+watch(knowledgeTab, (tab) => {
+  if (activeTab.value !== 'knowledge') {
+    return
+  }
+  void graphWorkspace.refreshSummary({ silent: true })
+  if (tab === 'catalog') {
+    void graphWorkspace.refreshGraphView({ silent: true })
+  }
 })
 </script>
 
@@ -646,6 +688,71 @@ onMounted(() => {
           </div>
     </section>
 
+    <section v-else-if="activeTab === 'knowledge'" class="graph-workspace-shell">
+          <div class="graph-workspace-shell__nav">
+            <WorkspaceTabs
+              v-model="knowledgeTab"
+              :items="knowledgeTabs"
+            />
+          </div>
+
+          <div v-if="knowledgeTab === 'import'" class="graph-workspace">
+            <GraphImportPanel
+              :form="graphWorkspace.form"
+              :summary="graphWorkspace.summary"
+              :draft-result="graphWorkspace.draftResult"
+              :feedback="graphWorkspace.feedback"
+              :llm-ready="llmReady"
+              :refresh-busy="graphWorkspace.refreshBusy"
+              :draft-busy="graphWorkspace.draftBusy"
+              :execute-busy="graphWorkspace.executeBusy"
+              :reconnect-busy="graphWorkspace.reconnectBusy"
+              :can-generate="graphWorkspace.canGenerate"
+              :can-execute="graphWorkspace.canExecute"
+              :busy="graphWorkspace.draftBusy || graphWorkspace.executeBusy || graphWorkspace.reconnectBusy"
+              @refresh="graphWorkspace.refreshSummary"
+              @recover="graphWorkspace.recoverConnection"
+              @generate="graphWorkspace.generateDraft"
+              @execute="graphWorkspace.executeImport"
+              @reset="graphWorkspace.resetWorkspaceState"
+            />
+
+            <div class="graph-workspace__stack">
+              <GraphCypherPreview :draft-result="graphWorkspace.draftResult" />
+              <GraphExecuteResult
+                :summary="graphWorkspace.summary"
+                :execution-result="graphWorkspace.executionResult"
+              />
+            </div>
+          </div>
+
+          <GraphCatalogViewer
+            v-else-if="knowledgeTab === 'catalog'"
+            :summary="graphWorkspace.summary"
+            :graph-view="graphWorkspace.graphView"
+            :filters="graphWorkspace.graphFilters"
+            :selected-node="graphWorkspace.selectedGraphNode"
+            :selected-node-id="graphWorkspace.selectedGraphNodeId"
+            :view-busy="graphWorkspace.viewBusy"
+            :expand-busy="graphWorkspace.expandBusy"
+            :expanding-node-id="graphWorkspace.expandingNodeId"
+            @refresh="graphWorkspace.refreshGraphView"
+            @select="graphWorkspace.selectGraphNode"
+            @expand="graphWorkspace.expandGraphNode"
+            @ask="openGraphQa"
+          />
+
+          <GraphQAPanel
+            v-else
+            :summary="graphWorkspace.summary"
+            :form="graphWorkspace.qaForm"
+            :result="graphWorkspace.qaResult"
+            :busy="graphWorkspace.qaBusy"
+            :can-ask="graphWorkspace.canAsk"
+            @ask="graphWorkspace.askGraphQuestion"
+          />
+    </section>
+
     <section v-else class="ai-container tech-card">
           <div class="ai-header">
             <div class="ai-header__icon">问</div>
@@ -723,6 +830,29 @@ onMounted(() => {
   grid-template-columns: 360px minmax(0, 1fr);
   gap: 18px;
   align-items: start;
+}
+
+.graph-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.graph-workspace-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.graph-workspace-shell__nav {
+  padding-bottom: 4px;
+}
+
+.graph-workspace__stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .ai-main {
@@ -907,6 +1037,12 @@ onMounted(() => {
 .control-console,
 .ai-container {
   padding: 20px 22px;
+}
+
+@media (max-width: 1100px) {
+  .graph-workspace {
+    grid-template-columns: 1fr;
+  }
 }
 
 .control-console__composer {

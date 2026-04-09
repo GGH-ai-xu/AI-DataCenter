@@ -114,6 +114,13 @@ export const getScheduleEvaluation = () => api.get('/scheduler/evaluation')
 export const aiChat = (message) => api.post('/ai/chat', { message })
 export const aiControlPlan = (message) => api.post('/ai/control/plan', { message })
 export const aiControlExecute = (payload) => api.post('/ai/control/execute', payload)
+export const graphDraft = (payload) => api.post('/graph/draft', payload)
+export const graphExecute = (payload) => api.post('/graph/execute', payload)
+export const getGraphSummary = () => api.get('/graph/summary')
+export const getGraphView = (params = {}) => api.get('/graph/view', { params })
+export const getGraphNeighbors = (params = {}) => api.get('/graph/neighbors', { params })
+export const reconnectGraph = () => api.post('/graph/reconnect')
+export const graphQa = (payload) => api.post('/graph/qa', payload)
 
 // 告警
 export const getAlerts = (limit = 50, unack_only = false) => api.get('/alerts/', { params: { limit, unack_only } })
