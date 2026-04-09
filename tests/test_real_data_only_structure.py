@@ -26,6 +26,7 @@ class RealDataOnlyStructureTests(unittest.TestCase):
             monitor.init()
 
         self.assertEqual(monitor.device_count, 0)
+        self.assertIn("pynvml", monitor.startup_issue)
         self.assertEqual(monitor.get_all_gpus(), [])
         self.assertIsNone(monitor.get_gpu_info(0))
         self.assertFalse(hasattr(monitor, "is_simulated"))
@@ -81,17 +82,26 @@ class RealDataOnlyStructureTests(unittest.TestCase):
         tasks_api_text = (ROOT / "backend/app/api/tasks.py").read_text(encoding="utf-8")
         scheduler_api_text = (ROOT / "backend/app/api/scheduler.py").read_text(encoding="utf-8")
         ai_api_text = (ROOT / "backend/app/api/ai.py").read_text(encoding="utf-8")
-        ai_service_text = (ROOT / "backend/app/services/ai_control.py").read_text(encoding="utf-8")
+        middleware_text = (ROOT / "backend/app/middleware/auth.py").read_text(encoding="utf-8")
+        heuristics_text = (
+            ROOT / "backend/app/services/goal_runtime/control_heuristics.py"
+        ).read_text(encoding="utf-8")
 
         self.assertNotIn("dry_run", inspect.signature(schema_module.TaskActionRequest).parameters)
         self.assertNotIn("dry_run", inspect.signature(schema_module.PowerLimitRequest).parameters)
         self.assertNotIn("dry_run", inspect.signature(schema_module.ScheduleRunRequest).parameters)
-        self.assertNotIn("dry_run", inspect.signature(schema_module.AIControlExecuteRequest).parameters)
+        self.assertFalse(hasattr(schema_module, "AIControlExecuteRequest"))
+        self.assertFalse(hasattr(schema_module, "AIControlPlanRequest"))
         self.assertNotIn("dry_run", inspect.signature(SchedulerEngine.execute_actions).parameters)
         self.assertNotIn("dry_run", tasks_api_text)
         self.assertNotIn("dry_run", scheduler_api_text)
         self.assertNotIn("dry_run", ai_api_text)
-        self.assertNotIn("dry_run", ai_service_text)
+        self.assertNotIn("/control/plan", ai_api_text)
+        self.assertNotIn("/control/execute", ai_api_text)
+        self.assertNotIn("/api/ai/control/execute", middleware_text)
+        self.assertIn("/api/agent-runtime", middleware_text)
+        self.assertNotIn("dry_run", heuristics_text)
+        self.assertFalse((ROOT / "backend/app/services/ai_control.py").exists())
 
     def test_frontend_execution_pages_remove_rehearsal_mode(self):
         task_text = (ROOT / "frontend/src/views/TaskManager.vue").read_text(encoding="utf-8")
@@ -105,6 +115,29 @@ class RealDataOnlyStructureTests(unittest.TestCase):
         self.assertNotIn("执行演练", ai_text)
         self.assertNotIn("演练", ai_text)
         self.assertNotIn("dry_run", ai_text)
+
+    def test_ai_assistant_no_longer_uses_legacy_timeline_as_primary_execution_view(self):
+        ai_text = (ROOT / "frontend/src/views/AIAssistant.vue").read_text(encoding="utf-8")
+
+        self.assertNotIn("Session Timeline", ai_text)
+        self.assertIn("AgentExecutionLedger", ai_text)
+
+    def test_ai_assistant_streaming_ui_uses_runtime_session_stream(self):
+        ai_text = (ROOT / "frontend/src/views/AIAssistant.vue").read_text(encoding="utf-8")
+
+        self.assertIn("plannerLiveText", ai_text)
+        self.assertIn("openAgentRuntimeSessionStream", ai_text)
+        self.assertNotIn("EventSource(", ai_text)
+
+    def test_ai_chat_markdown_rendering_is_scoped_to_assistant_messages(self):
+        body_text = (
+            ROOT / "frontend/src/components/agent/AgentChatMessageBody.vue"
+        ).read_text(encoding="utf-8")
+        ai_text = (ROOT / "frontend/src/views/AIAssistant.vue").read_text(encoding="utf-8")
+
+        self.assertIn("message.role !== 'assistant'", body_text)
+        self.assertIn("Markdown 渲染失败", body_text)
+        self.assertNotIn("v-html", ai_text)
 
     def test_readme_and_scripts_remove_demo_naming(self):
         readme_text = (ROOT / "README.md").read_text(encoding="utf-8")

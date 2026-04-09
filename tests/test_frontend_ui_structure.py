@@ -526,5 +526,53 @@ class FrontendUIStructureTests(unittest.TestCase):
         self.assertIn("background: rgba(255, 255, 255, 0.03);", text)
         self.assertIn("border: 1px solid var(--border-color);", text)
         self.assertNotIn("background: rgba(250, 246, 239, 0.9);", text)
+
+    def test_ai_assistant_uses_runtime_session_api(self):
+        text = (ROOT / "frontend/src/views/AIAssistant.vue").read_text(encoding="utf-8")
+        api_text = (ROOT / "frontend/src/services/api.js").read_text(encoding="utf-8")
+
+        self.assertIn("startAgentRuntimeSession", api_text)
+        self.assertIn("approveAgentRuntimeSession", api_text)
+        self.assertNotIn("aiControlPlan", api_text)
+        self.assertNotIn("aiControlExecute", api_text)
+        self.assertIn("AgentControlDock", text)
+        self.assertIn("AgentExecutionLedger", text)
+        self.assertNotIn("aiControlPlan(", text)
+
+    def test_ai_assistant_uses_execution_ledger_components(self):
+        text = (ROOT / "frontend/src/views/AIAssistant.vue").read_text(encoding="utf-8")
+
+        self.assertIn("AgentControlDock", text)
+        self.assertIn("AgentExecutionLedger", text)
+        self.assertNotIn("AgentSessionTimeline", text)
+
+        for rel in [
+            "frontend/src/components/agent/AgentControlDock.vue",
+            "frontend/src/components/agent/AgentExecutionLedger.vue",
+            "frontend/src/components/agent/AgentRunOverviewBar.vue",
+            "frontend/src/components/agent/AgentLedgerRound.vue",
+            "frontend/src/components/agent/AgentLedgerEventCard.vue",
+        ]:
+            self.assertTrue((ROOT / rel).exists(), rel)
+
+    def test_ai_assistant_uses_streaming_live_panel_and_stream_apis(self):
+        text = (ROOT / "frontend/src/views/AIAssistant.vue").read_text(encoding="utf-8")
+        api_text = (ROOT / "frontend/src/services/api.js").read_text(encoding="utf-8")
+
+        self.assertIn("PlannerLivePanel", text)
+        self.assertIn("openAiChatStream", api_text)
+        self.assertIn("openAgentRuntimeSessionStream", api_text)
+
+    def test_ai_chat_pane_uses_dedicated_markdown_message_body(self):
+        pane_text = (
+            ROOT / "frontend/src/components/agent/AgentChatPane.vue"
+        ).read_text(encoding="utf-8")
+        body_text = (
+            ROOT / "frontend/src/components/agent/AgentChatMessageBody.vue"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("AgentChatMessageBody", pane_text)
+        self.assertIn("renderAssistantMarkdown", body_text)
+        self.assertIn("v-html", body_text)
 if __name__ == "__main__":
     unittest.main()
