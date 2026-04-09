@@ -190,18 +190,18 @@ function applyHealthPayload(payload = {}) {
   border: 1px solid var(--console-border, rgba(255, 255, 255, 0.08));
 }
 .dashboard-summary__status--ok {
-  color: #dbe0ff;
-  border-color: rgba(94, 106, 210, 0.3);
-  background: rgba(94, 106, 210, 0.14);
+  color: var(--state-ok-text);
+  border-color: var(--state-ok-border);
+  background: var(--state-ok-bg);
 }
 .dashboard-summary__status--warning {
-  color: #f7d79d;
-  border-color: rgba(244, 185, 93, 0.22);
-  background: rgba(244, 185, 93, 0.14);
+  color: var(--state-warning-text);
+  border-color: var(--state-warning-border);
+  background: var(--state-warning-bg);
 }
 .dashboard-summary__status--critical {
-  color: #ffd2de;
-  border-color: rgba(255, 120, 148, 0.22);
-  background: rgba(255, 120, 148, 0.14);
+  color: var(--state-danger-text);
+  border-color: var(--state-danger-border);
+  background: var(--state-danger-bg);
 }
 </style>

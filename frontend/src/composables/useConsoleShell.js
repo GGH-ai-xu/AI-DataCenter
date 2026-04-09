@@ -93,6 +93,8 @@ export function useConsoleShell() {
 
   const isDesktop = computed(() => typeof window !== 'undefined' && Boolean(window.desktopShell))
   const workspaceLocked = computed(() => store.workspaceStatusChecked && !store.workspaceReady)
+  const themePreference = computed(() => store.themePreference)
+  const resolvedTheme = computed(() => store.resolvedTheme)
   const activeNavItem = computed(() =>
     NAV_ITEMS.find((item) => {
       const prefix = item.matchPrefix || item.path
@@ -220,6 +222,11 @@ export function useConsoleShell() {
     sidebarCollapsed.value = !sidebarCollapsed.value
   }
 
+  function setThemePreference(nextPreference) {
+    const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+    store.setThemePreference(nextPreference, systemPrefersDark)
+  }
+
   async function switchServer() {
     if (switchServerBusy.value) return
     if (typeof window !== 'undefined') {
@@ -339,10 +346,13 @@ export function useConsoleShell() {
     resolveCloseAction,
     route,
     runtimeBanner,
+    resolvedTheme,
     sidebarSummary,
     sidebarCollapsed,
     switchServer,
     switchServerBusy,
+    setThemePreference,
+    themePreference,
     toggleSidebarCollapsed,
     updateBusy,
     updateState,

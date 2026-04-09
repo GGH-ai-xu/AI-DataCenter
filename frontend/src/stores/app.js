@@ -9,6 +9,11 @@ import {
   normalizeProcesses,
 } from '../lib/realtimeSummaries.js'
 import { hasValidImportContext } from '../lib/importContext.js'
+import {
+  DEFAULT_THEME_PREFERENCE,
+  normalizeThemePreference,
+  resolveThemeFromPreference,
+} from '../lib/themeMode.js'
 
 const ALERT_LIMIT = 100
 
@@ -81,6 +86,8 @@ export const useAppStore = defineStore('app', () => {
   const runtimeStatus = ref(normalizeRuntimeStatus())
   const dataSourceStatus = ref({ connected: false, gpu_count: 0 })
   const domains = ref(createDomainState())
+  const themePreference = ref(DEFAULT_THEME_PREFERENCE)
+  const resolvedTheme = ref('dark')
 
   const dataSourceLabel = computed(() => {
     if (!dataSourceStatus.value.connected) {
@@ -122,6 +129,24 @@ export const useAppStore = defineStore('app', () => {
     alerts: alerts.value,
   }))
   const taskSummary = computed(() => buildTaskSummary(normalizedProcesses.value))
+  const isSystemTheme = computed(() => themePreference.value === DEFAULT_THEME_PREFERENCE)
+  const isDarkTheme = computed(() => resolvedTheme.value === 'dark')
+  const isLightTheme = computed(() => resolvedTheme.value === 'light')
+
+  function syncResolvedTheme(systemPrefersDark = true) {
+    resolvedTheme.value = resolveThemeFromPreference(themePreference.value, systemPrefersDark)
+    return resolvedTheme.value
+  }
+
+  function hydrateThemePreference(nextPreference, systemPrefersDark = true) {
+    themePreference.value = normalizeThemePreference(nextPreference)
+    return syncResolvedTheme(systemPrefersDark)
+  }
+
+  function setThemePreference(nextPreference, systemPrefersDark = true) {
+    themePreference.value = normalizeThemePreference(nextPreference)
+    return syncResolvedTheme(systemPrefersDark)
+  }
 
   function domainEntry(section, key = null) {
     return key ? domains.value[section][key] : domains.value[section]
@@ -222,8 +247,10 @@ export const useAppStore = defineStore('app', () => {
     importContext, runtimeStatus,
     schedulerAuto, timePeriod,
     dataSourceStatus, dataSourceLabel, domains,
+    themePreference, resolvedTheme, isSystemTheme, isDarkTheme, isLightTheme,
     totalPower, avgTemperature, totalMemoryUsed, totalMemoryTotal, avgUtilization,
     normalizedProcesses, dashboardSummary, taskSummary,
+    hydrateThemePreference, setThemePreference, syncResolvedTheme,
     beginDomainRequest, completeDomainRequest, failDomainRequest,
     replaceProcesses, applyRealtimePayload, updateFromWs, setWorkspaceReady, setImportContext,
     markWorkspaceStatusChecked, resetRuntimeState,

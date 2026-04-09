@@ -5,6 +5,7 @@
  */
 import { computed, onMounted, ref } from 'vue'
 import { getAlerts, acknowledgeAlert } from '../services/api'
+import { readThemeVar } from '../lib/themeMode.js'
 import { useAppStore } from '../stores/app'
 import AlertSummaryPanel from '../components/alerts/AlertSummaryPanel.vue'
 import WorkspaceSummary from '../components/workspace/WorkspaceSummary.vue'
@@ -62,10 +63,22 @@ const formatAlertType = (value = '') => ({
   self_check: '平台自检',
 }[value] || value || '未知')
 
-const severityConfig = {
-  critical: { bg: 'rgba(239, 68, 68, 0.1)', border: 'rgba(239, 68, 68, 0.18)', color: '#EF4444', icon: '⚠', label: '严重' },
-  warning: { bg: 'rgba(245, 158, 11, 0.1)', border: 'rgba(245, 158, 11, 0.18)', color: '#F59E0B', icon: '△', label: '警告' },
-}
+const severityConfig = computed(() => ({
+  critical: {
+    bg: readThemeVar('--state-danger-bg'),
+    border: readThemeVar('--state-danger-border'),
+    color: readThemeVar('--accent-danger'),
+    icon: '⚠',
+    label: '严重',
+  },
+  warning: {
+    bg: readThemeVar('--state-warning-bg'),
+    border: readThemeVar('--state-warning-border'),
+    color: readThemeVar('--accent-warning'),
+    icon: '△',
+    label: '警告',
+  },
+}))
 
 const realtimeAlerts = computed(() => (
   store.alerts.filter((alert) => !alert.acknowledged)

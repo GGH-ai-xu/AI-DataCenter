@@ -107,24 +107,24 @@ const workspace = proxyRefs(useImportWorkspace())
   align-items: start;
   padding: 28px clamp(20px, 4vw, 48px);
   isolation: isolate;
-  --import-page-bg: #0c1117;
-  --import-panel-bg: rgba(18, 24, 33, 0.96);
-  --import-panel-bg-hover: rgba(21, 29, 40, 0.98);
-  --import-surface-bg: #0f151d;
-  --import-surface-alt: #171e29;
-  --import-surface-soft: rgba(255, 255, 255, 0.03);
-  --import-border: rgba(255, 255, 255, 0.08);
-  --import-border-strong: rgba(94, 106, 210, 0.34);
-  --import-text: #edeef2;
-  --import-text-secondary: #c5cad5;
-  --import-text-muted: #8a8f98;
-  --import-accent: #5e6ad2;
-  --import-accent-bright: #6872d9;
-  --import-accent-soft: rgba(94, 106, 210, 0.16);
-  --import-warning: #f4b95d;
-  --import-warning-soft: rgba(244, 185, 93, 0.14);
-  --import-danger: #ff6f96;
-  --import-danger-soft: rgba(255, 111, 150, 0.14);
+  --import-page-bg: var(--bg-base);
+  --import-panel-bg: var(--bg-card);
+  --import-panel-bg-hover: var(--bg-card-hover);
+  --import-surface-bg: var(--bg-primary);
+  --import-surface-alt: var(--bg-secondary);
+  --import-surface-soft: var(--bg-surface);
+  --import-border: var(--border-color);
+  --import-border-strong: var(--border-strong);
+  --import-text: var(--text-primary);
+  --import-text-secondary: var(--text-secondary);
+  --import-text-muted: var(--text-muted);
+  --import-accent: var(--accent-primary);
+  --import-accent-bright: var(--accent-secondary);
+  --import-accent-soft: var(--state-ok-bg);
+  --import-warning: var(--accent-warning);
+  --import-warning-soft: var(--state-warning-bg);
+  --import-danger: var(--accent-danger);
+  --import-danger-soft: var(--state-critical-bg);
 }
 
 .import-prep-layout::before {
@@ -132,8 +132,8 @@ const workspace = proxyRefs(useImportWorkspace())
   position: absolute;
   inset: 10px 10px 14px;
   border-radius: 28px;
-  background: linear-gradient(180deg, rgba(10, 13, 18, 0.92), rgba(11, 15, 21, 0.96));
-  border: 1px solid rgba(255, 255, 255, 0.04);
+  background: linear-gradient(180deg, var(--bg-strong), var(--import-page-bg));
+  border: 1px solid var(--import-border);
   box-shadow: 0 28px 80px rgba(0, 0, 0, 0.34);
   z-index: -1;
 }
@@ -154,7 +154,7 @@ const workspace = proxyRefs(useImportWorkspace())
 .import-prep-layout :deep(.tech-card:hover) {
   transform: translateY(-2px);
   background: var(--import-panel-bg-hover);
-  border-color: rgba(255, 255, 255, 0.12);
+  border-color: var(--border-hover);
   box-shadow: 0 24px 56px rgba(0, 0, 0, 0.32);
 }
 
@@ -186,21 +186,21 @@ const workspace = proxyRefs(useImportWorkspace())
 }
 
 .import-prep-layout :deep(.status-badge--ok) {
-  color: #dbe0ff;
-  border-color: var(--import-border-strong);
-  background: var(--import-accent-soft);
+  color: var(--state-ok-text);
+  border-color: var(--state-ok-border);
+  background: var(--state-ok-bg);
 }
 
 .import-prep-layout :deep(.status-badge--warning) {
-  color: #f7d79d;
-  border-color: rgba(244, 185, 93, 0.22);
-  background: var(--import-warning-soft);
+  color: var(--state-warning-text);
+  border-color: var(--state-warning-border);
+  background: var(--state-warning-bg);
 }
 
 .import-prep-layout :deep(.status-badge--critical) {
-  color: #ffd2de;
-  border-color: rgba(255, 111, 150, 0.24);
-  background: var(--import-danger-soft);
+  color: var(--state-critical-text);
+  border-color: var(--state-critical-border);
+  background: var(--state-critical-bg);
 }
 
 .import-prep-layout :deep(.btn-tech) {
@@ -214,8 +214,8 @@ const workspace = proxyRefs(useImportWorkspace())
 
 .import-prep-layout :deep(.btn-tech:hover:not(:disabled)) {
   transform: translateY(-1px);
-  border-color: rgba(255, 255, 255, 0.12);
-  background: #1b2330;
+  border-color: var(--border-hover);
+  background: var(--import-panel-bg-hover);
   box-shadow: none;
 }
 
@@ -247,7 +247,7 @@ const workspace = proxyRefs(useImportWorkspace())
 .import-prep-layout :deep(textarea:focus),
 .import-prep-layout :deep(select:focus) {
   border-color: var(--import-border-strong);
-  box-shadow: 0 0 0 3px rgba(94, 106, 210, 0.14);
+  box-shadow: 0 0 0 3px var(--field-focus-ring);
 }
 
 @media (max-width: 1080px) {

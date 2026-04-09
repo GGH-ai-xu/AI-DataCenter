@@ -837,8 +837,8 @@ onMounted(() => {
 .ai-notice {
   padding: 14px 18px;
   border-radius: 14px;
-  border: 1px solid rgba(244, 185, 93, 0.22);
-  background: rgba(244, 185, 93, 0.12);
+  border: 1px solid var(--state-warning-border);
+  background: var(--state-warning-bg);
   box-shadow: var(--shadow-card);
 }
 
@@ -893,15 +893,15 @@ onMounted(() => {
 }
 
 .ai-feedback--success {
-  background: linear-gradient(135deg, rgba(127, 142, 255, 0.16), rgba(110, 184, 255, 0.08));
-  border-color: rgba(127, 142, 255, 0.24);
-  color: var(--accent-primary);
+  background: var(--state-ok-bg);
+  border-color: var(--state-ok-border);
+  color: var(--state-ok-text);
 }
 
 .ai-feedback--error {
-  background: rgba(255, 111, 150, 0.12);
-  border-color: rgba(255, 111, 150, 0.22);
-  color: var(--accent-danger);
+  background: var(--state-danger-bg);
+  border-color: var(--state-danger-border);
+  color: var(--state-danger-text);
 }
 
 .control-console,

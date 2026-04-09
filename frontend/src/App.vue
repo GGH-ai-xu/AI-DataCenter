@@ -1,16 +1,27 @@
 <script setup>
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 import GlobalToast from './components/GlobalToast.vue'
+import {
+  applyResolvedThemeToDocument,
+  readStoredThemePreference,
+  watchSystemTheme,
+  writeStoredThemePreference,
+} from './lib/themeMode.js'
 import { setupInterceptor } from './services/api.js'
+import { useAppStore } from './stores/app.js'
 import { useAuthStore } from './stores/auth.js'
 
 
 const router = useRouter()
+const appStore = useAppStore()
 const auth = useAuthStore()
 const toastRef = ref(null)
 let teardownSpotlight = null
+let stopThemePreferenceWatch = null
+let disposeSystemThemeWatch = null
+let systemPrefersDark = true
 
 function setupSpotlightTracking() {
   if (typeof window === 'undefined') return () => {}
@@ -80,6 +91,12 @@ function setupSpotlightTracking() {
   }
 }
 
+function syncTheme(systemDark = systemPrefersDark) {
+  systemPrefersDark = Boolean(systemDark)
+  appStore.syncResolvedTheme(systemPrefersDark)
+  applyResolvedThemeToDocument(document.documentElement, appStore.resolvedTheme)
+}
+
 onMounted(() => {
   setupInterceptor({
     showToast: (message, type) => {
@@ -97,10 +114,33 @@ onMounted(() => {
       }
     },
   })
+
+  const themeWatcher = watchSystemTheme(window, (matches) => {
+    systemPrefersDark = matches
+    if (appStore.themePreference === 'system') {
+      syncTheme(systemPrefersDark)
+    }
+  })
+  systemPrefersDark = themeWatcher.matches
+  disposeSystemThemeWatch = themeWatcher.dispose
+  appStore.hydrateThemePreference(
+    readStoredThemePreference(window.localStorage),
+    systemPrefersDark,
+  )
+  applyResolvedThemeToDocument(document.documentElement, appStore.resolvedTheme)
+  stopThemePreferenceWatch = watch(
+    () => appStore.themePreference,
+    (preference) => {
+      writeStoredThemePreference(window.localStorage, preference)
+      syncTheme(systemPrefersDark)
+    },
+  )
   teardownSpotlight = setupSpotlightTracking()
 })
 
 onUnmounted(() => {
+  stopThemePreferenceWatch?.()
+  disposeSystemThemeWatch?.()
   teardownSpotlight?.()
 })
 </script>

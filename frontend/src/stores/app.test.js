@@ -77,3 +77,15 @@ test('governance domains follow actions policies review split', () => {
   assert.ok(store.domains.governance.policies)
   assert.ok(store.domains.governance.review)
 })
+
+test('theme preference defaults to system and can resolve to explicit theme', () => {
+  setActivePinia(createPinia())
+  const store = useAppStore()
+
+  assert.equal(store.themePreference, 'system')
+  assert.equal(store.resolvedTheme, 'dark')
+
+  store.setThemePreference('light', false)
+  assert.equal(store.themePreference, 'light')
+  assert.equal(store.resolvedTheme, 'light')
+})

@@ -25,6 +25,7 @@ import { exportTextFile } from '../services/desktopExport'
 import WorkspaceSummary from '../components/workspace/WorkspaceSummary.vue'
 import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
 import { useEnergyData } from '../composables/useEnergyData.js'
+import { readThemeVar } from '../lib/themeMode.js'
 
 use([
   CanvasRenderer,
@@ -66,28 +67,33 @@ const an = reactive({power:0, kwh:0, cost:0, co2:0, saving:0, score:0})
 const ANIMATION_DELTA_FLOOR = 0.1
 const ANIMATION_DELTA_RATIO = 0.02
 
-const energyPalette = Object.freeze({
-  primary: '#7F8EFF',
-  secondary: '#97A5FF',
-  tertiary: '#6EB8FF',
-  warning: '#F4B95D',
-  danger: '#FF6F96',
-  accent: '#7F8EFF',
-  text: '#EDEEF7',
-  textSecondary: '#C6CEE1',
-  textMuted: '#9EA8C0',
-  textFaint: '#7380A0',
-  border: 'rgba(184, 197, 236, 0.12)',
-  line: 'rgba(184, 197, 236, 0.1)',
-  track: 'rgba(184, 197, 236, 0.08)',
-  panel: 'rgba(18, 26, 46, 0.96)',
-  primarySoft: 'rgba(127, 142, 255, 0.14)',
-  secondarySoft: 'rgba(151, 165, 255, 0.14)',
-  tertiarySoft: 'rgba(110, 184, 255, 0.12)',
-  warningSoft: 'rgba(244, 185, 93, 0.12)',
-  dangerSoft: 'rgba(255, 111, 150, 0.12)',
-  purple: '#97A5FF',
-  purpleSoft: 'rgba(151, 165, 255, 0.14)',
+const energyPalette = computed(() => ({
+  primary: readThemeVar('--accent-primary'),
+  secondary: readThemeVar('--accent-secondary'),
+  tertiary: readThemeVar('--accent-tertiary'),
+  warning: readThemeVar('--accent-warning'),
+  danger: readThemeVar('--accent-danger'),
+  accent: readThemeVar('--accent-primary'),
+  text: readThemeVar('--text-primary'),
+  textSecondary: readThemeVar('--text-secondary'),
+  textMuted: readThemeVar('--text-tertiary'),
+  textFaint: readThemeVar('--text-muted'),
+  border: readThemeVar('--border-color'),
+  line: readThemeVar('--border-color'),
+  track: readThemeVar('--bg-surface'),
+  panel: readThemeVar('--bg-strong'),
+  primarySoft: readThemeVar('--state-ok-bg'),
+  secondarySoft: readThemeVar('--bg-surface'),
+  tertiarySoft: readThemeVar('--bg-card'),
+  warningSoft: readThemeVar('--state-warning-bg'),
+  dangerSoft: readThemeVar('--state-danger-bg'),
+  purple: readThemeVar('--accent-secondary'),
+  purpleSoft: readThemeVar('--bg-surface'),
+}))
+const palette = new Proxy({}, {
+  get(_target, key) {
+    return palette.value[key]
+  },
 })
 const energyFontUi = "'PingFang SC','Microsoft YaHei','Noto Sans SC','Segoe UI',sans-serif"
 
@@ -115,9 +121,9 @@ function ci(k,el){if(!el.value)return null;if(charts[k])return charts[k];charts[
 // 计算
 const tp = computed(()=>{
   const h=new Date().getHours()
-  if((h>=9&&h<12)||(h>=14&&h<18)) return {label:'高峰',color:energyPalette.danger,bg:energyPalette.dangerSoft}
-  if(h>=22||h<6) return {label:'低谷',color:energyPalette.primary,bg:energyPalette.primarySoft}
-  return {label:'平峰',color:energyPalette.secondary,bg:energyPalette.secondarySoft}
+  if((h>=9&&h<12)||(h>=14&&h<18)) return {label:'高峰',color:palette.danger,bg:palette.dangerSoft}
+  if(h>=22||h<6) return {label:'低谷',color:palette.primary,bg:palette.primarySoft}
+  return {label:'平峰',color:palette.secondary,bg:palette.secondarySoft}
 })
 
 const sourceLabel = computed(() => {
@@ -159,9 +165,9 @@ const budgetBadgeClass = computed(() => {
 const breakdownLegendData = computed(() => {
   const data = breakdown.value?.breakdown
   return [
-    { name: '高峰', value: data?.peak?.pct || 0, color: energyPalette.danger },
-    { name: '平峰', value: data?.normal?.pct || 0, color: energyPalette.tertiary },
-    { name: '低谷', value: data?.valley?.pct || 0, color: energyPalette.primary },
+    { name: '高峰', value: data?.peak?.pct || 0, color: palette.danger },
+    { name: '平峰', value: data?.normal?.pct || 0, color: palette.tertiary },
+    { name: '低谷', value: data?.valley?.pct || 0, color: palette.primary },
   ]
 })
 
@@ -277,12 +283,12 @@ async function refreshAiAnomalies() {
 
 // ========== 水墨图表配色 ==========
 const inkColors = {
-  mountain: energyPalette.primary,
-  water: energyPalette.secondary,
-  ink: energyPalette.text,
-  lightInk: energyPalette.textSecondary,
-  vermillion: energyPalette.danger,
-  gold: energyPalette.warning,
+  mountain: palette.primary,
+  water: palette.secondary,
+  ink: palette.text,
+  lightInk: palette.textSecondary,
+  vermillion: palette.danger,
+  gold: palette.warning,
   paper: '#111520',
 }
 
@@ -291,10 +297,10 @@ function renderGauge(){
   c.setOption({ backgroundColor:'transparent', series:[{
     type:'gauge', startAngle:225, endAngle:-45, min:0, max:100,
     pointer:{show:false},
-    progress:{show:true,roundCap:true,width:12,itemStyle:{color:new graphic.LinearGradient(0,0,1,0,[{offset:0,color:'rgba(127, 142, 255, 0.22)'},{offset:1,color:energyPalette.tertiary}])}},
-    axisLine:{lineStyle:{width:12,color:[[1,energyPalette.track]]}},
+    progress:{show:true,roundCap:true,width:12,itemStyle:{color:new graphic.LinearGradient(0,0,1,0,[{offset:0,color:'rgba(127, 142, 255, 0.22)'},{offset:1,color:palette.tertiary}])}},
+    axisLine:{lineStyle:{width:12,color:[[1,palette.track]]}},
     axisTick:{show:false},splitLine:{show:false},axisLabel:{show:false},title:{show:false},
-    detail:{valueAnimation:true,fontSize:28,fontWeight:700,fontFamily:energyFontUi,color:energyPalette.text,offsetCenter:[0,'0%'],formatter:v=>v.toFixed(1)+'%'},
+    detail:{valueAnimation:true,fontSize:28,fontWeight:700,fontFamily:energyFontUi,color:palette.text,offsetCenter:[0,'0%'],formatter:v=>v.toFixed(1)+'%'},
     data:[{value:metrics.value?.saving_pct||0}],
   }]})
 }
@@ -305,11 +311,11 @@ function renderPie(){
   c.setOption({ backgroundColor:'transparent', series:[{
     type:'pie',radius:['50%','75%'],center:['50%','50%'],padAngle:3,itemStyle:{borderRadius:4},
     label:{show:false},
-    emphasis:{label:{show:true,fontSize:13,fontFamily:energyFontUi,color:energyPalette.text},itemStyle:{shadowBlur:12,shadowColor:'rgba(0,0,0,0.2)'}},
+    emphasis:{label:{show:true,fontSize:13,fontFamily:energyFontUi,color:palette.text},itemStyle:{shadowBlur:12,shadowColor:'rgba(0,0,0,0.2)'}},
     data:[
-      {value:b.peak?.pct||0,name:'高峰',itemStyle:{color:energyPalette.danger}},
-      {value:b.normal?.pct||0,name:'平峰',itemStyle:{color:energyPalette.tertiary}},
-      {value:b.valley?.pct||0,name:'低谷',itemStyle:{color:energyPalette.primary}},
+      {value:b.peak?.pct||0,name:'高峰',itemStyle:{color:palette.danger}},
+      {value:b.normal?.pct||0,name:'平峰',itemStyle:{color:palette.tertiary}},
+      {value:b.valley?.pct||0,name:'低谷',itemStyle:{color:palette.primary}},
     ],animationType:'scale',animationEasing:'elasticOut',
   }]})
 }
@@ -318,20 +324,20 @@ function renderTrend(){
   const c=ci('t',trendRef); if(!c||!breakdown.value) return
   const h=breakdown.value.hourly||[], hrs=h.map(x=>x.hour+':00'), pws=h.map(x=>x.avg_power), uts=h.map(x=>x.avg_util)
   const areas=[]; let s=0
-  for(let i=1;i<=h.length;i++){if(i===h.length||h[i].period!==h[s].period){const p=h[s].period;const cl=p==='peak'?energyPalette.dangerSoft:p==='valley'?energyPalette.primarySoft:energyPalette.tertiarySoft;areas.push([{xAxis:hrs[s],itemStyle:{color:cl}},{xAxis:hrs[i-1]}]);s=i}}
+  for(let i=1;i<=h.length;i++){if(i===h.length||h[i].period!==h[s].period){const p=h[s].period;const cl=p==='peak'?palette.dangerSoft:p==='valley'?palette.primarySoft:palette.tertiarySoft;areas.push([{xAxis:hrs[s],itemStyle:{color:cl}},{xAxis:hrs[i-1]}]);s=i}}
   c.setOption({ backgroundColor:'transparent',
-    tooltip:{trigger:'axis',backgroundColor:energyPalette.panel,borderColor:energyPalette.border,textStyle:{color:energyPalette.text,fontSize:12,fontFamily:energyFontUi},extraCssText:'border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.24)',
-      formatter:ps=>{const hi=h.find(x=>x.hour+':00'===ps[0]?.axisValue);const pl=hi?.period==='peak'?'高峰':hi?.period==='valley'?'低谷':'平峰';const pc=hi?.period==='peak'?energyPalette.danger:hi?.period==='valley'?energyPalette.primary:energyPalette.tertiary;let r=`<div style="color:${energyPalette.textMuted};font-size:11px;margin-bottom:4px">${ps[0]?.axisValue} <b style="color:${pc}">${pl}</b></div>`;ps.forEach(p=>{r+=`<div style="display:flex;align-items:center;gap:6px;margin:2px 0"><span style="width:8px;height:3px;border-radius:2px;background:${p.color}"></span>${p.seriesName}: <b>${typeof p.value==='number'?p.value.toFixed(1):p.value}</b></div>`});return r},
+    tooltip:{trigger:'axis',backgroundColor:palette.panel,borderColor:palette.border,textStyle:{color:palette.text,fontSize:12,fontFamily:energyFontUi},extraCssText:'border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.24)',
+      formatter:ps=>{const hi=h.find(x=>x.hour+':00'===ps[0]?.axisValue);const pl=hi?.period==='peak'?'高峰':hi?.period==='valley'?'低谷':'平峰';const pc=hi?.period==='peak'?palette.danger:hi?.period==='valley'?palette.primary:palette.tertiary;let r=`<div style="color:${palette.textMuted};font-size:11px;margin-bottom:4px">${ps[0]?.axisValue} <b style="color:${pc}">${pl}</b></div>`;ps.forEach(p=>{r+=`<div style="display:flex;align-items:center;gap:6px;margin:2px 0"><span style="width:8px;height:3px;border-radius:2px;background:${p.color}"></span>${p.seriesName}: <b>${typeof p.value==='number'?p.value.toFixed(1):p.value}</b></div>`});return r},
     },
-    legend:{data:['功耗','利用率'],textStyle:{color:energyPalette.textSecondary,fontSize:11,fontFamily:energyFontUi},top:4,right:10,itemWidth:16,itemHeight:3},
+    legend:{data:['功耗','利用率'],textStyle:{color:palette.textSecondary,fontSize:11,fontFamily:energyFontUi},top:4,right:10,itemWidth:16,itemHeight:3},
     grid:{left:52,right:52,top:36,bottom:30},
-    xAxis:{type:'category',data:hrs,boundaryGap:false,axisLine:{lineStyle:{color:energyPalette.line}},axisTick:{show:false},axisLabel:{color:energyPalette.textMuted,fontSize:10,interval:1}},
+    xAxis:{type:'category',data:hrs,boundaryGap:false,axisLine:{lineStyle:{color:palette.line}},axisTick:{show:false},axisLabel:{color:palette.textMuted,fontSize:10,interval:1}},
     yAxis:[
-      {type:'value',name:'W',nameTextStyle:{color:energyPalette.textMuted,fontSize:10},axisLine:{show:false},axisTick:{show:false},axisLabel:{color:energyPalette.textMuted,fontSize:10},splitLine:{lineStyle:{color:energyPalette.track,type:'dashed'}}},
-      {type:'value',name:'%',max:100,nameTextStyle:{color:energyPalette.textMuted,fontSize:10},axisLine:{show:false},axisTick:{show:false},axisLabel:{color:energyPalette.textMuted,fontSize:10},splitLine:{show:false}},
+      {type:'value',name:'W',nameTextStyle:{color:palette.textMuted,fontSize:10},axisLine:{show:false},axisTick:{show:false},axisLabel:{color:palette.textMuted,fontSize:10},splitLine:{lineStyle:{color:palette.track,type:'dashed'}}},
+      {type:'value',name:'%',max:100,nameTextStyle:{color:palette.textMuted,fontSize:10},axisLine:{show:false},axisTick:{show:false},axisLabel:{color:palette.textMuted,fontSize:10},splitLine:{show:false}},
     ],
     series:[
-      {name:'功耗',type:'line',smooth:.4,symbol:'none',lineStyle:{width:2.5,color:energyPalette.primary},areaStyle:{color:new graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(127, 142, 255, 0.18)'},{offset:1,color:'transparent'}])},data:pws,markArea:{silent:true,data:areas}},
+      {name:'功耗',type:'line',smooth:.4,symbol:'none',lineStyle:{width:2.5,color:palette.primary},areaStyle:{color:new graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(127, 142, 255, 0.18)'},{offset:1,color:'transparent'}])},data:pws,markArea:{silent:true,data:areas}},
       {name:'利用率',type:'line',smooth:.4,symbol:'none',yAxisIndex:1,lineStyle:{width:1.5,color:'rgba(110, 184, 255, 0.8)',type:[6,4]},data:uts},
     ],animationDuration:1500,
   })
@@ -341,16 +347,16 @@ function renderPred(){
   const c=ci('pd',predRef); if(!c||!prediction.value) return
   const ps=prediction.value.predictions||[], hrs=ps.map(p=>p.hour+':00')
   c.setOption({ backgroundColor:'transparent',
-    tooltip:{trigger:'axis',backgroundColor:energyPalette.panel,borderColor:energyPalette.border,textStyle:{color:energyPalette.text,fontSize:12,fontFamily:energyFontUi},extraCssText:'border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.24)',
-      formatter:pms=>{const i=pms[0]?.dataIndex??0,p=ps[i];if(!p)return'';const algoColor=p.algorithm==='多项式'?energyPalette.danger:p.algorithm==='线性回归'?energyPalette.warning:energyPalette.secondary;return`<div style="color:${energyPalette.textMuted};font-size:11px;margin-bottom:4px">${p.hour}:00 (${p.period==='peak'?'高峰':p.period==='valley'?'低谷':'平峰'})</div><div>预测: <b style="color:${energyPalette.secondary}">${p.predicted_power}W</b></div><div style="font-size:11px;color:${energyPalette.textMuted}">置信: ${p.lower_bound}W ~ ${p.upper_bound}W</div><div style="font-size:11px;margin-top:4px;padding-top:4px;border-top:1px solid ${energyPalette.line}"><span style="color:${algoColor};font-weight:600">${p.algorithm||'加权平均'}</span> <span style="color:${energyPalette.textFaint};margin-left:6px">RMSE ${p.rmse??'—'}</span> <span style="color:${energyPalette.textFaint};margin-left:6px">R² ${p.r_squared??'—'}</span></div>`},
+    tooltip:{trigger:'axis',backgroundColor:palette.panel,borderColor:palette.border,textStyle:{color:palette.text,fontSize:12,fontFamily:energyFontUi},extraCssText:'border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.24)',
+      formatter:pms=>{const i=pms[0]?.dataIndex??0,p=ps[i];if(!p)return'';const algoColor=p.algorithm==='多项式'?palette.danger:p.algorithm==='线性回归'?palette.warning:palette.secondary;return`<div style="color:${palette.textMuted};font-size:11px;margin-bottom:4px">${p.hour}:00 (${p.period==='peak'?'高峰':p.period==='valley'?'低谷':'平峰'})</div><div>预测: <b style="color:${palette.secondary}">${p.predicted_power}W</b></div><div style="font-size:11px;color:${palette.textMuted}">置信: ${p.lower_bound}W ~ ${p.upper_bound}W</div><div style="font-size:11px;margin-top:4px;padding-top:4px;border-top:1px solid ${palette.line}"><span style="color:${algoColor};font-weight:600">${p.algorithm||'加权平均'}</span> <span style="color:${palette.textFaint};margin-left:6px">RMSE ${p.rmse??'—'}</span> <span style="color:${palette.textFaint};margin-left:6px">R² ${p.r_squared??'—'}</span></div>`},
     },
     grid:{left:52,right:20,top:16,bottom:30},
-    xAxis:{type:'category',data:hrs,boundaryGap:false,axisLine:{lineStyle:{color:energyPalette.line}},axisTick:{show:false},axisLabel:{color:energyPalette.textMuted,fontSize:10,interval:3}},
-    yAxis:{type:'value',name:'W',nameTextStyle:{color:energyPalette.textMuted,fontSize:10},axisLine:{show:false},axisTick:{show:false},axisLabel:{color:energyPalette.textMuted,fontSize:10},splitLine:{lineStyle:{color:energyPalette.track,type:'dashed'}}},
+    xAxis:{type:'category',data:hrs,boundaryGap:false,axisLine:{lineStyle:{color:palette.line}},axisTick:{show:false},axisLabel:{color:palette.textMuted,fontSize:10,interval:3}},
+    yAxis:{type:'value',name:'W',nameTextStyle:{color:palette.textMuted,fontSize:10},axisLine:{show:false},axisTick:{show:false},axisLabel:{color:palette.textMuted,fontSize:10},splitLine:{lineStyle:{color:palette.track,type:'dashed'}}},
     series:[
       {name:'u',type:'line',smooth:.4,symbol:'none',lineStyle:{width:0},areaStyle:{color:'transparent'},data:ps.map(p=>p.upper_bound),stack:'b',z:1},
       {name:'l',type:'line',smooth:.4,symbol:'none',lineStyle:{width:0},areaStyle:{color:new graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(110, 184, 255, 0.16)'},{offset:1,color:'rgba(110, 184, 255, 0.04)'}])},data:ps.map(p=>p.lower_bound),stack:'b',z:1},
-      {name:'预测',type:'line',smooth:.4,showSymbol:false,lineStyle:{width:2.5,color:energyPalette.secondary},itemStyle:{color:energyPalette.secondary},data:ps.map(p=>p.predicted_power),z:10},
+      {name:'预测',type:'line',smooth:.4,showSymbol:false,lineStyle:{width:2.5,color:palette.secondary},itemStyle:{color:palette.secondary},data:ps.map(p=>p.predicted_power),z:10},
     ],animationDuration:1800,
   })
 }
@@ -358,16 +364,16 @@ function renderPred(){
 function renderEff(){
   const c=ci('ef',effRef); if(!c||!efficiency.value) return
   const gs=[...efficiency.value].sort((a,b)=>a.score-b.score)
-  const colors=gs.map(g=>g.score>=70?energyPalette.primary:g.score>=40?energyPalette.warning:energyPalette.danger)
+  const colors=gs.map(g=>g.score>=70?palette.primary:g.score>=40?palette.warning:palette.danger)
   c.setOption({ backgroundColor:'transparent',
-    tooltip:{trigger:'axis',axisPointer:{type:'shadow'},backgroundColor:energyPalette.panel,borderColor:energyPalette.border,textStyle:{color:energyPalette.text,fontSize:12,fontFamily:energyFontUi},extraCssText:'border-radius:8px',
-      formatter:ps=>{const i=ps[0]?.dataIndex??0,g=gs[i];if(!g)return'';return`<b>GPU ${g.gpu_index}</b><br/>效率: <b style="color:${colors[i]}">${g.score.toFixed(1)}</b><br/><span style="font-size:11px;color:${energyPalette.textMuted}">利用率:${g.gpu_utilization}% 功耗:${g.power_usage.toFixed(0)}/${g.power_limit}W</span>`},
+    tooltip:{trigger:'axis',axisPointer:{type:'shadow'},backgroundColor:palette.panel,borderColor:palette.border,textStyle:{color:palette.text,fontSize:12,fontFamily:energyFontUi},extraCssText:'border-radius:8px',
+      formatter:ps=>{const i=ps[0]?.dataIndex??0,g=gs[i];if(!g)return'';return`<b>GPU ${g.gpu_index}</b><br/>效率: <b style="color:${colors[i]}">${g.score.toFixed(1)}</b><br/><span style="font-size:11px;color:${palette.textMuted}">利用率:${g.gpu_utilization}% 功耗:${g.power_usage.toFixed(0)}/${g.power_limit}W</span>`},
     },
     grid:{left:65,right:50,top:8,bottom:8},
-    xAxis:{type:'value',max:100,axisLine:{show:false},axisTick:{show:false},axisLabel:{show:false},splitLine:{lineStyle:{color:energyPalette.track}}},
-    yAxis:{type:'category',data:gs.map(g=>`GPU ${g.gpu_index}`),inverse:true,axisLine:{show:false},axisTick:{show:false},axisLabel:{color:energyPalette.textSecondary,fontSize:12,fontWeight:500,fontFamily:energyFontUi}},
+    xAxis:{type:'value',max:100,axisLine:{show:false},axisTick:{show:false},axisLabel:{show:false},splitLine:{lineStyle:{color:palette.track}}},
+    yAxis:{type:'category',data:gs.map(g=>`GPU ${g.gpu_index}`),inverse:true,axisLine:{show:false},axisTick:{show:false},axisLabel:{color:palette.textSecondary,fontSize:12,fontWeight:500,fontFamily:energyFontUi}},
     series:[
-      {type:'bar',barWidth:16,z:2,data:gs.map((g,i)=>({value:g.score,itemStyle:{color:new graphic.LinearGradient(0,0,1,0,[{offset:0,color:`${colors[i]}25`},{offset:1,color:colors[i]}]),borderRadius:[0,4,4,0]}})),label:{show:true,position:'right',color:energyPalette.textMuted,fontSize:12,fontFamily:"'JetBrains Mono',monospace",fontWeight:600}},
+      {type:'bar',barWidth:16,z:2,data:gs.map((g,i)=>({value:g.score,itemStyle:{color:new graphic.LinearGradient(0,0,1,0,[{offset:0,color:`${colors[i]}25`},{offset:1,color:colors[i]}]),borderRadius:[0,4,4,0]}})),label:{show:true,position:'right',color:palette.textMuted,fontSize:12,fontFamily:"'JetBrains Mono',monospace",fontWeight:600}},
       {type:'bar',barWidth:16,z:1,silent:true,data:gs.map(()=>({value:100,itemStyle:{color:'rgba(255, 255, 255, 0.03)',borderRadius:[0,4,4,0]}}))},
     ],animationDuration:1200,
   })
@@ -383,14 +389,14 @@ function renderComp(){
   const optIdx=bs.findIndex(p=>p.timestamp>=optTime)
   const markData=optIdx>=0?[{xAxis:labels[optIdx]}]:[]
   c.setOption({ backgroundColor:'transparent',
-    tooltip:{trigger:'axis',backgroundColor:energyPalette.panel,borderColor:energyPalette.border,textStyle:{color:energyPalette.text,fontSize:12,fontFamily:energyFontUi},extraCssText:'border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.24)'},
-    legend:{data:['基线功耗','实际功耗','节省量'],textStyle:{color:energyPalette.textSecondary,fontSize:11,fontFamily:energyFontUi},top:4,right:10,itemWidth:16,itemHeight:3},
+    tooltip:{trigger:'axis',backgroundColor:palette.panel,borderColor:palette.border,textStyle:{color:palette.text,fontSize:12,fontFamily:energyFontUi},extraCssText:'border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.24)'},
+    legend:{data:['基线功耗','实际功耗','节省量'],textStyle:{color:palette.textSecondary,fontSize:11,fontFamily:energyFontUi},top:4,right:10,itemWidth:16,itemHeight:3},
     grid:{left:52,right:20,top:36,bottom:30},
-    xAxis:{type:'category',data:labels,boundaryGap:false,axisLine:{lineStyle:{color:energyPalette.line}},axisTick:{show:false},axisLabel:{color:energyPalette.textMuted,fontSize:10,interval:Math.max(1,Math.floor(labels.length/12))}},
-    yAxis:{type:'value',name:'W',nameTextStyle:{color:energyPalette.textMuted,fontSize:10},axisLine:{show:false},axisTick:{show:false},axisLabel:{color:energyPalette.textMuted,fontSize:10},splitLine:{lineStyle:{color:energyPalette.track,type:'dashed'}}},
+    xAxis:{type:'category',data:labels,boundaryGap:false,axisLine:{lineStyle:{color:palette.line}},axisTick:{show:false},axisLabel:{color:palette.textMuted,fontSize:10,interval:Math.max(1,Math.floor(labels.length/12))}},
+    yAxis:{type:'value',name:'W',nameTextStyle:{color:palette.textMuted,fontSize:10},axisLine:{show:false},axisTick:{show:false},axisLabel:{color:palette.textMuted,fontSize:10},splitLine:{lineStyle:{color:palette.track,type:'dashed'}}},
     series:[
-      {name:'基线功耗',type:'line',smooth:.4,symbol:'none',lineStyle:{width:2,color:energyPalette.danger,type:'dashed',opacity:0.7},data:bs.map(p=>p.power),markLine:{silent:true,symbol:'none',lineStyle:{color:energyPalette.primary,type:'dashed',width:1.5},data:markData.map(d=>({...d,label:{formatter:'优化点',color:energyPalette.primary,fontSize:10,fontFamily:energyFontUi}}))}},
-      {name:'实际功耗',type:'line',smooth:.4,symbol:'none',lineStyle:{width:2.5,color:energyPalette.primary},areaStyle:{color:new graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(127, 142, 255, 0.14)'},{offset:1,color:'transparent'}])},data:as2.map(p=>p.power)},
+      {name:'基线功耗',type:'line',smooth:.4,symbol:'none',lineStyle:{width:2,color:palette.danger,type:'dashed',opacity:0.7},data:bs.map(p=>p.power),markLine:{silent:true,symbol:'none',lineStyle:{color:palette.primary,type:'dashed',width:1.5},data:markData.map(d=>({...d,label:{formatter:'优化点',color:palette.primary,fontSize:10,fontFamily:energyFontUi}}))}},
+      {name:'实际功耗',type:'line',smooth:.4,symbol:'none',lineStyle:{width:2.5,color:palette.primary},areaStyle:{color:new graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(127, 142, 255, 0.14)'},{offset:1,color:'transparent'}])},data:as2.map(p=>p.power)},
       {name:'节省量',type:'bar',barWidth:4,itemStyle:{color:'rgba(127, 142, 255, 0.38)',borderRadius:[2,2,0,0]},data:ss.map(p=>p.saved)},
     ],animationDuration:1500,
   })
@@ -511,23 +517,23 @@ watch(activeTab, () => {
       </div>
       <div class="kpi-ink">
         <div class="kpi-ink__label">月预估费用</div>
-        <div class="kpi-ink__val stat-value" :style="{ color: energyPalette.warning }">¥{{ an.cost.toFixed(0) }}</div>
+        <div class="kpi-ink__val stat-value" :style="{ color: palette.warning }">¥{{ an.cost.toFixed(0) }}</div>
         <div class="kpi-ink__hint">¥0.85/kWh 商业电价</div>
       </div>
       <div class="kpi-ink">
         <div class="kpi-ink__label">今日碳排放</div>
-        <div class="kpi-ink__val stat-value" :style="{ color: energyPalette.primary }">{{ an.co2.toFixed(2) }}<span class="kpi-ink__unit">kg</span></div>
-        <div class="kpi-ink__hint" :style="{ color: energyPalette.primary }">≈ {{ carbon?.trees_equivalent?.toFixed(1)||'0' }} 棵树/天</div>
+        <div class="kpi-ink__val stat-value" :style="{ color: palette.primary }">{{ an.co2.toFixed(2) }}<span class="kpi-ink__unit">kg</span></div>
+        <div class="kpi-ink__hint" :style="{ color: palette.primary }">≈ {{ carbon?.trees_equivalent?.toFixed(1)||'0' }} 棵树/天</div>
       </div>
       <div class="kpi-ink">
         <div class="kpi-ink__label">节能比例</div>
-        <div class="kpi-ink__val stat-value" :style="{ color: an.saving >= 20 ? energyPalette.primary : energyPalette.secondary }">{{ an.saving.toFixed(1) }}<span class="kpi-ink__unit">%</span></div>
+        <div class="kpi-ink__val stat-value" :style="{ color: an.saving >= 20 ? palette.primary : palette.secondary }">{{ an.saving.toFixed(1) }}<span class="kpi-ink__unit">%</span></div>
         <div class="kpi-ink__bar"><div class="kpi-ink__bar-f" :style="{width:Math.min(an.saving,100)+'%'}"></div></div>
       </div>
       <div class="kpi-ink">
         <div class="kpi-ink__label">效率评分</div>
-        <div class="kpi-ink__val stat-value" :style="{ color: an.score >= 70 ? energyPalette.primary : an.score >= 40 ? energyPalette.warning : energyPalette.danger }">{{ an.score.toFixed(0) }}<span class="kpi-ink__unit">分</span></div>
-        <div class="kpi-ink__bar"><div class="kpi-ink__bar-f" :style="{width:Math.min(an.score,100)+'%',background:an.score>=70?energyPalette.primary:an.score>=40?energyPalette.warning:energyPalette.danger}"></div></div>
+        <div class="kpi-ink__val stat-value" :style="{ color: an.score >= 70 ? palette.primary : an.score >= 40 ? palette.warning : palette.danger }">{{ an.score.toFixed(0) }}<span class="kpi-ink__unit">分</span></div>
+        <div class="kpi-ink__bar"><div class="kpi-ink__bar-f" :style="{width:Math.min(an.score,100)+'%',background:an.score>=70?palette.primary:an.score>=40?palette.warning:palette.danger}"></div></div>
       </div>
     </div>
 
@@ -593,10 +599,10 @@ watch(activeTab, () => {
       <div class="ink-card">
         <div class="ink-card__hd"><span class="ink-card__title">碳排放</span><span class="ink-stamp ink-stamp--teal">碳</span></div>
         <div class="carbon-row">
-          <div class="carbon-item"><div class="carbon-item__v stat-value" :style="{ color: energyPalette.primary, fontSize: '1.75rem' }">{{ carbon?.co2_kg?.toFixed(2)||'—' }}</div><div class="carbon-item__l">kgCO₂ / 日</div></div>
-          <div class="carbon-item"><div class="carbon-item__v stat-value" :style="{ color: energyPalette.secondary, fontSize: '1.75rem' }">{{ carbon?.trees_equivalent?.toFixed(1)||'—' }}</div><div class="carbon-item__l">🌳 等效树木</div></div>
+          <div class="carbon-item"><div class="carbon-item__v stat-value" :style="{ color: palette.primary, fontSize: '1.75rem' }">{{ carbon?.co2_kg?.toFixed(2)||'—' }}</div><div class="carbon-item__l">kgCO₂ / 日</div></div>
+          <div class="carbon-item"><div class="carbon-item__v stat-value" :style="{ color: palette.secondary, fontSize: '1.75rem' }">{{ carbon?.trees_equivalent?.toFixed(1)||'—' }}</div><div class="carbon-item__l">🌳 等效树木</div></div>
         </div>
-        <div class="carbon-meta"><span>碳因子 {{ carbon?.carbon_factor||'0.5703' }}</span><span>已减排 <b :style="{ color: energyPalette.primary }">{{ carbon?.co2_saved_kg?.toFixed(3)||'0' }}</b> kg</span></div>
+        <div class="carbon-meta"><span>碳因子 {{ carbon?.carbon_factor||'0.5703' }}</span><span>已减排 <b :style="{ color: palette.primary }">{{ carbon?.co2_saved_kg?.toFixed(3)||'0' }}</b> kg</span></div>
       </div>
       <div class="ink-card">
         <div class="ink-card__hd"><span class="ink-card__title">时段分布</span><span class="ink-period-sm" :style="{color:tp.color,background:tp.bg}">{{ tp.label }}</span></div>
@@ -616,9 +622,9 @@ watch(activeTab, () => {
       <div class="ink-card__hd">
         <span class="ink-card__title">廿四时功耗</span>
         <div class="trend-legend">
-          <span class="trend-legend__i"><span class="trend-legend__bar" :style="{ background: energyPalette.danger }"></span>高峰</span>
-          <span class="trend-legend__i"><span class="trend-legend__bar" :style="{ background: energyPalette.primary }"></span>低谷</span>
-          <span class="trend-legend__i"><span class="trend-legend__bar" :style="{ background: energyPalette.tertiary }"></span>平峰</span>
+          <span class="trend-legend__i"><span class="trend-legend__bar" :style="{ background: palette.danger }"></span>高峰</span>
+          <span class="trend-legend__i"><span class="trend-legend__bar" :style="{ background: palette.primary }"></span>低谷</span>
+          <span class="trend-legend__i"><span class="trend-legend__bar" :style="{ background: palette.tertiary }"></span>平峰</span>
         </div>
       </div>
       <div ref="trendRef" style="height:300px"></div>
@@ -716,19 +722,19 @@ watch(activeTab, () => {
         <div class="opt-compare">
           <div class="opt-compare__item">
             <div class="opt-compare__label">优化前</div>
-            <div class="opt-compare__val stat-value" :style="{ color: energyPalette.danger }">{{ optimizeResult.baseline_power?.toFixed(0)||'—' }}<span class="opt-compare__u">W</span></div>
+            <div class="opt-compare__val stat-value" :style="{ color: palette.danger }">{{ optimizeResult.baseline_power?.toFixed(0)||'—' }}<span class="opt-compare__u">W</span></div>
           </div>
           <div class="opt-compare__arrow">
-            <svg width="48" height="24" viewBox="0 0 48 24"><path d="M2 12 H38 M32 6 L38 12 L32 18" :stroke="energyPalette.primary" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+            <svg width="48" height="24" viewBox="0 0 48 24"><path d="M2 12 H38 M32 6 L38 12 L32 18" :stroke="palette.primary" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
           </div>
           <div class="opt-compare__item">
             <div class="opt-compare__label">优化后</div>
-            <div class="opt-compare__val stat-value" :style="{ color: energyPalette.primary }">{{ optimizeResult.optimized_power?.toFixed(0)||'—' }}<span class="opt-compare__u">W</span></div>
+            <div class="opt-compare__val stat-value" :style="{ color: palette.primary }">{{ optimizeResult.optimized_power?.toFixed(0)||'—' }}<span class="opt-compare__u">W</span></div>
           </div>
           <div class="opt-compare__sep"></div>
           <div class="opt-compare__item">
             <div class="opt-compare__label">节省</div>
-            <div class="opt-compare__val stat-value" :style="{ color: energyPalette.primary, fontSize: '2.25rem' }">{{ optimizeResult.saving_pct?.toFixed(1)||'0' }}<span class="opt-compare__u" style="font-size:1rem">%</span></div>
+            <div class="opt-compare__val stat-value" :style="{ color: palette.primary, fontSize: '2.25rem' }">{{ optimizeResult.saving_pct?.toFixed(1)||'0' }}<span class="opt-compare__u" style="font-size:1rem">%</span></div>
             <div class="opt-compare__meta">-{{ optimizeResult.estimated_saving_w?.toFixed(0)||'0' }}W · ¥{{ optimizeResult.cost_saved_per_hour?.toFixed(3)||'0' }}/h</div>
           </div>
         </div>
@@ -756,8 +762,8 @@ watch(activeTab, () => {
       <div class="ink-card__hd">
         <span class="ink-card__title">优化效果对比</span>
         <div class="trend-legend">
-          <span class="trend-legend__i"><span class="trend-legend__bar" :style="{ background: energyPalette.danger, borderStyle: 'dashed' }"></span>基线</span>
-          <span class="trend-legend__i"><span class="trend-legend__bar" :style="{ background: energyPalette.primary }"></span>实际</span>
+          <span class="trend-legend__i"><span class="trend-legend__bar" :style="{ background: palette.danger, borderStyle: 'dashed' }"></span>基线</span>
+          <span class="trend-legend__i"><span class="trend-legend__bar" :style="{ background: palette.primary }"></span>实际</span>
           <span class="trend-legend__i"><span class="trend-legend__bar" :style="{ background: 'rgba(127, 142, 255, 0.38)', height: '8px', borderRadius: '2px' }"></span>节省</span>
           <span v-if="historyComparison?.total_saved_kwh" class="comp-saved">累计节省 <b>{{ historyComparison.total_saved_kwh.toFixed(1) }}</b> kWh</span>
         </div>
@@ -778,9 +784,9 @@ watch(activeTab, () => {
       <div v-else class="schedule-timeline">
         <div class="sched-stats">
           <span>动作 <b>{{ scheduleHistory.execution_total ?? scheduleHistory.total }}</b> 次</span>
-          <span :style="{ color: energyPalette.primary }">成功 <b>{{ scheduleHistory.success_count }}</b></span>
-          <span :style="{ color: energyPalette.danger }">失败 <b>{{ scheduleHistory.failure_count ?? ((scheduleHistory.execution_total ?? scheduleHistory.total) - scheduleHistory.success_count) }}</b></span>
-          <span :style="{ color: energyPalette.secondary }">AI复盘 <b>{{ scheduleHistory.evaluation_total || 0 }}</b></span>
+          <span :style="{ color: palette.primary }">成功 <b>{{ scheduleHistory.success_count }}</b></span>
+          <span :style="{ color: palette.danger }">失败 <b>{{ scheduleHistory.failure_count ?? ((scheduleHistory.execution_total ?? scheduleHistory.total) - scheduleHistory.success_count) }}</b></span>
+          <span :style="{ color: palette.secondary }">AI复盘 <b>{{ scheduleHistory.evaluation_total || 0 }}</b></span>
         </div>
         <div class="timeline-list">
           <div v-for="log in scheduleHistory.logs" :key="log.id" class="timeline-item">
@@ -796,7 +802,7 @@ watch(activeTab, () => {
               <div class="timeline-card__reason">{{ log.reason }}</div>
               <!-- D4: AI调度评估 -->
               <div v-if="parseEvaluation(log)" class="ai-eval-inline">
-                <span class="ai-eval-inline__score" :style="{ color: parseEvaluation(log).score >= 70 ? energyPalette.primary : parseEvaluation(log).score >= 40 ? energyPalette.warning : energyPalette.danger }">{{ parseEvaluation(log).score }}分</span>
+                <span class="ai-eval-inline__score" :style="{ color: parseEvaluation(log).score >= 70 ? palette.primary : parseEvaluation(log).score >= 40 ? palette.warning : palette.danger }">{{ parseEvaluation(log).score }}分</span>
                 <span class="ai-eval-inline__verdict">{{ parseEvaluation(log).verdict }}</span>
               </div>
             </div>

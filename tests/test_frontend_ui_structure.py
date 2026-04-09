@@ -138,6 +138,70 @@ class FrontendUIStructureTests(unittest.TestCase):
         self.assertIn("path: '/change-password'", main_text)
         self.assertIn("router.beforeEach", main_text)
 
+    def test_app_bootstraps_theme_mode_sync(self):
+        app_text = (ROOT / "frontend/src/App.vue").read_text(encoding="utf-8")
+
+        self.assertIn("hydrateThemePreference", app_text)
+        self.assertIn("applyResolvedThemeToDocument", app_text)
+        self.assertIn("watchSystemTheme", app_text)
+
+    def test_global_styles_define_dark_and_light_theme_token_roots(self):
+        style_text = (ROOT / "frontend/src/style.css").read_text(encoding="utf-8")
+
+        self.assertIn(":root[data-theme='dark']", style_text)
+        self.assertIn(":root[data-theme='light']", style_text)
+        self.assertIn("--app-body-background", style_text)
+        self.assertIn("--state-ok-bg", style_text)
+        self.assertIn("--selection-bg", style_text)
+        self.assertIn("--scrollbar-thumb", style_text)
+
+    def test_console_shell_uses_theme_mode_switch_in_sidebar_and_mobile_actions(self):
+        sidebar_text = (ROOT / "frontend/src/components/app/AppPrimarySidebar.vue").read_text(encoding="utf-8")
+        console_text = (ROOT / "frontend/src/views/ConsoleShell.vue").read_text(encoding="utf-8")
+
+        self.assertTrue((ROOT / "frontend/src/components/app/ThemeModeSwitch.vue").exists())
+        self.assertIn("ThemeModeSwitch", sidebar_text)
+        self.assertIn("theme-preference", sidebar_text)
+        self.assertIn("ThemeModeSwitch", console_text)
+
+    def test_theme_mode_switch_uses_single_row_inline_layout_when_expanded(self):
+        text = (ROOT / "frontend/src/components/app/ThemeModeSwitch.vue").read_text(encoding="utf-8")
+
+        self.assertIn("theme-mode-switch__group--inline", text)
+        self.assertIn("grid-template-columns: repeat(3, minmax(0, 1fr));", text)
+        self.assertIn("theme-mode-switch__option-label", text)
+
+    def test_shell_and_import_workspaces_map_local_theme_tokens_to_semantic_tokens(self):
+        console_text = (ROOT / "frontend/src/views/ConsoleShell.vue").read_text(encoding="utf-8")
+        import_text = (ROOT / "frontend/src/views/ImportWorkspace.vue").read_text(encoding="utf-8")
+
+        self.assertIn("--console-text: var(--text-primary);", console_text)
+        self.assertIn("--console-panel: var(--bg-card);", console_text)
+        self.assertIn("--import-text: var(--text-primary);", import_text)
+        self.assertIn("--import-panel-bg: var(--bg-card);", import_text)
+
+    def test_auth_and_primary_views_use_theme_aware_surface_variables(self):
+        login_text = (ROOT / "frontend/src/views/LoginView.vue").read_text(encoding="utf-8")
+        change_password_text = (ROOT / "frontend/src/views/ChangePasswordView.vue").read_text(encoding="utf-8")
+        dashboard_text = (ROOT / "frontend/src/views/Dashboard.vue").read_text(encoding="utf-8")
+        governance_text = (ROOT / "frontend/src/views/GovernanceLayout.vue").read_text(encoding="utf-8")
+        alert_text = (ROOT / "frontend/src/views/AlertCenter.vue").read_text(encoding="utf-8")
+        monitor_text = (ROOT / "frontend/src/views/MonitorCenter.vue").read_text(encoding="utf-8")
+        energy_text = (ROOT / "frontend/src/views/EnergyOptimization.vue").read_text(encoding="utf-8")
+        ai_text = (ROOT / "frontend/src/views/AIAssistant.vue").read_text(encoding="utf-8")
+
+        self.assertIn("var(--auth-hero-title-gradient", login_text)
+        self.assertIn("var(--auth-hero-title-gradient", change_password_text)
+        self.assertNotIn("background: linear-gradient(180deg, #ffffff 0%", login_text)
+        self.assertNotIn("background: linear-gradient(180deg, #ffffff 0%", change_password_text)
+        self.assertIn("var(--state-ok-bg)", dashboard_text)
+        self.assertIn("var(--state-ok-bg)", governance_text)
+        self.assertIn("const severityConfig = computed(() => ({", alert_text)
+        self.assertIn("const monitorPalette = computed(() => ({", monitor_text)
+        self.assertIn("const energyPalette = computed(() => ({", energy_text)
+        self.assertIn("var(--state-warning-bg)", ai_text)
+        self.assertIn("var(--state-danger-bg)", ai_text)
+
     def test_primary_sidebar_keeps_compact_header_and_nav_layout(self):
         shell_text = (ROOT / "frontend/src/components/app/AppPrimarySidebar.vue").read_text(encoding="utf-8")
         nav_text = (ROOT / "frontend/src/components/app/SidebarNavRail.vue").read_text(encoding="utf-8")

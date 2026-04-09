@@ -1,6 +1,7 @@
 <script setup>
 import { proxyRefs } from 'vue'
 import AppPrimarySidebar from '../components/app/AppPrimarySidebar.vue'
+import ThemeModeSwitch from '../components/app/ThemeModeSwitch.vue'
 import { useConsoleShell } from '../composables/useConsoleShell.js'
 
 
@@ -15,12 +16,15 @@ const shell = proxyRefs(useConsoleShell())
         :collapsed="shell.sidebarCollapsed"
         :current-path="shell.route.path"
         :nav-items="shell.navItems"
+        :theme-preference="shell.themePreference"
+        :resolved-theme="shell.resolvedTheme"
         :summary="shell.sidebarSummary"
         :switch-server-busy="shell.switchServerBusy"
         :workspace-locked="shell.workspaceLocked"
         @navigate="shell.navigateTo"
         @switch-server="shell.switchServer"
         @toggle-collapse="shell.toggleSidebarCollapsed"
+        @update:theme-preference="shell.setThemePreference"
       />
     </aside>
 
@@ -33,7 +37,13 @@ const shell = proxyRefs(useConsoleShell())
             <span>{{ shell.appInfo.runtimeModeLabel }} · {{ shell.wsConnected ? '实时在线' : '实时离线' }}</span>
           </div>
         </div>
-      <div class="app-mobile-nav__actions">
+        <div class="app-mobile-nav__actions">
+          <ThemeModeSwitch
+            compact
+            :preference="shell.themePreference"
+            :resolved-theme="shell.resolvedTheme"
+            @update:preference="shell.setThemePreference"
+          />
           <button
             type="button"
             class="app-mobile-nav__action app-mobile-nav__action--primary"
@@ -175,31 +185,31 @@ const shell = proxyRefs(useConsoleShell())
 <style scoped>
 .app-shell {
   --console-sticky-top: 22px;
-  --console-bg: #090d13;
-  --console-shell: #0d131b;
-  --console-panel: #121a24;
-  --console-panel-hover: #16202b;
-  --console-surface: #101720;
-  --console-surface-alt: #18212d;
-  --console-border: rgba(255, 255, 255, 0.08);
-  --console-border-strong: rgba(94, 106, 210, 0.34);
-  --console-text: #edf0f4;
-  --console-text-secondary: #c6ccd5;
-  --console-text-muted: #8b939f;
-  --console-accent: #5e6ad2;
-  --console-accent-bright: #6872d9;
-  --console-accent-soft: rgba(94, 106, 210, 0.16);
-  --console-warning: #f4b95d;
-  --console-warning-soft: rgba(244, 185, 93, 0.14);
-  --console-danger: #ff7894;
-  --console-danger-soft: rgba(255, 120, 148, 0.14);
+  --console-bg: var(--bg-base);
+  --console-shell: var(--bg-primary);
+  --console-panel: var(--bg-card);
+  --console-panel-hover: var(--bg-card-hover);
+  --console-surface: var(--bg-surface);
+  --console-surface-alt: var(--bg-secondary);
+  --console-border: var(--border-color);
+  --console-border-strong: var(--border-strong);
+  --console-text: var(--text-primary);
+  --console-text-secondary: var(--text-secondary);
+  --console-text-muted: var(--text-muted);
+  --console-accent: var(--accent-primary);
+  --console-accent-bright: var(--accent-secondary);
+  --console-accent-soft: var(--state-ok-bg);
+  --console-warning: var(--accent-warning);
+  --console-warning-soft: var(--state-warning-bg);
+  --console-danger: var(--accent-danger);
+  --console-danger-soft: var(--state-critical-bg);
   position: relative;
   isolation: isolate;
   min-height: 100vh;
   display: grid;
   grid-template-columns: 320px minmax(0, 1fr);
   align-items: start;
-  background: linear-gradient(180deg, #0b1117 0%, var(--console-bg) 100%);
+  background: linear-gradient(180deg, var(--console-shell) 0%, var(--console-bg) 100%);
   transition: grid-template-columns 0.34s cubic-bezier(0.22, 1, 0.36, 1);
   will-change: grid-template-columns;
 }
@@ -213,7 +223,7 @@ const shell = proxyRefs(useConsoleShell())
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.028), transparent 18%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 18%);
   z-index: 0;
 }
 
@@ -233,7 +243,7 @@ const shell = proxyRefs(useConsoleShell())
 .app-shell :deep(.tech-card:hover) {
   transform: translateY(-1px);
   background: var(--console-panel-hover);
-  border-color: rgba(255, 255, 255, 0.12);
+  border-color: var(--border-hover);
   box-shadow: 0 22px 54px rgba(0, 0, 0, 0.32);
 }
 
@@ -267,21 +277,21 @@ const shell = proxyRefs(useConsoleShell())
 }
 
 .app-shell :deep(.status-badge--ok) {
-  color: #dbe0ff;
-  border-color: var(--console-border-strong);
-  background: var(--console-accent-soft);
+  color: var(--state-ok-text);
+  border-color: var(--state-ok-border);
+  background: var(--state-ok-bg);
 }
 
 .app-shell :deep(.status-badge--warning) {
-  color: #f7d79d;
-  border-color: rgba(244, 185, 93, 0.22);
-  background: var(--console-warning-soft);
+  color: var(--state-warning-text);
+  border-color: var(--state-warning-border);
+  background: var(--state-warning-bg);
 }
 
 .app-shell :deep(.status-badge--critical) {
-  color: #ffd2de;
-  border-color: rgba(255, 120, 148, 0.22);
-  background: var(--console-danger-soft);
+  color: var(--state-critical-text);
+  border-color: var(--state-critical-border);
+  background: var(--state-critical-bg);
 }
 
 .app-shell :deep(.btn-tech) {
@@ -300,8 +310,8 @@ const shell = proxyRefs(useConsoleShell())
 
 .app-shell :deep(.btn-tech:hover:not(:disabled)) {
   transform: translateY(-1px);
-  border-color: rgba(255, 255, 255, 0.12);
-  background: #1c2531;
+  border-color: var(--border-hover);
+  background: var(--console-panel-hover);
   box-shadow: none;
 }
 
@@ -345,8 +355,8 @@ const shell = proxyRefs(useConsoleShell())
   top: var(--console-sticky-top);
   margin: -4px 0 0;
   padding: 10px 0 14px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  background: linear-gradient(180deg, rgba(9, 13, 19, 0.96), rgba(9, 13, 19, 0.84) 72%, transparent);
+  border-bottom: 1px solid var(--console-border);
+  background: linear-gradient(180deg, var(--console-shell), transparent 72%);
   backdrop-filter: none;
 }
 
@@ -362,15 +372,15 @@ const shell = proxyRefs(useConsoleShell())
 }
 
 .app-shell :deep(.workspace-tab:hover) {
-  border-color: rgba(255, 255, 255, 0.12);
-  background: #151e29;
+  border-color: var(--border-hover);
+  background: var(--console-panel-hover);
   box-shadow: none;
 }
 
 .app-shell :deep(.workspace-tab--active) {
-  border-color: var(--console-border-strong);
-  background: linear-gradient(180deg, rgba(94, 106, 210, 0.2), rgba(94, 106, 210, 0.08));
-  box-shadow: inset 0 0 0 1px rgba(94, 106, 210, 0.12);
+  border-color: var(--state-ok-border);
+  background: var(--state-ok-bg);
+  box-shadow: inset 0 0 0 1px var(--state-ok-border);
 }
 
 .app-sidebar {
@@ -412,8 +422,8 @@ const shell = proxyRefs(useConsoleShell())
   gap: 16px;
   padding: 16px;
   border-radius: 28px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(10, 15, 21, 0.88);
+  border: 1px solid var(--console-border);
+  background: var(--bg-strong);
   box-shadow:
     0 28px 72px rgba(0, 0, 0, 0.34),
     inset 0 1px 0 rgba(255, 255, 255, 0.03);
@@ -486,15 +496,15 @@ const shell = proxyRefs(useConsoleShell())
 }
 
 .app-chrome__status--ok {
-  border-color: var(--console-border-strong);
-  background: var(--console-accent-soft);
-  color: #dbe0ff;
+  border-color: var(--state-ok-border);
+  background: var(--state-ok-bg);
+  color: var(--state-ok-text);
 }
 
 .app-chrome__status--warning {
-  border-color: rgba(244, 185, 93, 0.22);
-  background: var(--console-warning-soft);
-  color: #f7d79d;
+  border-color: var(--state-warning-border);
+  background: var(--state-warning-bg);
+  color: var(--state-warning-text);
 }
 
 .app-chrome__desc {
@@ -556,25 +566,25 @@ const shell = proxyRefs(useConsoleShell())
 }
 
 .app-banner--neutral {
-  border-color: var(--console-border-strong);
-  background: rgba(94, 106, 210, 0.1);
+  border-color: var(--state-ok-border);
+  background: var(--state-ok-bg);
 }
 
 .app-banner--warning {
-  border-color: rgba(244, 185, 93, 0.22);
-  background: var(--console-warning-soft);
+  border-color: var(--state-warning-border);
+  background: var(--state-warning-bg);
 }
 
 .app-banner--critical {
-  border-color: rgba(255, 120, 148, 0.22);
-  background: var(--console-danger-soft);
+  border-color: var(--state-critical-border);
+  background: var(--state-critical-bg);
 }
 
 .app-banner__close,
 .app-banner__link {
   border: none;
   background: transparent;
-  color: #d9dfff;
+  color: var(--console-accent);
   cursor: pointer;
   font: inherit;
   font-weight: 600;
@@ -697,6 +707,11 @@ const shell = proxyRefs(useConsoleShell())
     display: flex;
     flex-wrap: wrap;
     gap: 10px;
+    align-items: center;
+  }
+
+  .app-mobile-nav__actions :deep(.theme-mode-switch) {
+    flex: 0 0 auto;
   }
 
   .app-mobile-nav__action {
@@ -733,8 +748,8 @@ const shell = proxyRefs(useConsoleShell())
   }
 
   .app-mobile-nav__item--active {
-    border-color: var(--console-border-strong);
-    background: rgba(94, 106, 210, 0.12);
+    border-color: var(--state-ok-border);
+    background: var(--state-ok-bg);
   }
 
   .app-mobile-nav__item--locked {
@@ -742,7 +757,7 @@ const shell = proxyRefs(useConsoleShell())
   }
 
   .app-mobile-nav__seal {
-    color: #d9dfff;
+    color: var(--state-ok-text);
     font-family: var(--font-seal);
   }
 

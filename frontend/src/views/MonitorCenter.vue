@@ -9,6 +9,7 @@ import MonitorWorkspaceSummary from '../components/monitor/MonitorWorkspaceSumma
 import WorkspacePaneLayout from '../components/workspace/WorkspacePaneLayout.vue'
 import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
 import { useMonitorData } from '../composables/useMonitorData.js'
+import { readThemeVar } from '../lib/themeMode.js'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart, BarChart, CustomChart, GaugeChart } from 'echarts/charts'
@@ -36,19 +37,24 @@ const networkSpeed = ref({ sent: 0, recv: 0 })
 const monitorRefresh = useMonitorData(activeTab, timelineHours, {
   onData: applyMonitorTabData,
 })
-const monitorPalette = Object.freeze({
-  primary: '#7F8EFF',
-  secondary: '#6EB8FF',
-  warning: '#F4B95D',
-  danger: '#FF6F96',
-  text: '#EDEEF7',
-  textSecondary: '#C6CEE1',
-  textMuted: '#9EA8C0',
-  line: 'rgba(184, 197, 236, 0.1)',
-  track: 'rgba(184, 197, 236, 0.12)',
-  border: 'rgba(127, 142, 255, 0.22)',
-  panel: 'rgba(18, 26, 46, 0.96)',
-  inactive: '#7380A0',
+const monitorPalette = computed(() => ({
+  primary: readThemeVar('--accent-primary'),
+  secondary: readThemeVar('--accent-tertiary'),
+  warning: readThemeVar('--accent-warning'),
+  danger: readThemeVar('--accent-danger'),
+  text: readThemeVar('--text-primary'),
+  textSecondary: readThemeVar('--text-secondary'),
+  textMuted: readThemeVar('--text-tertiary'),
+  line: readThemeVar('--border-color'),
+  track: readThemeVar('--bg-surface'),
+  border: readThemeVar('--border-strong'),
+  panel: readThemeVar('--bg-strong'),
+  inactive: readThemeVar('--text-muted'),
+}))
+const palette = new Proxy({}, {
+  get(_target, key) {
+    return palette.value[key]
+  },
 })
 const monitorFontUi = "'PingFang SC','Microsoft YaHei','Noto Sans SC','Segoe UI',sans-serif"
 const TIMELINE_RANGE_OPTIONS = Object.freeze([
@@ -83,9 +89,9 @@ const fmtTime = (ts) => {
   return new Date(ts * 1000).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
-function usageColor(value, warning = 70, critical = 90, normal = monitorPalette.primary) {
-  if (value >= critical) return monitorPalette.danger
-  if (value >= warning) return monitorPalette.warning
+function usageColor(value, warning = 70, critical = 90, normal = palette.primary) {
+  if (value >= critical) return palette.danger
+  if (value >= warning) return palette.warning
   return normal
 }
 
@@ -165,22 +171,22 @@ const cpuCoreOption = computed(() => {
   return {
     tooltip: {
       trigger: 'axis',
-      backgroundColor: monitorPalette.panel,
-      borderColor: monitorPalette.border,
-      textStyle: { color: monitorPalette.text, fontFamily: monitorFontUi },
+      backgroundColor: palette.panel,
+      borderColor: palette.border,
+      textStyle: { color: palette.text, fontFamily: monitorFontUi },
     },
     grid: { top: 30, right: 16, bottom: 24, left: 40 },
     xAxis: {
       type: 'category',
       data: cores.map((_, i) => 'C' + i),
-      axisLabel: { color: monitorPalette.textMuted, fontSize: 10, fontFamily: monitorFontUi },
-      axisLine: { lineStyle: { color: monitorPalette.line } },
+      axisLabel: { color: palette.textMuted, fontSize: 10, fontFamily: monitorFontUi },
+      axisLine: { lineStyle: { color: palette.line } },
     },
     yAxis: {
       type: 'value',
       max: 100,
-      axisLabel: { color: monitorPalette.textMuted, formatter: '{value}%', fontFamily: monitorFontUi },
-      splitLine: { lineStyle: { color: monitorPalette.line } },
+      axisLabel: { color: palette.textMuted, formatter: '{value}%', fontFamily: monitorFontUi },
+      splitLine: { lineStyle: { color: palette.line } },
     },
     series: [{
       type: 'bar', data: cores.map(v => ({
@@ -204,23 +210,23 @@ const trainingChartOption = computed(() => {
 
   const series = [{
     name: 'Loss', type: 'line', data: losses, smooth: true,
-    lineStyle: { color: monitorPalette.danger, width: 2 }, itemStyle: { color: monitorPalette.danger },
+    lineStyle: { color: palette.danger, width: 2 }, itemStyle: { color: palette.danger },
     symbol: 'none', yAxisIndex: 0,
   }]
   const yAxes = [{
-    type: 'value', name: 'Loss', nameTextStyle: { color: monitorPalette.danger, fontFamily: monitorFontUi },
-    axisLabel: { color: monitorPalette.textMuted, fontFamily: monitorFontUi }, splitLine: { lineStyle: { color: monitorPalette.line } },
+    type: 'value', name: 'Loss', nameTextStyle: { color: palette.danger, fontFamily: monitorFontUi },
+    axisLabel: { color: palette.textMuted, fontFamily: monitorFontUi }, splitLine: { lineStyle: { color: palette.line } },
   }]
 
   if (accs.length > 0) {
     series.push({
       name: 'Accuracy', type: 'line', data: task.metrics.map(m => m.accuracy),
-      smooth: true, lineStyle: { color: monitorPalette.primary, width: 2 }, itemStyle: { color: monitorPalette.primary },
+      smooth: true, lineStyle: { color: palette.primary, width: 2 }, itemStyle: { color: palette.primary },
       symbol: 'none', yAxisIndex: 1,
     })
     yAxes.push({
-      type: 'value', name: 'Acc', nameTextStyle: { color: monitorPalette.primary, fontFamily: monitorFontUi },
-      axisLabel: { color: monitorPalette.textMuted, fontFamily: monitorFontUi }, splitLine: { show: false },
+      type: 'value', name: 'Acc', nameTextStyle: { color: palette.primary, fontFamily: monitorFontUi },
+      axisLabel: { color: palette.textMuted, fontFamily: monitorFontUi }, splitLine: { show: false },
       max: 1, min: 0,
     })
   }
@@ -228,20 +234,20 @@ const trainingChartOption = computed(() => {
   return {
     tooltip: {
       trigger: 'axis',
-      backgroundColor: monitorPalette.panel,
-      borderColor: monitorPalette.border,
-      textStyle: { color: monitorPalette.text, fontFamily: monitorFontUi },
+      backgroundColor: palette.panel,
+      borderColor: palette.border,
+      textStyle: { color: palette.text, fontFamily: monitorFontUi },
     },
-    legend: { textStyle: { color: monitorPalette.textSecondary, fontFamily: monitorFontUi }, top: 4 },
+    legend: { textStyle: { color: palette.textSecondary, fontFamily: monitorFontUi }, top: 4 },
     grid: { top: 40, right: accs.length ? 60 : 16, bottom: 40, left: 60 },
     dataZoom: [{ type: 'inside' }],
     xAxis: {
       type: 'category',
       data: epochs,
       name: 'Epoch',
-      nameTextStyle: { color: monitorPalette.textMuted, fontFamily: monitorFontUi },
-      axisLabel: { color: monitorPalette.textMuted, fontFamily: monitorFontUi },
-      axisLine: { lineStyle: { color: monitorPalette.line } },
+      nameTextStyle: { color: palette.textMuted, fontFamily: monitorFontUi },
+      axisLabel: { color: palette.textMuted, fontFamily: monitorFontUi },
+      axisLine: { lineStyle: { color: palette.line } },
     },
     yAxis: yAxes,
     series,
@@ -256,7 +262,7 @@ const timelineOption = computed(() => {
 
   return {
     tooltip: {
-      backgroundColor: monitorPalette.panel, borderColor: monitorPalette.border, textStyle: { color: monitorPalette.text, fontFamily: monitorFontUi },
+      backgroundColor: palette.panel, borderColor: palette.border, textStyle: { color: palette.text, fontFamily: monitorFontUi },
       formatter: (p) => {
         const t = items[p.dataIndex]
         return `<b>${t.username}</b><br/>PID: ${t.pid} | GPU ${t.gpu_index}<br/>命令: ${timelineTaskCommand(t)}<br/>时长: ${timelineTaskDuration(t)}<br/>显存: ${fmtBytes(t.gpu_memory_used)}<br/>状态: ${timelineTaskStatus(t)}`
@@ -265,20 +271,20 @@ const timelineOption = computed(() => {
     grid: { top: 18, right: 28, bottom: 26, left: 136 },
     xAxis: {
       type: 'time',
-      axisLabel: { color: monitorPalette.textMuted, formatter: (v) => new Date(v).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }), fontFamily: monitorFontUi },
-      axisLine: { lineStyle: { color: monitorPalette.line } }, splitLine: { lineStyle: { color: monitorPalette.line } },
+      axisLabel: { color: palette.textMuted, formatter: (v) => new Date(v).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }), fontFamily: monitorFontUi },
+      axisLine: { lineStyle: { color: palette.line } }, splitLine: { lineStyle: { color: palette.line } },
     },
     yAxis: {
       type: 'category',
       data: categories,
       axisLabel: {
-        color: monitorPalette.textSecondary,
+        color: palette.textSecondary,
         fontSize: 11,
         width: 124,
         overflow: 'truncate',
         fontFamily: monitorFontUi,
       },
-      axisLine: { lineStyle: { color: monitorPalette.line } },
+      axisLine: { lineStyle: { color: palette.line } },
     },
     series: [{
       type: 'custom',
@@ -289,7 +295,7 @@ const timelineOption = computed(() => {
         const height = 18
         return {
           type: 'rect', shape: { x: start[0], y: start[1] - height / 2, width: Math.max(end[0] - start[0], 4), height },
-          style: { fill: api.value(3) ? monitorPalette.primary : monitorPalette.inactive, opacity: 0.8 },
+          style: { fill: api.value(3) ? palette.primary : palette.inactive, opacity: 0.8 },
         }
       },
       encode: { x: [1, 2], y: 0 },
@@ -380,7 +386,7 @@ watch(timelineHours, () => {
               <div class="gauge-item">
                 <div class="gauge-ring">
                   <svg viewBox="0 0 100 100">
-                    <circle cx="50" cy="50" r="40" fill="none" :stroke="monitorPalette.line" stroke-width="8"/>
+                    <circle cx="50" cy="50" r="40" fill="none" :stroke="palette.line" stroke-width="8"/>
                     <circle cx="50" cy="50" r="40" fill="none" :stroke="usageColor(systemDetail.memory_percent, 60, 80)" stroke-width="8" stroke-linecap="round"
                       :stroke-dasharray="(systemDetail.memory_percent / 100 * 251.2) + ' 251.2'" stroke-dashoffset="0" transform="rotate(-90 50 50)"/>
                   </svg>
@@ -392,8 +398,8 @@ watch(timelineHours, () => {
               <div class="gauge-item">
                 <div class="gauge-ring">
                   <svg viewBox="0 0 100 100">
-                    <circle cx="50" cy="50" r="40" fill="none" :stroke="monitorPalette.line" stroke-width="8"/>
-                    <circle cx="50" cy="50" r="40" fill="none" :stroke="monitorPalette.secondary" stroke-width="8" stroke-linecap="round"
+                    <circle cx="50" cy="50" r="40" fill="none" :stroke="palette.line" stroke-width="8"/>
+                    <circle cx="50" cy="50" r="40" fill="none" :stroke="palette.secondary" stroke-width="8" stroke-linecap="round"
                       :stroke-dasharray="((systemDetail.swap_percent || 0) / 100 * 251.2) + ' 251.2'" stroke-dashoffset="0" transform="rotate(-90 50 50)"/>
                   </svg>
                   <span class="gauge-text stat-value">{{ (systemDetail.swap_percent || 0).toFixed(0) }}%</span>

@@ -96,18 +96,18 @@ function switchSection(next) {
 }
 
 .notice--ok {
-  border-color: rgba(0, 212, 170, 0.18);
-  background: rgba(0, 212, 170, 0.1);
+  border-color: var(--state-ok-border);
+  background: var(--state-ok-bg);
 }
 
 .notice--warning {
-  border-color: rgba(245, 158, 11, 0.18);
-  background: rgba(245, 158, 11, 0.1);
+  border-color: var(--state-warning-border);
+  background: var(--state-warning-bg);
 }
 
 .notice--critical {
-  border-color: rgba(239, 68, 68, 0.18);
-  background: rgba(239, 68, 68, 0.1);
+  border-color: var(--state-danger-border);
+  background: var(--state-danger-bg);
 }
 
 .notice__title {

@@ -162,8 +162,8 @@ function itemTitle(item) {
   min-height: 50px;
   padding: 9px 10px;
   border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-color);
+  background: var(--bg-surface);
   color: var(--text-secondary);
   text-align: left;
   transition:
@@ -186,14 +186,14 @@ function itemTitle(item) {
 }
 
 .app-primary-nav__item:hover {
-  border-color: rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--border-hover);
+  background: var(--bg-card-hover);
   transform: translateY(-1px);
 }
 
 .app-primary-nav__item--active {
-  border-color: rgba(94, 106, 210, 0.34);
-  background: rgba(94, 106, 210, 0.12);
+  border-color: var(--state-ok-border);
+  background: var(--state-ok-bg);
 }
 
 .app-primary-nav__item--locked {
@@ -209,9 +209,9 @@ function itemTitle(item) {
   align-items: center;
   justify-content: center;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-color);
   color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--bg-card);
   font-family: var(--font-seal);
   font-size: 0.72rem;
   overflow: hidden;
@@ -241,9 +241,9 @@ function itemTitle(item) {
 }
 
 .app-primary-nav__item--active .app-primary-nav__seal {
-  border-color: rgba(94, 106, 210, 0.28);
-  background: rgba(94, 106, 210, 0.18);
-  color: #dbe0ff;
+  border-color: var(--state-ok-border);
+  background: var(--bg-card-hover);
+  color: var(--state-ok-text);
 }
 
 .app-primary-nav__body {

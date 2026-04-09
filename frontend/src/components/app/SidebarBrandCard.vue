@@ -73,8 +73,8 @@ const emit = defineEmits(['switch-server'])
   max-width: 100%;
   padding: 14px 15px;
   border-radius: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
+  background: var(--bg-surface);
   transition:
     padding 0.34s cubic-bezier(0.22, 1, 0.36, 1),
     border-radius 0.34s cubic-bezier(0.22, 1, 0.36, 1),
@@ -104,8 +104,8 @@ const emit = defineEmits(['switch-server'])
   align-items: center;
   justify-content: center;
   border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
   flex-shrink: 0;
 }
 
@@ -164,9 +164,9 @@ const emit = defineEmits(['switch-server'])
   min-height: 32px;
   padding: 0 11px;
   border-radius: 999px;
-  border: 1px solid rgba(94, 106, 210, 0.26);
-  background: rgba(94, 106, 210, 0.14);
-  color: #dbe0ff;
+  border: 1px solid var(--state-ok-border);
+  background: var(--state-ok-bg);
+  color: var(--state-ok-text);
   font-size: 0.72rem;
   font-weight: 600;
   line-height: 1.2;
@@ -183,8 +183,8 @@ const emit = defineEmits(['switch-server'])
 
 .app-sidebar-brand-card__switch:hover:not(:disabled) {
   transform: translateY(-1px);
-  background: rgba(94, 106, 210, 0.2);
-  border-color: rgba(94, 106, 210, 0.34);
+  background: var(--bg-card-hover);
+  border-color: var(--border-hover);
 }
 
 .app-sidebar-brand-card__switch {

@@ -1,6 +1,7 @@
 <script setup>
 import SidebarBrandCard from './SidebarBrandCard.vue'
 import SidebarNavRail from './SidebarNavRail.vue'
+import ThemeModeSwitch from './ThemeModeSwitch.vue'
 
 const props = defineProps({
   appInfo: {
@@ -31,9 +32,17 @@ const props = defineProps({
     type: Boolean,
     required: true,
   },
+  themePreference: {
+    type: String,
+    required: true,
+  },
+  resolvedTheme: {
+    type: String,
+    required: true,
+  },
 })
 
-const emit = defineEmits(['navigate', 'switch-server', 'toggle-collapse'])
+const emit = defineEmits(['navigate', 'switch-server', 'toggle-collapse', 'update:theme-preference'])
 </script>
 
 <template>
@@ -58,6 +67,13 @@ const emit = defineEmits(['navigate', 'switch-server', 'toggle-collapse'])
       />
     </div>
     <div class="app-primary-sidebar__footer">
+      <ThemeModeSwitch
+        :theme-preference="props.themePreference"
+        :preference="props.themePreference"
+        :resolved-theme="props.resolvedTheme"
+        :collapsed="props.collapsed"
+        @update:preference="emit('update:theme-preference', $event)"
+      />
       <button
         type="button"
         class="app-primary-sidebar__collapse-toggle"
@@ -94,8 +110,8 @@ const emit = defineEmits(['navigate', 'switch-server', 'toggle-collapse'])
   min-height: 100%;
   padding: 14px;
   border-radius: 28px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: #121a24;
+  border: 1px solid var(--console-border, var(--border-color));
+  background: var(--console-panel, var(--bg-card));
   overflow-x: hidden;
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.28);
   transition:
@@ -117,6 +133,8 @@ const emit = defineEmits(['navigate', 'switch-server', 'toggle-collapse'])
 }
 
 .app-primary-sidebar__footer {
+  display: grid;
+  gap: 10px;
   padding-top: 2px;
   overflow: hidden;
 }
@@ -130,8 +148,8 @@ const emit = defineEmits(['navigate', 'switch-server', 'toggle-collapse'])
   gap: 8px;
   padding: 0 14px;
   border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
+  background: var(--bg-surface);
   color: var(--text-secondary);
   font-size: 0.75rem;
   font-weight: 600;
@@ -149,8 +167,8 @@ const emit = defineEmits(['navigate', 'switch-server', 'toggle-collapse'])
 
 .app-primary-sidebar__collapse-toggle:hover {
   transform: translateY(-1px);
-  border-color: rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--border-hover);
+  background: var(--bg-card-hover);
   color: var(--text-primary);
 }
 

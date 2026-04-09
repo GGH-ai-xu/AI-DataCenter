@@ -88,6 +88,8 @@ async function handleSubmit() {
 
 <style scoped>
 .auth-page {
+  --auth-card-bg: var(--bg-card);
+  --auth-card-border: var(--border-color);
   min-height: 100vh;
   display: grid;
   place-items: center;
@@ -127,7 +129,7 @@ async function handleSubmit() {
   line-height: 0.98;
   font-weight: 600;
   letter-spacing: -0.05em;
-  background: linear-gradient(180deg, #ffffff 0%, rgba(237, 238, 247, 0.72) 100%);
+  background: var(--auth-hero-title-gradient);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -151,8 +153,8 @@ async function handleSubmit() {
   gap: 6px;
   padding: 16px;
   border-radius: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.065), rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--auth-card-border);
+  background: var(--bg-surface);
 }
 
 .auth-hero__item span {
