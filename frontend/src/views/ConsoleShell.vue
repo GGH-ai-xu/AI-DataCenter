@@ -15,13 +15,19 @@ const shell = proxyRefs(useConsoleShell())
         :app-info="shell.appInfo"
         :collapsed="shell.sidebarCollapsed"
         :current-path="shell.route.path"
+        :is-desktop="shell.isDesktop"
         :nav-items="shell.navItems"
         :theme-preference="shell.themePreference"
         :resolved-theme="shell.resolvedTheme"
         :summary="shell.sidebarSummary"
         :switch-server-busy="shell.switchServerBusy"
+        :update-busy="shell.updateBusy"
+        :update-state="shell.updateState"
+        :update-supported="shell.appInfo.updateSupported"
         :workspace-locked="shell.workspaceLocked"
+        @check-updates="shell.checkForUpdates"
         @navigate="shell.navigateTo"
+        @open-update-target="shell.openUpdateTarget"
         @switch-server="shell.switchServer"
         @toggle-collapse="shell.toggleSidebarCollapsed"
         @update:theme-preference="shell.setThemePreference"
@@ -96,18 +102,6 @@ const shell = proxyRefs(useConsoleShell())
               <p class="app-chrome__desc">
                 {{ shell.activeNavItem.desc }} {{ shell.currentWorkspaceMeta.desc }}
               </p>
-            </div>
-
-            <div class="app-chrome__actions">
-              <button
-                v-if="shell.isDesktop && shell.appInfo.updateSupported"
-                type="button"
-                class="btn-tech"
-                :disabled="shell.updateBusy"
-                @click="shell.checkForUpdates"
-              >
-                {{ shell.updateBusy ? '检查中...' : '检查更新' }}
-              </button>
             </div>
           </div>
           <div class="app-chrome__meta">
