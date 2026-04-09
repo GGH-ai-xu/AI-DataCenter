@@ -7,6 +7,16 @@ import time
 from typing import Optional
 
 import aiosqlite
+from app.services.goal_runtime.data_store_support import (
+    GOAL_RUNTIME_INIT_SQL,
+    append_agent_event as append_runtime_event,
+    create_agent_session as create_runtime_session,
+    ensure_runtime_event_columns,
+    get_agent_events as load_runtime_events,
+    get_agent_session as load_runtime_session,
+    require_runtime_db,
+    update_agent_session_status as update_runtime_session_status,
+)
 from app.services.process_history_sync import (
     build_process_batches,
     normalize_processes,
@@ -155,8 +165,9 @@ class DataStore:
         )
         self._db.row_factory = aiosqlite.Row
         await self._configure_sqlite()
-        await self._db.executescript(_INIT_SQL)
+        await self._db.executescript(_INIT_SQL + GOAL_RUNTIME_INIT_SQL)
         await self._ensure_scope_columns()
+        await ensure_runtime_event_columns(self._db)
         await self._db.commit()
         logger.info(f"数据库初始化完成: {self.db_path}")
 
@@ -218,6 +229,64 @@ class DataStore:
         if not normalized:
             return f" {prefix} 1 = 0", ()
         return f" {prefix} {column} = ?", (cls._scope_json(normalized),)
+
+    async def create_agent_session(
+        self,
+        session_id: str,
+        goal_json: dict,
+        permission_mode: str,
+        status: str,
+        summary: str,
+    ) -> None:
+        await create_runtime_session(
+            require_runtime_db(self._db),
+            session_id,
+            goal_json,
+            permission_mode,
+            status,
+            summary,
+        )
+
+    async def update_agent_session_status(
+        self,
+        session_id: str,
+        status: str,
+        summary: str = "",
+    ) -> None:
+        await update_runtime_session_status(
+            require_runtime_db(self._db),
+            session_id,
+            status,
+            summary,
+        )
+
+    async def get_agent_session(self, session_id: str) -> dict | None:
+        return await load_runtime_session(require_runtime_db(self._db), session_id)
+
+    async def append_agent_event(
+        self,
+        session_id: str,
+        event_type: str,
+        payload: dict,
+        *,
+        round_index: int = 0,
+        sequence: int = 0,
+        source: str = "runtime",
+        duration_ms: int = 0,
+    ) -> None:
+        await append_runtime_event(
+            require_runtime_db(self._db),
+            session_id,
+            event_type,
+            payload,
+            round_index=round_index,
+            sequence=sequence,
+            source=source,
+            duration_ms=duration_ms,
+        )
+
+    async def get_agent_events(self, session_id: str) -> list[dict]:
+        return await load_runtime_events(require_runtime_db(self._db), session_id)
 
     # ========== GPU历史数据 ==========
 
