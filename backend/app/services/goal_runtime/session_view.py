@@ -29,7 +29,11 @@ def _latest_error(events: list[dict]) -> str:
     return ""
 
 
-def build_session_view(session: dict, events: list[dict]) -> dict:
+def build_session_view(
+    session: dict,
+    events: list[dict],
+    planner_stream: dict | None = None,
+) -> dict:
     current_round = 0
     llm_call_count = 0
     for event in events:
@@ -47,4 +51,5 @@ def build_session_view(session: dict, events: list[dict]) -> dict:
         "awaiting_approval": awaiting_approval,
         "pending_approval": pending_approval,
         "latest_error": _latest_error(events),
+        "planner_stream": planner_stream,
     }

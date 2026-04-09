@@ -77,6 +77,51 @@ class GoalRuntimeDataStoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(events[0]["duration_ms"], 35)
         self.assertEqual(events[0]["payload"]["prompt_preview"], "用户指令...")
 
+    async def test_data_store_overwrites_latest_planner_stream_snapshot(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = DataStore(os.path.join(tmpdir, "runtime.db"))
+            await store.init()
+            try:
+                await store.create_agent_session(
+                    session_id="sess-2",
+                    goal_json={"message": "执行一次调度"},
+                    permission_mode="low",
+                    status="running",
+                    summary="执行一次调度",
+                )
+                await store.update_agent_session_status(
+                    "sess-2",
+                    "running",
+                    "执行一次调度",
+                    live_phase="planning",
+                )
+                await store.upsert_agent_stream_state(
+                    "sess-2",
+                    "planner",
+                    latest_text="第一版计划",
+                    latest_char_count=5,
+                    revision=1,
+                )
+                await store.upsert_agent_stream_state(
+                    "sess-2",
+                    "planner",
+                    latest_text="第二版计划",
+                    latest_char_count=6,
+                    revision=2,
+                )
+
+                session = await store.get_agent_session("sess-2")
+                stream_state = await store.get_agent_stream_state(
+                    "sess-2",
+                    "planner",
+                )
+            finally:
+                await store.close()
+
+        self.assertEqual(session["live_phase"], "planning")
+        self.assertEqual(stream_state["latest_text"], "第二版计划")
+        self.assertEqual(stream_state["revision"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()

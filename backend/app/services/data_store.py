@@ -11,10 +11,13 @@ from app.services.goal_runtime.data_store_support import (
     GOAL_RUNTIME_INIT_SQL,
     append_agent_event as append_runtime_event,
     create_agent_session as create_runtime_session,
+    ensure_runtime_session_columns,
     ensure_runtime_event_columns,
     get_agent_events as load_runtime_events,
     get_agent_session as load_runtime_session,
+    get_agent_stream_state as load_runtime_stream_state,
     require_runtime_db,
+    upsert_agent_stream_state as upsert_runtime_stream_state,
     update_agent_session_status as update_runtime_session_status,
 )
 from app.services.process_history_sync import (
@@ -167,6 +170,7 @@ class DataStore:
         await self._configure_sqlite()
         await self._db.executescript(_INIT_SQL + GOAL_RUNTIME_INIT_SQL)
         await self._ensure_scope_columns()
+        await ensure_runtime_session_columns(self._db)
         await ensure_runtime_event_columns(self._db)
         await self._db.commit()
         logger.info(f"数据库初始化完成: {self.db_path}")
@@ -252,12 +256,15 @@ class DataStore:
         session_id: str,
         status: str,
         summary: str = "",
+        *,
+        live_phase: str | None = None,
     ) -> None:
         await update_runtime_session_status(
             require_runtime_db(self._db),
             session_id,
             status,
             summary,
+            live_phase=live_phase,
         )
 
     async def get_agent_session(self, session_id: str) -> dict | None:
@@ -283,6 +290,35 @@ class DataStore:
             sequence=sequence,
             source=source,
             duration_ms=duration_ms,
+        )
+
+    async def upsert_agent_stream_state(
+        self,
+        session_id: str,
+        stream_kind: str,
+        *,
+        latest_text: str,
+        latest_char_count: int,
+        revision: int,
+    ) -> None:
+        await upsert_runtime_stream_state(
+            require_runtime_db(self._db),
+            session_id,
+            stream_kind,
+            latest_text=latest_text,
+            latest_char_count=latest_char_count,
+            revision=revision,
+        )
+
+    async def get_agent_stream_state(
+        self,
+        session_id: str,
+        stream_kind: str,
+    ) -> dict | None:
+        return await load_runtime_stream_state(
+            require_runtime_db(self._db),
+            session_id,
+            stream_kind,
         )
 
     async def get_agent_events(self, session_id: str) -> list[dict]:
