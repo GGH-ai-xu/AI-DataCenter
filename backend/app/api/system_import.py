@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request
 from app.models.schemas import ImportCommitRequest, ImportScanRequest
+from app.services.runtime_snapshot import refresh_runtime_snapshot_scope
 
 
 INVALID_RUNTIME_REASON = "当前导入目标不可达，需要重新导入"
@@ -238,9 +239,20 @@ async def commit_import_context(request_or_req, req: ImportCommitRequest | None 
     if owner is not None:
         await app_state.saved_hosts.upsert_host(owner, saved_target, credential_id)
     context = _save_import_context(saved_target, req, probe)
+    app_state.latest_runtime_snapshot = refresh_runtime_snapshot_scope(
+        snapshot=getattr(app_state, "latest_runtime_snapshot", {}),
+        import_context=app_state.import_context,
+        privacy=app_state.privacy,
+        import_context_state=context,
+    )
+    message = (
+        "导入完成，控制台已切换到选中的 GPU"
+        if req.gpu_indexes
+        else "导入完成，当前未导入 GPU，控制台将以空作用域运行"
+    )
     return {
         "success": True,
-        "message": "导入完成，控制台已切换到选中的 GPU",
+        "message": message,
         "import_context": context,
     }
 
@@ -255,4 +267,10 @@ async def reset_import_context():
     from app.main import app_state
 
     snapshot = app_state.import_context.clear("用户主动触发重新导入")
+    app_state.latest_runtime_snapshot = refresh_runtime_snapshot_scope(
+        snapshot=getattr(app_state, "latest_runtime_snapshot", {}),
+        import_context=app_state.import_context,
+        privacy=app_state.privacy,
+        import_context_state=snapshot,
+    )
     return {"success": True, "import_context": snapshot}

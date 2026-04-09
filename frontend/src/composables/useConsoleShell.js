@@ -7,7 +7,6 @@ import { useAppStore } from '../stores/app.js'
 import { useAuthStore } from '../stores/auth.js'
 import { useWebSocket } from './useWebSocket.js'
 
-const CLOCK_TICK_MS = 1000
 const UPDATE_NOTICE_OK_MS = 4200
 const UPDATE_NOTICE_ERROR_MS = 6500
 const WORKSPACE_REFRESH_MS = 15000
@@ -16,8 +15,7 @@ const IMPORT_ROUTE = '/import'
 
 const NAV_ITEMS = Object.freeze([
   { path: '/', label: '总览', icon: '览', desc: '本次导入 GPU 总览', group: 'governance' },
-  { path: '/tasks', label: '任务', icon: '务', desc: '处置真实任务', group: 'governance' },
-  { path: '/scheduler', label: '调度', icon: '策', desc: '预算与治理动作', group: 'governance' },
+  { path: '/governance/actions', matchPrefix: '/governance', label: '治理', icon: '治', desc: '统一治理入口与三段工作流', group: 'governance' },
   { path: '/energy', label: '能耗', icon: '能', desc: '节能复盘与测算', group: 'analysis' },
   { path: '/monitor', label: '观察', icon: '观', desc: '画像与过程观察', group: 'analysis' },
   { path: '/alerts', label: '告警', icon: '警', desc: '风险台与异常确认', group: 'analysis' },
@@ -71,14 +69,13 @@ export function useConsoleShell() {
   const router = useRouter()
   const store = useAppStore()
   const auth = useAuthStore()
-  const currentTime = ref('')
   const appInfo = ref(baseAppInfo())
+  const sidebarCollapsed = ref(false)
   const updateState = ref(null)
   const updateBusy = ref(false)
   const switchServerBusy = ref(false)
   const closeDialog = ref(null)
   const closeBusy = ref(false)
-  let clockTimer = null
   let workspaceTimer = null
   let updateStateTimer = null
   let removeCloseListener = null
@@ -97,19 +94,16 @@ export function useConsoleShell() {
   const isDesktop = computed(() => typeof window !== 'undefined' && Boolean(window.desktopShell))
   const workspaceLocked = computed(() => store.workspaceStatusChecked && !store.workspaceReady)
   const activeNavItem = computed(() =>
-    NAV_ITEMS.find((item) => route.path === item.path || (item.path !== HOME_ROUTE && route.path.startsWith(item.path))) || NAV_ITEMS[0])
+    NAV_ITEMS.find((item) => {
+      const prefix = item.matchPrefix || item.path
+      return route.path === item.path || (prefix !== HOME_ROUTE && route.path.startsWith(prefix))
+    }) || NAV_ITEMS[0])
   const currentWorkspaceMeta = computed(() => GROUP_META[activeNavItem.value.group] || GROUP_META.governance)
   const sidebarSummary = computed(() => {
     const modeLabel = compactSidebarModeLabel(appInfo.value.connectionModeLabel || '')
     const importedLabel = formatImportedGpuLabel(store.importContext?.imported_gpu_indexes || [])
     return `${modeLabel} · ${importedLabel}`
   })
-  const sidebarTelemetry = computed(() => [
-    { label: 'GPU', value: `${store.gpus.length}` },
-    { label: '任务', value: `${store.processes.length}` },
-    { label: '告警', value: `${store.alerts.length}` },
-    { label: '链路', value: wsConnected.value ? '在线' : '离线' },
-  ])
   const chromeMetrics = computed(() => [
     { label: '导入 GPU', value: `${store.gpus.length}` },
     { label: '活跃任务', value: `${store.processes.length}` },
@@ -169,15 +163,6 @@ export function useConsoleShell() {
     } catch {}
   }
 
-  function updateClock() {
-    currentTime.value = new Date().toLocaleString('zh-CN', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-    })
-  }
-
   function clearUpdateNotice() {
     clearTimeout(updateStateTimer)
     updateStateTimer = null
@@ -229,6 +214,10 @@ export function useConsoleShell() {
     if (route.path !== item.path) {
       void router.push(item.path)
     }
+  }
+
+  function toggleSidebarCollapsed() {
+    sidebarCollapsed.value = !sidebarCollapsed.value
   }
 
   async function switchServer() {
@@ -320,8 +309,6 @@ export function useConsoleShell() {
   )
 
   onMounted(() => {
-    updateClock()
-    clockTimer = setInterval(updateClock, CLOCK_TICK_MS)
     void refreshWorkspaceStatus()
     workspaceTimer = setInterval(() => {
       void refreshWorkspaceStatus()
@@ -330,7 +317,6 @@ export function useConsoleShell() {
   })
 
   onUnmounted(() => {
-    clearInterval(clockTimer)
     clearInterval(workspaceTimer)
     clearTimeout(updateStateTimer)
     removeCloseListener?.()
@@ -345,7 +331,6 @@ export function useConsoleShell() {
     clearUpdateNotice,
     closeBusy,
     closeDialog,
-    currentTime,
     currentWorkspaceMeta,
     isDesktop,
     navItems: NAV_ITEMS,
@@ -354,10 +339,11 @@ export function useConsoleShell() {
     resolveCloseAction,
     route,
     runtimeBanner,
-    sidebarTelemetry,
     sidebarSummary,
+    sidebarCollapsed,
     switchServer,
     switchServerBusy,
+    toggleSidebarCollapsed,
     updateBusy,
     updateState,
     workspaceLocked,

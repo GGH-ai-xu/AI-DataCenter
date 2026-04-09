@@ -4,7 +4,7 @@ function normalizeIndexes(indexes = []) {
 }
 
 export function hasValidImportContext(context) {
-  return Boolean(context?.valid) && normalizeIndexes(context?.imported_gpu_indexes).length > 0
+  return Boolean(context?.valid)
 }
 
 export function formatImportedGpuLabel(indexes = []) {

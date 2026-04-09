@@ -211,6 +211,63 @@ class ImportContextServiceTests(unittest.TestCase):
         self.assertEqual(snapshot["invalid_reason"], "尚未导入任何 GPU")
         persist_mock.assert_not_called()
 
+    def test_save_import_with_empty_scope_is_still_valid(self):
+        self.service.load()
+
+        saved = self.service.save_import(
+            source_mode="remote",
+            agent_url="http://10.0.0.8:8001",
+            agent_label="实验室 A",
+            gpu_indexes=[],
+            system_info={"cpu_percent": 22.0},
+            gpus=[
+                {"index": 0, "name": "RTX 4090"},
+                {"index": 1, "name": "RTX 4090"},
+            ],
+        )
+
+        self.assertTrue(saved["valid"])
+        self.assertEqual(saved["invalid_reason"], "")
+        self.assertEqual(saved["imported_gpu_indexes"], [])
+        self.assertEqual(saved["snapshot"]["gpus"], [])
+
+    def test_validate_runtime_keeps_empty_scope_import_valid_when_target_is_reachable(self):
+        self.service.load()
+        self.service.save_import(
+            source_mode="remote",
+            agent_url="http://10.0.0.8:8001",
+            agent_label="实验室 A",
+            gpu_indexes=[],
+            system_info={"cpu_percent": 22.0},
+            gpus=[{"index": 0, "name": "RTX 4090"}],
+        )
+
+        with mock.patch.object(self.service, "_persist") as persist_mock:
+            snapshot = self.service.validate_runtime(
+                {"status": "ok"},
+                [{"index": 0, "name": "RTX 4090"}],
+            )
+
+        self.assertTrue(snapshot["valid"])
+        self.assertEqual(snapshot["invalid_reason"], "")
+        persist_mock.assert_not_called()
+
+    def test_validate_runtime_marks_empty_scope_import_invalid_when_target_unreachable(self):
+        self.service.load()
+        self.service.save_import(
+            source_mode="remote",
+            agent_url="http://10.0.0.8:8001",
+            agent_label="实验室 A",
+            gpu_indexes=[],
+            system_info={"cpu_percent": 22.0},
+            gpus=[{"index": 0, "name": "RTX 4090"}],
+        )
+
+        snapshot = self.service.validate_runtime(None, [])
+
+        self.assertFalse(snapshot["valid"])
+        self.assertEqual(snapshot["invalid_reason"], "当前导入目标不可达，需要重新导入")
+
     def test_validate_runtime_same_invalid_reason_does_not_repeat_persist(self):
         self.service.load()
         self.service.save_import(

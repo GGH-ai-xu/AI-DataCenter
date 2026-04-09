@@ -4,11 +4,14 @@ import types
 import unittest
 from unittest import mock
 
+from fastapi import HTTPException
+
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(ROOT, "backend"))
 
-from app.api.scheduler import build_fallback_report, generate_report  # noqa: E402
+from app.api.scheduler import build_fallback_report, generate_report, run_schedule_once  # noqa: E402
+from app.models.schemas import ScheduleRunRequest  # noqa: E402
 from app.services.privacy import PrivacyService  # noqa: E402
 from app.services.scheduler import SchedulerEngine  # noqa: E402
 
@@ -58,15 +61,64 @@ class FakeLLM:
 
 
 class FakeReportStore:
-    async def get_power_summary(self, hours):
+    def __init__(self):
+        self.summary_calls = []
+        self.alert_calls = []
+
+    async def get_power_summary(self, hours, gpu_indexes=None):
+        self.summary_calls.append({"hours": hours, "gpu_indexes": gpu_indexes})
         return {
             "hours": hours,
             "gpus": [{"gpu_index": 0, "avg_power": 150, "max_power": 220, "min_power": 90, "samples": 20}],
             "total_avg_power": 150,
         }
 
-    async def get_alerts(self, limit=20):
+    async def get_alerts(self, limit=20, gpu_indexes=None):
+        self.alert_calls.append({"limit": limit, "gpu_indexes": gpu_indexes})
         return []
+
+
+class FakeRouteScheduler:
+    def __init__(self):
+        self.calls = []
+
+    async def run_rules(self, gpus, processes):
+        self.calls.append(("rules", len(gpus), len(processes)))
+        return []
+
+    async def execute_actions(self, actions):
+        self.calls.append(("execute", len(actions)))
+        return []
+
+    async def run_budget_schedule(self, gpus, processes):
+        self.calls.append(("budget", len(gpus), len(processes)))
+        return []
+
+    async def run_ai_schedule(self, gpus, processes):
+        self.calls.append(("ai", len(gpus), len(processes)))
+        return {"actions": []}
+
+    def get_budget_status(self, gpus):
+        return {"gpu_count": len(gpus)}
+
+    def get_carbon_budget_status(self, gpus):
+        return {"gpu_count": len(gpus)}
+
+
+def _route_snapshot(gpus=None, processes=None):
+    return {
+        "collected_at": 1710000000.0,
+        "agent_health": {"status": "ok"},
+        "runtime": {"status": "connected", "connected": True},
+        "import_context": {"valid": True, "imported_gpu_indexes": [gpu["index"] for gpu in (gpus or [])]},
+        "raw": {"system": {"cpu_percent": 12}, "gpus": list(gpus or []), "processes": list(processes or [])},
+        "scoped": {
+            "system": {"cpu_percent": 12},
+            "gpus": list(gpus or []),
+            "processes": list(processes or []),
+            "public_processes": list(processes or []),
+        },
+    }
 
 
 class SchedulerEngineTests(unittest.IsolatedAsyncioTestCase):
@@ -173,10 +225,11 @@ class SchedulerEngineTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("当前数据不足，暂不输出节能估算", report)
 
     async def test_generate_report_returns_fallback_when_llm_missing(self):
+        store = FakeReportStore()
         fake_main = types.SimpleNamespace(
             app_state=types.SimpleNamespace(
                 llm=None,
-                store=FakeReportStore(),
+                store=store,
             )
         )
 
@@ -185,6 +238,42 @@ class SchedulerEngineTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(response["source"], "fallback")
         self.assertIn("调度能耗分析报告（基础版）", response["report"])
+        self.assertEqual(store.summary_calls, [{"hours": 24, "gpu_indexes": []}])
+        self.assertEqual(store.alert_calls, [{"limit": 20, "gpu_indexes": []}])
+
+
+class SchedulerRunOnceRouteTests(unittest.IsolatedAsyncioTestCase):
+    async def test_run_schedule_once_requires_risk_acknowledgement(self):
+        fake_main = types.SimpleNamespace(
+            app_state=types.SimpleNamespace(
+                latest_runtime_snapshot=_route_snapshot([{"index": 0}], []),
+                scheduler=FakeRouteScheduler(),
+            )
+        )
+
+        with mock.patch.dict(sys.modules, {"app.main": fake_main}):
+            with self.assertRaises(HTTPException) as ctx:
+                await run_schedule_once(ScheduleRunRequest(acknowledge_risk=False))
+
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertEqual(ctx.exception.detail, "真实调度执行需要先确认风险")
+
+    async def test_run_schedule_once_raises_when_scope_has_no_gpu_data(self):
+        scheduler = FakeRouteScheduler()
+        fake_main = types.SimpleNamespace(
+            app_state=types.SimpleNamespace(
+                latest_runtime_snapshot=_route_snapshot([], []),
+                scheduler=scheduler,
+            )
+        )
+
+        with mock.patch.dict(sys.modules, {"app.main": fake_main}):
+            with self.assertRaises(HTTPException) as ctx:
+                await run_schedule_once(ScheduleRunRequest(acknowledge_risk=True))
+
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertEqual(ctx.exception.detail, "当前导入范围内无法获取GPU数据")
+        self.assertEqual(scheduler.calls, [])
 
 
 # ========== Phase 2A: 调度引擎核心逻辑测试 ==========

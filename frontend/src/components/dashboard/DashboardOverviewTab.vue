@@ -17,6 +17,21 @@ function toneClass(tone) {
 
 <template>
   <div class="overview-layout">
+    <section class="tech-card overview-card overview-card--wide">
+      <div class="section-title">导入范围速记</div>
+      <div class="overview-quick-strip">
+        <article
+          v-for="item in props.model.quickStats"
+          :key="item.label"
+          class="overview-quick-item"
+        >
+          <span>{{ item.label }}</span>
+          <strong>{{ item.value }}</strong>
+          <small>{{ item.hint }}</small>
+        </article>
+      </div>
+    </section>
+
     <section class="tech-card overview-card">
       <div class="section-title">页面定位</div>
       <p class="overview-copy">{{ props.model.summaryLine }}</p>
@@ -59,6 +74,7 @@ function toneClass(tone) {
 
 <style scoped>
 .overview-layout,
+.overview-quick-strip,
 .overview-routes,
 .overview-signals {
   display: grid;
@@ -81,6 +97,8 @@ function toneClass(tone) {
 
 .overview-copy,
 .overview-note,
+.overview-quick-item span,
+.overview-quick-item small,
 .overview-signal p {
   font-size: 0.9rem;
   line-height: 1.8;
@@ -91,10 +109,12 @@ function toneClass(tone) {
   color: var(--console-text-muted, var(--text-muted));
 }
 
+.overview-quick-strip,
 .overview-routes {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.overview-quick-item,
 .overview-route,
 .overview-signal {
   display: grid;
@@ -107,11 +127,14 @@ function toneClass(tone) {
 }
 
 .overview-route strong,
+.overview-quick-item strong,
 .overview-signal strong {
   font-size: 0.98rem;
   color: var(--console-text, var(--text-primary));
 }
 
+.overview-quick-item span,
+.overview-quick-item small,
 .overview-route small {
   font-size: 0.78rem;
   line-height: 1.6;
@@ -132,6 +155,7 @@ function toneClass(tone) {
 
 @media (max-width: 980px) {
   .overview-layout,
+  .overview-quick-strip,
   .overview-routes {
     grid-template-columns: 1fr;
   }

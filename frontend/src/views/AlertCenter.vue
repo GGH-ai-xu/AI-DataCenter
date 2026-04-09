@@ -92,9 +92,7 @@ onMounted(loadAlerts)
 
 <template>
   <div class="alert-page ink-page-shell">
-    <WorkspaceSummary
-      title="告警中心"
-    >
+    <WorkspaceSummary title="告警中心">
       <template #meta>
         <div class="ink-inline-meta">
           <span class="status-badge status-badge--critical">{{ summaryItems[0]?.value || 0 }} 条严重</span>
@@ -104,16 +102,15 @@ onMounted(loadAlerts)
       </template>
     </WorkspaceSummary>
 
-    <div class="workspace-summary-strip">
-      <AlertSummaryPanel :items="summaryItems" />
-    </div>
-
     <div class="workspace-nav-layout">
       <div class="workspace-nav-layout__nav">
         <WorkspaceTabs v-model="activeTab" :items="ALERT_CENTER_TABS" />
       </div>
 
       <section class="workspace-nav-layout__content">
+        <div v-if="activeTab !== 'realtime'" class="alert-content-summary">
+          <AlertSummaryPanel :items="summaryItems" />
+        </div>
         <AlertRealtimeStream
           v-if="activeTab === 'realtime'"
           :buckets="realtimeBuckets"
@@ -156,5 +153,9 @@ onMounted(loadAlerts)
 .alert-page {
   max-width: 1460px;
   margin: 0 auto;
+}
+
+.alert-content-summary {
+  margin-bottom: 14px;
 }
 </style>

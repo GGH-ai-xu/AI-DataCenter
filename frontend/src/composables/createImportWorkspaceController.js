@@ -52,7 +52,7 @@ function resolveStepState(stepKey, state) {
   }
   if (stepKey === 'selection') {
     if (!state.scanResult.value?.success) return 'pending'
-    return state.selectedGpuIndexes.value.length > 0 ? 'ready' : 'pending'
+    return 'ready'
   }
   return 'pending'
 }
@@ -89,7 +89,7 @@ function buildComputed(state, deps) {
       ? `当前有效范围：${formatImportedGpuLabel(currentContext.value?.imported_gpu_indexes || [])}`
       : '控制台只治理本次导入选中的卡'),
     footerMessage: computed(() => resolveFooterMessage(state, deps, currentReason.value)),
-    canSubmitImport: computed(() => Boolean(state.scanResult.value?.success) && state.selectedGpuIndexes.value.length > 0),
+    canSubmitImport: computed(() => Boolean(state.scanResult.value?.success)),
     activeSavedHost: computed(() => findSavedHost(deps.savedHosts.hosts.value, state.selectedSavedHostId.value)),
   }
 }
@@ -104,7 +104,7 @@ function resolveFooterMessage(state, deps, currentReason) {
     return currentReason || '先完成一次扫描，再继续验机和选卡。'
   }
   if (state.selectedGpuIndexes.value.length <= 0) {
-    return '至少选择 1 张 GPU，才能导入并进入控制台。'
+    return '当前未选择 GPU；仍可导入并进入控制台，控制台会以未导入 GPU 的空作用域运行。'
   }
   return '导入后控制台只显示和治理本次选中的卡。'
 }

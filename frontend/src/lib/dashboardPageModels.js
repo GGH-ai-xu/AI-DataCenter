@@ -1,10 +1,10 @@
 import { formatImportedGpuLabel } from './importContext.js'
 
 const ROUTE_CARDS = [
-  { label: '进入治理台', desc: '预算、限功率与调度动作', path: '/scheduler' },
-  { label: '进入任务台', desc: '暂停、恢复、终止导入范围内任务', path: '/tasks' },
+  { label: '进入即时处置', desc: '暂停、恢复、终止与任务分级', path: '/governance/actions' },
+  { label: '进入策略治理', desc: '预算、限功率与调度动作', path: '/governance/policies' },
+  { label: '进入治理复盘', desc: '查看审计、评估与综合导出', path: '/governance/review' },
   { label: '进入风险台', desc: '处理导入范围内告警', path: '/alerts' },
-  { label: '进入复盘台', desc: '查看节能测算与历史效果', path: '/energy' },
 ]
 
 function buildBudgetSignal(budget = {}, criticalAlertCount = 0) {
@@ -47,6 +47,13 @@ function buildFairnessSignal(fairnessOverview = {}) {
   }
 }
 
+function buildHealthProgressLabel(healthyCheckCount, totalCheckCount) {
+  if (!totalCheckCount) {
+    return '等待巡检'
+  }
+  return `健康 ${healthyCheckCount} / ${totalCheckCount}`
+}
+
 export function buildDashboardOverviewModel(input = {}) {
   const importedLabel = formatImportedGpuLabel(input.importedIndexes || [])
   const budgetSignal = buildBudgetSignal(input.budget, input.criticalAlertCount)
@@ -73,15 +80,28 @@ export function buildDashboardOverviewModel(input = {}) {
 
 export function buildDashboardHealthModel(input = {}) {
   const checks = input.selfCheck?.checks || []
+  const priorityChecks = checks.filter((item) => item.status === 'critical' || item.status === 'warning')
+  const healthyChecks = checks.filter((item) => item.status === 'ok')
+  const totalCheckCount = priorityChecks.length + healthyChecks.length
+  const healthyCheckCount = healthyChecks.length
+  const wsConnections = Number(input.selfCheck?.ws_connections || 0)
+  const llmAvailable = Boolean(input.selfCheck?.llm_available)
+
   return {
     summary: input.selfCheck?.summary || { title: '等待巡检', message: '当前还没有巡检结果。' },
     factCards: [
-      { label: '导入范围', value: input.importedLabel || '未导入 GPU' },
-      { label: '实时连接', value: input.wsConnected ? '在线' : '离线' },
-      { label: 'AI 助手', value: input.selfCheck?.llm_available ? '已启用' : '未启用' },
-      { label: 'WebSocket', value: `${Number(input.selfCheck?.ws_connections || 0)} 条` },
+      { label: '导入范围', value: input.importedLabel || '未导入 GPU', tone: 'neutral' },
+      { label: '实时连接', value: input.wsConnected ? '在线' : '离线', tone: input.wsConnected ? 'ok' : 'warning' },
+      { label: 'AI 助手', value: llmAvailable ? '已启用' : '未启用', tone: llmAvailable ? 'ok' : 'warning' },
+      { label: 'WebSocket', value: `${wsConnections} 条`, tone: wsConnections > 0 ? 'ok' : 'warning' },
     ],
-    priorityChecks: checks.filter((item) => item.status === 'critical' || item.status === 'warning'),
-    healthyChecks: checks.filter((item) => item.status === 'ok'),
+    priorityChecks,
+    healthyChecks,
+    totalCheckCount,
+    healthyCheckCount,
+    healthProgressLabel: buildHealthProgressLabel(healthyCheckCount, totalCheckCount),
+    primaryCheck: priorityChecks[0] || null,
+    remainingPriorityCount: Math.max(priorityChecks.length - 1, 0),
+    hasChecks: totalCheckCount > 0,
   }
 }

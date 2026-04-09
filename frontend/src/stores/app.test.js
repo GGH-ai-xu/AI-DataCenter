@@ -46,6 +46,19 @@ test('applyRealtimePayload keeps workspace ready and records reconnecting runtim
   assert.equal(store.runtimeStatus.providerType, 'ssh_linux')
 })
 
+test('setImportContext treats empty gpu scope as ready when context is valid', () => {
+  setActivePinia(createPinia())
+  const store = useAppStore()
+
+  store.setImportContext({
+    valid: true,
+    imported_gpu_indexes: [],
+    provider_type: 'ssh_linux',
+  })
+
+  assert.equal(store.workspaceReady, true)
+})
+
 test('dashboard domains follow overview live health split', () => {
   setActivePinia(createPinia())
   const store = useAppStore()
@@ -54,4 +67,13 @@ test('dashboard domains follow overview live health split', () => {
   assert.ok(store.domains.dashboard.live)
   assert.ok(store.domains.dashboard.health)
   assert.equal(store.domains.dashboard.governance, undefined)
+})
+
+test('governance domains follow actions policies review split', () => {
+  setActivePinia(createPinia())
+  const store = useAppStore()
+
+  assert.ok(store.domains.governance.actions)
+  assert.ok(store.domains.governance.policies)
+  assert.ok(store.domains.governance.review)
 })

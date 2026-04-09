@@ -1,25 +1,24 @@
 import { computed, ref } from 'vue'
 
 /**
- * 执行模式管理 composable
- * 在 TaskManager / Scheduler 等页面共享演练/真实执行逻辑
+ * 治理工作区执行确认 composable
+ * 当前只支持真实执行，所有动作都要求显式风险确认
  */
 export function useExecutionMode() {
-  const executionMode = ref('dry_run')
+  const executionMode = ref('real')
   const riskAcknowledged = ref(false)
 
-  const isDryRun = computed(() => executionMode.value === 'dry_run')
-  const isReal = computed(() => executionMode.value === 'real')
-  const canExecute = computed(() => isDryRun.value || riskAcknowledged.value)
+  const isDryRun = computed(() => false)
+  const isReal = computed(() => true)
+  const canExecute = computed(() => riskAcknowledged.value)
 
-  const modeLabel = computed(() => isReal.value ? '真实执行' : '演练模式')
-  const modeBadgeClass = computed(() => isReal.value ? 'status-badge--warning' : 'status-badge--ok')
+  const modeLabel = computed(() => '真实执行')
+  const modeBadgeClass = computed(() => 'status-badge--warning')
 
-  /** 构建传给后端的 dry_run / acknowledge_risk 参数 */
+  /** 构建传给后端的风险确认参数 */
   function buildExecutionParams() {
     return {
-      dry_run: isDryRun.value,
-      acknowledge_risk: isReal.value && riskAcknowledged.value,
+      acknowledge_risk: riskAcknowledged.value,
     }
   }
 

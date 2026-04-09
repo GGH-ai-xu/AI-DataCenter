@@ -24,10 +24,10 @@ function setupSpotlightTracking() {
     '.workspace-tab',
     '.import-prep-tabs__item',
     '.app-primary-nav__item',
-    '.app-primary-nav__group',
     '.app-mobile-nav__item',
     '.app-mobile-nav__action',
     '.overview-route',
+    '.app-primary-sidebar__collapse-toggle',
     '.app-sidebar-brand-card__switch',
   ].join(', ')
 

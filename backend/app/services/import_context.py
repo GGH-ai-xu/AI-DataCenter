@@ -7,6 +7,7 @@ import time
 
 LOCAL_MODE = "local"
 REMOTE_MODE = "remote"
+UNIMPORTED_REASON = "尚未导入任何 GPU"
 
 
 class ImportContextService:
@@ -27,7 +28,7 @@ class ImportContextService:
             "imported_at": None,
             "snapshot": {"system": None, "gpus": []},
             "valid": False,
-            "invalid_reason": "尚未导入任何 GPU",
+            "invalid_reason": UNIMPORTED_REASON,
         }
 
     def _ensure_parent(self):
@@ -117,10 +118,19 @@ class ImportContextService:
                 "system": system_info or None,
                 "gpus": self._filter_gpus_by_indexes(gpus, selected),
             },
-            "valid": bool(selected),
-            "invalid_reason": "" if selected else "尚未导入任何 GPU",
+            "valid": True,
+            "invalid_reason": "",
         }
         self._persist()
+        return self.snapshot()
+
+    def _mark_valid(self) -> dict:
+        was_valid = bool(self._state.get("valid"))
+        had_reason = bool(self._state.get("invalid_reason"))
+        self._state["valid"] = True
+        self._state["invalid_reason"] = ""
+        if not was_valid or had_reason:
+            self._persist()
         return self.snapshot()
 
     def clear(self, reason: str = "已清空导入上下文") -> dict:
@@ -140,10 +150,12 @@ class ImportContextService:
 
     def validate_runtime(self, agent_health: dict | None, gpus: list[dict]) -> dict:
         selected = self.selected_gpu_indexes()
-        if not selected:
-            return self.clear("尚未导入任何 GPU")
         if not agent_health:
+            if not selected and not self._state.get("imported_at"):
+                return self.snapshot()
             return self.mark_invalid("当前导入目标不可达，需要重新导入")
+        if not selected:
+            return self._mark_valid()
 
         found = {int(item.get("index", -1)) for item in gpus or []}
         missing = [index for index in selected if index not in found]
@@ -163,14 +175,7 @@ class ImportContextService:
                 return self.mark_invalid(f"已导入的 GPU {unavailable[0]} 当前不可用")
             labels = ", ".join(f"GPU {index}" for index in unavailable)
             return self.mark_invalid(f"已导入的 {labels} 当前不可用")
-
-        was_valid = bool(self._state.get("valid"))
-        had_reason = bool(self._state.get("invalid_reason"))
-        self._state["valid"] = True
-        self._state["invalid_reason"] = ""
-        if not was_valid or had_reason:
-            self._persist()
-        return self.snapshot()
+        return self._mark_valid()
 
     def filter_gpus(self, gpus: list[dict] | None) -> list[dict]:
         selected = set(self.selected_gpu_indexes())

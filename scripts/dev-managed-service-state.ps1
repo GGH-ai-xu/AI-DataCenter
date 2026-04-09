@@ -93,6 +93,43 @@ function Save-ManagedServiceState {
   Write-ManagedServiceState -Entries $entries -StatePath $StatePath
 }
 
+function Convert-ManagedServiceCimCreationDateToIsoString {
+  param([string]$CreationDate)
+
+  if ([string]::IsNullOrWhiteSpace($CreationDate)) {
+    return $null
+  }
+
+  try {
+    return [System.Management.ManagementDateTimeConverter]::ToDateTime($CreationDate).ToUniversalTime().ToString("o")
+  } catch {
+    return $null
+  }
+}
+
+function Get-ManagedServiceStartTimeIsoString {
+  param(
+    $RuntimeProcess,
+    $CimProcess
+  )
+
+  if ($null -ne $RuntimeProcess) {
+    try {
+      $runtimeStartTime = $RuntimeProcess.StartTime
+      if ($null -ne $runtimeStartTime) {
+        return $runtimeStartTime.ToUniversalTime().ToString("o")
+      }
+    } catch {
+    }
+  }
+
+  if ($null -ne $CimProcess) {
+    return Convert-ManagedServiceCimCreationDateToIsoString -CreationDate ([string]$CimProcess.CreationDate)
+  }
+
+  return $null
+}
+
 function Get-ManagedServiceProcessSnapshot {
   param([int]$ProcessId)
 
@@ -102,10 +139,6 @@ function Get-ManagedServiceProcessSnapshot {
   }
 
   $runtimeProcess = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
-  if ($null -eq $runtimeProcess) {
-    return $null
-  }
-
   return [PSCustomObject]@{
     CimProcess = $cimProcess
     RuntimeProcess = $runtimeProcess
@@ -157,15 +190,15 @@ function New-LiveManagedServiceEntry {
     [pscustomobject]$Process
   )
 
-  $runtimeProcess = Get-Process -Id ([int]$Process.ProcessId) -ErrorAction SilentlyContinue
-  if ($null -eq $runtimeProcess) {
+  $startTime = Get-ManagedServiceStartTimeIsoString -RuntimeProcess $null -CimProcess $Process
+  if ([string]::IsNullOrWhiteSpace($startTime)) {
     return $null
   }
 
   return [PSCustomObject]@{
     ServiceName = $Definition.ServiceName
     ProcessId = [int]$Process.ProcessId
-    StartTime = $runtimeProcess.StartTime.ToUniversalTime().ToString("o")
+    StartTime = $startTime
     ExecutablePath = $Definition.ExecutablePath
     Signature = @($Definition.Signature)
   }
@@ -217,7 +250,17 @@ function Test-RepositoryManagedStartDevProcess {
     return $false
   }
 
-  $actualStartTime = $Snapshot.RuntimeProcess.StartTime.ToUniversalTime().ToString("o")
+  if ($null -eq $Snapshot.CimProcess) {
+    return $false
+  }
+
+  $actualStartTime = Get-ManagedServiceStartTimeIsoString `
+    -RuntimeProcess $Snapshot.RuntimeProcess `
+    -CimProcess $Snapshot.CimProcess
+  if ([string]::IsNullOrWhiteSpace($actualStartTime)) {
+    return $false
+  }
+
   if ($actualStartTime -ne [string]$Entry.StartTime) {
     return $false
   }

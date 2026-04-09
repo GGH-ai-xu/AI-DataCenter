@@ -87,3 +87,25 @@ def build_runtime_failure_snapshot(
     snapshot["runtime"] = copy.deepcopy(runtime_status)
     snapshot["import_context"] = copy.deepcopy(import_context_state)
     return snapshot
+
+
+def refresh_runtime_snapshot_scope(
+    *,
+    snapshot: dict[str, Any] | None,
+    import_context,
+    privacy,
+    import_context_state: dict,
+) -> dict[str, Any]:
+    next_snapshot = copy.deepcopy(snapshot or empty_runtime_snapshot())
+    raw = next_snapshot.get("raw") or {}
+    next_snapshot["import_context"] = copy.deepcopy(import_context_state)
+    next_snapshot["scoped"] = copy.deepcopy(
+        build_realtime_scope(
+            import_context=import_context,
+            privacy=privacy,
+            system=raw.get("system"),
+            gpus=list(raw.get("gpus") or []),
+            processes=list(raw.get("processes") or []),
+        )
+    )
+    return next_snapshot

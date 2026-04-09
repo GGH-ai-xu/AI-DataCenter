@@ -28,6 +28,20 @@ class DashboardWorkspaceStructureTests(unittest.TestCase):
         self.assertNotIn('props.governance', live)
         self.assertNotIn('governance:', live)
 
+    def test_dashboard_health_tab_uses_board_card_layout(self):
+        text = (ROOT / 'frontend/src/components/dashboard/DashboardHealthTab.vue').read_text(encoding='utf-8')
+
+        self.assertIn('dashboard-health__board-head', text)
+        self.assertIn('dashboard-health__progress', text)
+        self.assertIn('dashboard-health__focus-grid', text)
+        self.assertIn('dashboard-health__focus-card', text)
+        self.assertIn('dashboard-health__toggle', text)
+        self.assertIn('props.model.primaryCheck', text)
+        self.assertIn('props.model.healthProgressLabel', text)
+        self.assertIn('props.model.hasChecks', text)
+        self.assertNotIn('dashboard-health__hero', text)
+        self.assertNotIn('class="btn-tech"', text)
+
 
 if __name__ == '__main__':
     unittest.main()

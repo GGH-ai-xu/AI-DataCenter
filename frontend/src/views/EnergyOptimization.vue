@@ -22,6 +22,7 @@ import {
 } from 'echarts/components'
 import { runOptimize, exportEnergyReport } from '../services/api'
 import { exportTextFile } from '../services/desktopExport'
+import WorkspaceSummary from '../components/workspace/WorkspaceSummary.vue'
 import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
 import { useEnergyData } from '../composables/useEnergyData.js'
 
@@ -143,6 +144,16 @@ const sourceHint = computed(() => {
   const gpuCount = metrics.value?.gpu_count || 0
   if (gpuCount <= 1) return '单卡本机实时治理'
   return `${gpuCount} 卡集群`
+})
+const sourceBadgeClass = computed(() => {
+  if (!sourceState.value.connected || (sourceState.value.gpu_count || 0) <= 0) return 'status-badge--warning'
+  return 'status-badge--ok'
+})
+const budgetBadgeClass = computed(() => {
+  const budget = schedulerState.value?.budget || {}
+  if (budget.is_exceeded) return 'status-badge--critical'
+  if (!budget.enabled) return 'status-badge--warning'
+  return 'status-badge--ok'
 })
 
 const breakdownLegendData = computed(() => {
@@ -452,47 +463,16 @@ watch(activeTab, () => {
   </div>
 
   <template v-else>
-    <!-- ===== 页头题字 ===== -->
-    <header class="ink-header si" style="--d:0s">
-      <div class="ink-header__left">
-        <h1 class="ink-title">能耗治理</h1>
-      </div>
-      <div class="ink-header__right">
-        <span class="ink-period" :style="{ color: energyPalette.primary, background: energyPalette.primarySoft }">
-          {{ sourceLabel }}
-        </span>
-        <span
-          class="ink-period"
-          :style="{
-            color: schedulerState?.budget?.is_exceeded ? energyPalette.danger : schedulerState?.budget?.enabled ? energyPalette.primary : energyPalette.textSecondary,
-            background: schedulerState?.budget?.is_exceeded ? energyPalette.dangerSoft : schedulerState?.budget?.enabled ? energyPalette.primarySoft : energyPalette.track,
-          }"
-        >
-          {{ budgetLabel }}
-        </span>
-        <span class="ink-period" :style="{color:tp.color,background:tp.bg}">{{ tp.label }}时段</span>
-      </div>
-    </header>
-
-    <section class="source-strip si" style="--d:.05s">
-      <div class="source-card">
-        <div class="source-card__label">当前数据源</div>
-        <div class="source-card__value">{{ sourceLabel }}</div>
-        <div class="source-card__hint">{{ sourceDetail }}</div>
-      </div>
-      <div class="source-card">
-        <div class="source-card__label">预算治理状态</div>
-        <div class="source-card__value">{{ budgetLabel }}</div>
-        <div class="source-card__hint">
-          {{ schedulerState?.budget?.enabled ? `当前预算上限 ${schedulerState.budget.total_power_budget}W，可与任务优先级联动治理。` : '当前以监测为主，可在调度页开启功率预算治理。' }}
+    <WorkspaceSummary title="能耗治理">
+      <template #meta>
+        <div class="ink-inline-meta">
+          <span class="status-badge" :class="sourceBadgeClass">{{ sourceLabel }}</span>
+          <span class="status-badge" :class="budgetBadgeClass">{{ budgetLabel }}</span>
+          <span class="status-badge">{{ tp.label }}时段</span>
         </div>
-      </div>
-      <div class="source-card">
-        <div class="source-card__label">演示说明</div>
-        <div class="source-card__value">{{ sourceHint }}</div>
-        <div class="source-card__hint">当前页面全部基于本地 Agent 实时采集，不再引用旧虚拟样例数据。</div>
-      </div>
-    </section>
+      </template>
+      <div class="energy-summary__caption">{{ sourceDetail }}</div>
+    </WorkspaceSummary>
 
     <section
       v-if="exportFeedback"
@@ -825,10 +805,6 @@ watch(activeTab, () => {
       </div>
     </div>
 
-    <!-- 底部竖排文字装饰 -->
-        <div class="ink-footer si" style="--d:.9s">
-          <div class="ink-vert-text">绿色计算 · 智慧能源</div>
-        </div>
       </section>
     </div>
   </template>
@@ -906,78 +882,6 @@ watch(activeTab, () => {
 /* ===== 入场动画 ===== */
 .si { animation: ink-rise .7s cubic-bezier(.16,1,.3,1) both; animation-delay: var(--d,0s); }
 @keyframes ink-rise { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
-
-/* ===== 页头 ===== */
-.ink-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 18px;
-}
-
-.ink-title {
-  font-family: 'Ma Shan Zheng', cursive;
-  font-size: 2rem;
-  font-weight: 400;
-  letter-spacing: 0.12em;
-  color: var(--text-primary);
-  line-height: 1;
-}
-
-.ink-header__right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.ink-period {
-  display: inline-flex;
-  padding: 4px 14px;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  letter-spacing: 0.1em;
-}
-
-/* ===== KPI 六宫格 ===== */
-.source-strip {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 14px;
-  margin-bottom: 18px;
-}
-
-.source-card {
-  padding: 16px 18px;
-  background: var(--energy-card);
-  border: 1px solid var(--energy-border);
-  border-radius: 12px;
-  box-shadow: var(--energy-shadow);
-  backdrop-filter: blur(12px) saturate(1.2);
-}
-
-.source-card__label {
-  font-size: 0.6875rem;
-  color: var(--energy-text-muted);
-  letter-spacing: 0.14em;
-  margin-bottom: 8px;
-}
-
-.source-card__value {
-  font-size: 1rem;
-  color: var(--energy-text);
-  font-weight: 700;
-  margin-bottom: 6px;
-}
-
-.source-card__hint {
-  font-size: 0.75rem;
-  color: var(--energy-text-secondary);
-  line-height: 1.7;
-}
 
 .energy-nav-head {
   display: flex;
@@ -1477,23 +1381,6 @@ watch(activeTab, () => {
   line-height: 1.6;
 }
 
-/* ===== 底部装饰 ===== */
-.ink-footer {
-  display: flex;
-  justify-content: center;
-  padding: 32px 0 16px;
-}
-
-.ink-vert-text {
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
-  font-family: 'Ma Shan Zheng', cursive;
-  font-size: 0.875rem;
-  color: rgba(255, 255, 255, 0.08);
-  letter-spacing: 0.5em;
-  height: 180px;
-}
-
 /* ===== Loading ===== */
 .ink-loading {
   display: flex;
@@ -1522,6 +1409,12 @@ watch(activeTab, () => {
   margin-top: 20px;
   font-size: 0.875rem;
   letter-spacing: 0.2em;
+}
+
+.energy-summary__caption {
+  font-size: 0.88rem;
+  line-height: 1.8;
+  color: var(--energy-text-secondary);
 }
 
 /* ===== AI 能力区块样式 ===== */
@@ -1749,15 +1642,12 @@ watch(activeTab, () => {
 
 /* ===== 响应式 ===== */
 @media(max-width:1400px){
-  .source-strip{grid-template-columns:1fr}
   .kpi-grid{grid-template-columns:repeat(3,1fr)}
   .overview-focus-grid{grid-template-columns:1fr}
   .kpi-ink--hero{grid-column:span 3;flex-direction:row;gap:20px}
   .tri-grid,.duo-grid{grid-template-columns:1fr}
 }
 @media(max-width:900px){
-  .ink-header{align-items:flex-start;flex-direction:column;gap:12px}
-  .ink-header__right{justify-content:flex-start}
   .energy-nav-head{align-items:flex-start;flex-direction:column}
   .energy-nav-head .workspace-tabs{width:100%}
   .kpi-grid{grid-template-columns:repeat(2,1fr)}

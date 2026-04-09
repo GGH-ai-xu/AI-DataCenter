@@ -8,19 +8,19 @@ const shell = proxyRefs(useConsoleShell())
 </script>
 
 <template>
-  <div class="app-shell">
+  <div class="app-shell" :class="{ 'app-shell--sidebar-collapsed': shell.sidebarCollapsed }">
     <aside class="app-sidebar">
       <AppPrimarySidebar
         :app-info="shell.appInfo"
+        :collapsed="shell.sidebarCollapsed"
         :current-path="shell.route.path"
-        :current-time="shell.currentTime"
-        :telemetry="shell.sidebarTelemetry"
         :nav-items="shell.navItems"
         :summary="shell.sidebarSummary"
         :switch-server-busy="shell.switchServerBusy"
         :workspace-locked="shell.workspaceLocked"
         @navigate="shell.navigateTo"
         @switch-server="shell.switchServer"
+        @toggle-collapse="shell.toggleSidebarCollapsed"
       />
     </aside>
 
@@ -59,7 +59,8 @@ const shell = proxyRefs(useConsoleShell())
             type="button"
             class="app-mobile-nav__item"
             :class="{
-              'app-mobile-nav__item--active': shell.route.path === item.path || (item.path !== '/' && shell.route.path.startsWith(item.path)),
+              'app-mobile-nav__item--active': shell.route.path === item.path
+                || ((item.matchPrefix || item.path) !== '/' && shell.route.path.startsWith(item.matchPrefix || item.path)),
               'app-mobile-nav__item--locked': shell.workspaceLocked && item.path !== '/',
             }"
             @click="shell.navigateTo(item)"
@@ -71,7 +72,7 @@ const shell = proxyRefs(useConsoleShell())
       </div>
 
       <div class="app-content">
-        <header class="app-chrome tech-card">
+        <header v-if="!shell.route.meta?.hideShellHeader" class="app-chrome tech-card">
           <div class="app-chrome__top">
             <div class="app-chrome__copy">
               <div class="app-chrome__eyebrow">{{ shell.currentWorkspaceMeta.eyebrow }}</div>
@@ -199,6 +200,12 @@ const shell = proxyRefs(useConsoleShell())
   grid-template-columns: 320px minmax(0, 1fr);
   align-items: start;
   background: linear-gradient(180deg, #0b1117 0%, var(--console-bg) 100%);
+  transition: grid-template-columns 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: grid-template-columns;
+}
+
+.app-shell--sidebar-collapsed {
+  grid-template-columns: 108px minmax(0, 1fr);
 }
 
 .app-shell::before {
@@ -312,8 +319,8 @@ const shell = proxyRefs(useConsoleShell())
 }
 
 .app-shell :deep(.workspace-summary) {
-  gap: 18px;
-  padding: 24px 26px;
+  gap: 12px;
+  padding: 18px 20px;
 }
 
 .app-shell :deep(.workspace-summary__title),
@@ -371,11 +378,16 @@ const shell = proxyRefs(useConsoleShell())
   top: var(--console-sticky-top);
   z-index: 1;
   align-self: start;
-  height: calc(100vh - (var(--console-sticky-top) * 2));
+  min-width: 0;
+  max-width: 100%;
+  min-height: calc(100vh - (var(--console-sticky-top) * 2));
   padding: 22px 0 22px 22px;
-  min-height: 0;
-  overflow-y: auto;
-  scrollbar-gutter: stable;
+  overflow: visible;
+  transition: padding 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.app-shell--sidebar-collapsed .app-sidebar {
+  padding-left: 14px;
 }
 
 .app-body {

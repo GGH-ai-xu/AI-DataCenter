@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import DashboardHealthTab from '../components/dashboard/DashboardHealthTab.vue'
 import DashboardLiveWorkspace from '../components/dashboard/DashboardLiveWorkspace.vue'
 import DashboardOverviewTab from '../components/dashboard/DashboardOverviewTab.vue'
+import WorkspaceSummary from '../components/workspace/WorkspaceSummary.vue'
 import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
 import { useDashboardData } from '../composables/useDashboardData.js'
 import {
@@ -92,7 +93,6 @@ const healthModel = computed(() => buildDashboardHealthModel({
   wsConnected: store.wsConnected,
   selfCheck: selfCheckState.value,
 }))
-const summaryQuickStats = computed(() => overviewModel.value.quickStats || [])
 const summaryTone = computed(() => overviewModel.value.signalCards?.[0] || {
   tone: 'ok',
   label: '预算稳定',
@@ -130,40 +130,23 @@ function applyHealthPayload(payload = {}) {
 </script>
 <template>
   <div class="dashboard-view">
-    <section class="tech-card dashboard-summary">
-      <div class="dashboard-summary__top">
-        <div class="dashboard-summary__copy">
-          <div class="section-title">当前导入范围</div>
-          <div class="dashboard-summary__lead">
-            总览页现在只做一件事：帮你先判断状态，再把你分流到真正该处理的专页。
-          </div>
-          <div class="dashboard-summary__status" :class="`dashboard-summary__status--${summaryTone.tone}`">
-            {{ summaryTone.label }} · {{ summaryTone.detail }}
-          </div>
-        </div>
-        <div class="dashboard-summary__meta">
+    <WorkspaceSummary title="总览">
+      <template #meta>
+        <div class="dashboard-summary__meta ink-inline-meta">
           <span class="status-badge">{{ store.importContext?.source_mode === 'remote' ? '远程导入' : '本机导入' }}</span>
           <span class="status-badge status-badge--ok">{{ formatImportedGpuLabel(importedIndexes) }}</span>
           <span class="status-badge" :class="store.wsConnected ? 'status-badge--ok' : 'status-badge--warning'">
             {{ store.wsConnected ? '实时在线' : '实时离线' }}
           </span>
         </div>
-      </div>
-      <div class="dashboard-summary__quick-grid">
-        <article
-          v-for="item in summaryQuickStats"
-          :key="item.label"
-          class="dashboard-summary__quick-item"
-        >
-          <span>{{ item.label }}</span>
-          <strong>{{ item.value }}</strong>
-          <small>{{ item.hint }}</small>
-        </article>
+      </template>
+      <div class="dashboard-summary__status" :class="`dashboard-summary__status--${summaryTone.tone}`">
+        {{ summaryTone.label }} · {{ summaryTone.detail }}
       </div>
       <div class="dashboard-summary__caption">
         如需更改机器或 GPU 范围，直接使用左侧“切换服务器”返回导入层。
       </div>
-    </section>
+    </WorkspaceSummary>
     <div class="workspace-nav-layout">
       <div class="workspace-nav-layout__nav">
         <WorkspaceTabs v-model="activeTab" :items="dashboardTabs" />
@@ -184,45 +167,20 @@ function applyHealthPayload(payload = {}) {
   </div>
 </template>
 <style scoped>
-.dashboard-view,
-.dashboard-summary__quick-grid {
+.dashboard-view {
   display: grid;
   gap: 16px;
 }
-.dashboard-summary {
-  display: grid;
-  gap: 16px;
-  padding: 20px 24px;
-}
-.dashboard-summary__top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-.dashboard-summary__copy {
-  display: grid;
-  gap: 10px;
-  max-width: 72ch;
-}
-.dashboard-summary__meta {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-}
-.dashboard-summary__lead,
 .dashboard-summary__caption,
-.dashboard-summary__status,
-.dashboard-summary__quick-item small,
-.dashboard-summary__quick-item span {
+.dashboard-summary__status {
   font-size: 0.92rem;
   line-height: 1.8;
   color: var(--console-text-secondary, var(--text-secondary));
 }
-.dashboard-summary__caption,
-.dashboard-summary__quick-item span,
-.dashboard-summary__quick-item small {
+.dashboard-summary__meta {
+  display: flex;
+}
+.dashboard-summary__caption {
   color: var(--console-text-muted, var(--text-muted));
 }
 .dashboard-summary__status {
@@ -245,30 +203,5 @@ function applyHealthPayload(payload = {}) {
   color: #ffd2de;
   border-color: rgba(255, 120, 148, 0.22);
   background: rgba(255, 120, 148, 0.14);
-}
-.dashboard-summary__quick-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-.dashboard-summary__quick-item {
-  display: grid;
-  gap: 6px;
-  padding: 16px 18px;
-  border-radius: 18px;
-  border: 1px solid var(--console-border, rgba(255, 255, 255, 0.08));
-  background: var(--console-surface, rgba(255, 255, 255, 0.04));
-}
-.dashboard-summary__quick-item strong {
-  font-size: 1.02rem;
-  color: var(--console-text, var(--text-primary));
-}
-@media (max-width: 980px) {
-  .dashboard-summary__top,
-  .dashboard-summary__quick-grid {
-    display: grid;
-    grid-template-columns: 1fr;
-  }
-  .dashboard-summary__meta {
-    justify-content: flex-start;
-  }
 }
 </style>

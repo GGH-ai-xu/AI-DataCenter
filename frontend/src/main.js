@@ -19,8 +19,10 @@ const loadImportWorkspaceView = () => import('./views/ImportWorkspace.vue')
 const loadConsoleShellView = () => import('./views/ConsoleShell.vue')
 const loadDashboardView = () => import('./views/Dashboard.vue')
 const loadGpuDetailView = () => import('./views/GpuDetail.vue')
-const loadTaskManagerView = () => import('./views/TaskManager.vue')
-const loadSchedulerView = () => import('./views/Scheduler.vue')
+const loadGovernanceLayoutView = () => import('./views/GovernanceLayout.vue')
+const loadGovernanceActionsView = () => import('./views/GovernanceActionsView.vue')
+const loadGovernancePoliciesView = () => import('./views/GovernancePoliciesView.vue')
+const loadGovernanceReviewView = () => import('./views/GovernanceReviewView.vue')
 const loadEnergyOptimizationView = () => import('./views/EnergyOptimization.vue')
 const loadAIAssistantView = () => import('./views/AIAssistant.vue')
 const loadAlertCenterView = () => import('./views/AlertCenter.vue')
@@ -42,14 +44,25 @@ const routes = [
     path: '/',
     component: loadConsoleShellView,
     children: [
-      { path: '', name: 'Dashboard', component: loadDashboardView },
+      { path: '', name: 'Dashboard', component: loadDashboardView, meta: { hideShellHeader: true } },
       { path: 'gpu/:index', name: 'GpuDetail', component: loadGpuDetailView },
-      { path: 'tasks', name: 'TaskManager', component: loadTaskManagerView },
-      { path: 'scheduler', name: 'Scheduler', component: loadSchedulerView },
-      { path: 'energy', name: 'EnergyOptimization', component: loadEnergyOptimizationView },
-      { path: 'ai', name: 'AIAssistant', component: loadAIAssistantView },
-      { path: 'alerts', name: 'AlertCenter', component: loadAlertCenterView },
-      { path: 'monitor', name: 'MonitorCenter', component: loadMonitorCenterView },
+      {
+        path: 'governance',
+        component: loadGovernanceLayoutView,
+        meta: { hideShellHeader: true },
+        children: [
+          { path: '', redirect: '/governance/actions' },
+          { path: 'actions', name: 'GovernanceActions', component: loadGovernanceActionsView },
+          { path: 'policies', name: 'GovernancePolicies', component: loadGovernancePoliciesView },
+          { path: 'review', name: 'GovernanceReview', component: loadGovernanceReviewView },
+        ],
+      },
+      { path: 'tasks', redirect: '/governance/actions' },
+      { path: 'scheduler', redirect: '/governance/policies' },
+      { path: 'energy', name: 'EnergyOptimization', component: loadEnergyOptimizationView, meta: { hideShellHeader: true } },
+      { path: 'ai', name: 'AIAssistant', component: loadAIAssistantView, meta: { hideShellHeader: true } },
+      { path: 'alerts', name: 'AlertCenter', component: loadAlertCenterView, meta: { hideShellHeader: true } },
+      { path: 'monitor', name: 'MonitorCenter', component: loadMonitorCenterView, meta: { hideShellHeader: true } },
     ],
   },
 ]

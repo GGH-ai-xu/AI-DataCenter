@@ -29,6 +29,11 @@ function createDomainState() {
       live: requestState(),
       health: requestState(),
     },
+    governance: {
+      actions: requestState(),
+      policies: requestState(),
+      review: requestState(),
+    },
     scheduler: {
       status: requestState(),
       carbon: requestState(),
@@ -36,7 +41,9 @@ function createDomainState() {
       evaluation: requestState(),
     },
     tasks: {
-      governance: requestState(),
+      actions: requestState(),
+      fairness: requestState(),
+      rules: requestState(),
     },
     monitor: {
       system: requestState(),

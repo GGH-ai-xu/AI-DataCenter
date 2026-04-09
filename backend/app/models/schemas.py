@@ -225,7 +225,7 @@ class ImportScanRequest(ProviderBackedImportRequest):
 
 
 class ImportCommitRequest(ProviderBackedImportRequest):
-    gpu_indexes: list[int] = Field(default_factory=list, min_length=1)
+    gpu_indexes: list[int] = Field(default_factory=list)
 
 
 # ========== LLM 配置 ==========

@@ -27,6 +27,9 @@ const assistantTabs = [
   { key: 'chat', label: '对话解释', desc: '问答与说明' },
   { key: 'model', label: '模型配置', desc: 'LLM 接入与测试' },
 ]
+const activeTabLabel = computed(() => (
+  assistantTabs.find((item) => item.key === activeTab.value)?.label || '执行控制台'
+))
 
 const messages = ref([{ role: 'assistant', content: DEFAULT_INTRO }])
 const input = ref('')
@@ -374,12 +377,10 @@ onMounted(() => {
 
 <template>
   <div class="ai-page ink-page-shell">
-    <WorkspaceSummary
-      title="AI 执行控制台"
-    >
+    <WorkspaceSummary title="AI 执行控制台">
       <template #meta>
         <div class="ink-inline-meta">
-          <span class="status-badge status-badge--ok">可审核</span>
+          <span class="status-badge status-badge--ok">{{ activeTabLabel }}</span>
           <span class="status-badge status-badge--warning">需风险确认</span>
           <span class="status-badge" :class="llmReady ? 'status-badge--ok' : 'status-badge--warning'">
             {{ llmReady ? 'LLM 已就绪' : '规则解析模式' }}

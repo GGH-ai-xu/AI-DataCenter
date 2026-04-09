@@ -5,8 +5,8 @@
  */
 import { ref, computed, watch } from 'vue'
 import VChart from 'vue-echarts'
+import MonitorWorkspaceSummary from '../components/monitor/MonitorWorkspaceSummary.vue'
 import WorkspacePaneLayout from '../components/workspace/WorkspacePaneLayout.vue'
-import WorkspaceSummary from '../components/workspace/WorkspaceSummary.vue'
 import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
 import { useMonitorData } from '../composables/useMonitorData.js'
 import { use } from 'echarts/core'
@@ -279,37 +279,11 @@ watch(timelineHours, () => {
 
 <template>
   <div class="monitor-page ink-page-shell">
-    <WorkspaceSummary
-      title="系统观察"
-    >
-      <template #meta>
-        <div class="ink-inline-meta">
-          <span class="status-badge status-badge--ok">{{ activeTabLabel }}</span>
-          <span class="status-badge status-badge--warning">{{ userStats.length }} 个活跃用户</span>
-          <span class="status-badge" :class="loading ? 'status-badge--warning' : 'status-badge--ok'">
-            {{ loading ? '数据刷新中' : '观察就绪' }}
-          </span>
-        </div>
-      </template>
-    </WorkspaceSummary>
-
-    <div class="monitor-summary-grid workspace-summary-strip">
-      <div class="monitor-summary-card">
-        <div class="monitor-summary-card__label">训练任务</div>
-        <div class="monitor-summary-card__value">{{ trainingData.length }}</div>
-        <div class="monitor-summary-card__hint">当前训练面板识别到的任务数量。</div>
-      </div>
-      <div class="monitor-summary-card">
-        <div class="monitor-summary-card__label">时间线样本</div>
-        <div class="monitor-summary-card__value">{{ taskTimeline.length }}</div>
-        <div class="monitor-summary-card__hint">已采集的任务生命周期样本数量。</div>
-      </div>
-      <div class="monitor-summary-card">
-        <div class="monitor-summary-card__label">活跃用户画像</div>
-        <div class="monitor-summary-card__value">{{ userStats.length }}</div>
-        <div class="monitor-summary-card__hint">当前已聚合的用户占用与画像样本数量。</div>
-      </div>
-    </div>
+    <MonitorWorkspaceSummary
+      :active-tab-label="activeTabLabel"
+      :active-user-count="userStats.length"
+      :loading="loading"
+    />
 
     <div class="workspace-nav-layout">
       <div class="workspace-nav-layout__nav">
@@ -529,49 +503,6 @@ watch(timelineHours, () => {
   margin: 0 auto;
 }
 
-.monitor-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.monitor-summary-card {
-  padding: 14px 16px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-color);
-  background: var(--bg-card);
-  box-shadow: var(--shadow-card);
-  backdrop-filter: blur(12px) saturate(1.2);
-  transition: transform 0.24s ease, box-shadow 0.24s ease, background 0.24s ease, border-color 0.24s ease;
-}
-
-.monitor-summary-card:hover {
-  transform: translateY(-2px);
-  background: var(--bg-card-hover);
-  border-color: var(--border-strong);
-  box-shadow: var(--shadow-hover);
-}
-
-.monitor-summary-card__label {
-  font-size: 0.74rem;
-  color: var(--text-muted);
-  letter-spacing: 0.12em;
-  line-height: 1.6;
-}
-
-.monitor-summary-card__value {
-  margin: 6px 0;
-  font-size: 1.15rem;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.monitor-summary-card__hint {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  line-height: 1.7;
-}
-
 .tab-content { animation: fadeIn 0.2s ease; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
@@ -704,9 +635,4 @@ watch(timelineHours, () => {
   color: var(--accent-secondary);
 }
 
-@media (max-width: 980px) {
-  .monitor-summary-grid {
-    grid-template-columns: 1fr;
-  }
-}
 </style>

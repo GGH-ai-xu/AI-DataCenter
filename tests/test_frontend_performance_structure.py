@@ -14,11 +14,11 @@ class FrontendPerformanceStructureTests(unittest.TestCase):
         self.assertNotIn("tasks.push(loadUsers())", text)
         self.assertNotIn("tasks.push(loadTimeline())", text)
 
-    def test_task_manager_uses_normalized_process_summary(self):
-        text = (ROOT / "frontend/src/views/TaskManager.vue").read_text(encoding="utf-8")
+    def test_governance_actions_uses_normalized_process_summary(self):
+        text = (ROOT / "frontend/src/views/GovernanceActionsView.vue").read_text(encoding="utf-8")
 
         self.assertIn("normalizedProcesses", text)
-        self.assertIn("processSummary", text)
+        self.assertIn("filterProcesses", text)
         self.assertNotIn("new Set(manageableProcesses.value.map", text)
 
     def test_power_trend_chart_updates_without_interval_rebuild(self):
@@ -68,6 +68,12 @@ class FrontendPerformanceStructureTests(unittest.TestCase):
 
         self.assertNotIn("fonts.googleapis.com", text)
         self.assertNotIn("@import url(", text)
+
+    def test_policies_console_uses_component_local_layout_instead_of_growing_global_shell(self):
+        text = (ROOT / "frontend/src/components/governance/PolicyBudgetConsole.vue").read_text(encoding="utf-8")
+
+        self.assertIn("<style scoped>", text)
+        self.assertIn("policy-budget-console", text)
 
 
 if __name__ == "__main__":

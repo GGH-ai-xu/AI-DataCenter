@@ -285,7 +285,7 @@ async def run_schedule_once(req: ScheduleRunRequest | None = Body(default=None))
     processes = await _scoped_processes(app_state)
 
     if not gpus:
-        return {"error": "当前导入范围内无法获取GPU数据"}
+        raise HTTPException(status_code=400, detail="当前导入范围内无法获取GPU数据")
 
     # 先执行规则引擎
     rule_actions = await app_state.scheduler.run_rules(gpus, processes)
@@ -365,12 +365,8 @@ async def generate_report():
     from app.main import app_state
 
     gpu_indexes = _selected_gpu_indexes(app_state)
-    if gpu_indexes:
-        summary = await app_state.store.get_power_summary(24, gpu_indexes=gpu_indexes)
-        alerts = await app_state.store.get_alerts(limit=20, gpu_indexes=gpu_indexes)
-    else:
-        summary = await app_state.store.get_power_summary(24)
-        alerts = await app_state.store.get_alerts(limit=20)
+    summary = await app_state.store.get_power_summary(24, gpu_indexes=gpu_indexes)
+    alerts = await app_state.store.get_alerts(limit=20, gpu_indexes=gpu_indexes)
 
     if app_state.llm:
         report = await app_state.llm.generate_report(summary, alerts)

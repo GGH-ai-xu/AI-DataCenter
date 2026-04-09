@@ -6,9 +6,9 @@ import {
   hasValidImportContext,
 } from './importContext.js'
 
-test('hasValidImportContext requires valid flag and selected gpu indexes', () => {
+test('hasValidImportContext only requires valid flag', () => {
   assert.equal(hasValidImportContext(null), false)
-  assert.equal(hasValidImportContext({ valid: true, imported_gpu_indexes: [] }), false)
+  assert.equal(hasValidImportContext({ valid: true, imported_gpu_indexes: [] }), true)
   assert.equal(hasValidImportContext({ valid: false, imported_gpu_indexes: [0] }), false)
   assert.equal(hasValidImportContext({ valid: true, imported_gpu_indexes: [0, 2] }), true)
 })

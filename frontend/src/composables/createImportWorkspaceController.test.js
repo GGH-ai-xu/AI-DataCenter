@@ -199,6 +199,71 @@ test('saved host import continues to commit saved_host_id only', async () => {
   assert.deepEqual(router.replaced, ['/'])
 })
 
+test('saved host import allows empty gpu selection and still enters workspace', async () => {
+  const commitPayloads = []
+  const router = createRouterStub()
+  const store = createStoreStub()
+  const controller = createImportWorkspaceController({
+    router,
+    store,
+    auth: { currentUser: { role: 'admin' } },
+    savedHosts: createSavedHostsStub([
+      {
+        id: 1,
+        label: 'ssh',
+        provider_type: 'ssh_linux',
+        host: '10.151.225.108',
+        port: 22,
+        username: 'dell',
+        auth_type: 'password',
+        credential_status: 'ok',
+      },
+    ]),
+    api: {
+      getImportContext: async () => ({ data: { imported_gpu_indexes: [] } }),
+      scanImportContext: async () => ({
+        data: {
+          success: true,
+          message: '扫描成功',
+          provider: {
+            provider_type: 'ssh_linux',
+            label: 'ssh',
+            host: '10.151.225.108',
+            port: 22,
+            username: 'dell',
+            auth_type: 'password',
+          },
+          gpus: [{ index: 0 }, { index: 1 }],
+        },
+      }),
+      commitImportContext: async (payload) => {
+        commitPayloads.push(payload)
+        return {
+          data: {
+            import_context: {
+              valid: true,
+              imported_gpu_indexes: payload.gpu_indexes,
+            },
+          },
+        }
+      },
+    },
+  })
+
+  await controller.handleSavedHostScan(1)
+  controller.selectedGpuIndexes.value = []
+
+  assert.equal(controller.canSubmitImport.value, true)
+  assert.match(controller.footerMessage.value, /当前未选择 GPU/)
+
+  await controller.handleImport()
+
+  assert.deepEqual(commitPayloads, [{ saved_host_id: 1, gpu_indexes: [] }])
+  assert.equal(store.workspaceReady, true)
+  assert.deepEqual(store.importContext.imported_gpu_indexes, [])
+  assert.deepEqual(router.replaced, ['/'])
+})
+
 test('retryable scan failure keeps saved host binding for direct retry', async () => {
   const controller = createImportWorkspaceController({
     router: createRouterStub(),

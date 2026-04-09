@@ -24,8 +24,6 @@ class FrontendUIStructureTests(unittest.TestCase):
     def test_major_views_use_tab_state(self):
         for rel in [
             "frontend/src/views/Dashboard.vue",
-            "frontend/src/views/TaskManager.vue",
-            "frontend/src/views/Scheduler.vue",
             "frontend/src/views/EnergyOptimization.vue",
             "frontend/src/views/AIAssistant.vue",
         ]:
@@ -33,17 +31,20 @@ class FrontendUIStructureTests(unittest.TestCase):
             self.assertIn("activeTab", text, rel)
             self.assertIn("WorkspaceTabs", text, rel)
 
+        governance_text = (ROOT / "frontend/src/views/GovernanceLayout.vue").read_text(encoding="utf-8")
+        self.assertIn("activeSection", governance_text)
+        self.assertIn("WorkspaceTabs", governance_text)
+
     def test_workspace_tabs_support_vertical_orientation(self):
         text = (ROOT / "frontend/src/components/workspace/WorkspaceTabs.vue").read_text(encoding="utf-8")
         self.assertIn("orientation", text)
         self.assertIn("workspace-tabs--vertical", text)
 
-    def test_workbench_pages_use_top_tab_layout(self):
+    def test_governance_layout_uses_top_tab_layout(self):
         for rel in [
             "frontend/src/views/Dashboard.vue",
-            "frontend/src/views/Scheduler.vue",
+            "frontend/src/views/GovernanceLayout.vue",
             "frontend/src/views/MonitorCenter.vue",
-            "frontend/src/views/TaskManager.vue",
             "frontend/src/views/EnergyOptimization.vue",
             "frontend/src/views/AIAssistant.vue",
         ]:
@@ -52,6 +53,12 @@ class FrontendUIStructureTests(unittest.TestCase):
             self.assertIn("workspace-nav-layout__nav", text, rel)
             self.assertIn("workspace-nav-layout__content", text, rel)
             self.assertNotIn('orientation="vertical"', text, rel)
+
+    def test_legacy_task_and_scheduler_views_are_redirect_shims(self):
+        task_text = (ROOT / "frontend/src/views/TaskManager.vue").read_text(encoding="utf-8")
+        scheduler_text = (ROOT / "frontend/src/views/Scheduler.vue").read_text(encoding="utf-8")
+        self.assertIn("router.replace('/governance/actions')", task_text)
+        self.assertIn("router.replace('/governance/policies')", scheduler_text)
 
     def test_shared_style_defines_top_workbench_tab_rail(self):
         text = (ROOT / "frontend/src/style.css").read_text(encoding="utf-8")
@@ -62,12 +69,11 @@ class FrontendUIStructureTests(unittest.TestCase):
         self.assertIn("top: 0", text)
 
     def test_monitor_and_alert_views_use_shared_shell(self):
-        for rel in [
-            "frontend/src/views/MonitorCenter.vue",
-            "frontend/src/views/AlertCenter.vue",
-        ]:
-            text = (ROOT / rel).read_text(encoding="utf-8")
-            self.assertIn("WorkspaceSummary", text, rel)
+        monitor_text = (ROOT / "frontend/src/views/MonitorCenter.vue").read_text(encoding="utf-8")
+        alert_text = (ROOT / "frontend/src/views/AlertCenter.vue").read_text(encoding="utf-8")
+
+        self.assertIn("MonitorWorkspaceSummary", monitor_text)
+        self.assertIn("WorkspaceSummary", alert_text)
 
     def test_primary_workspace_headers_use_compact_copy(self):
         for rel in [
@@ -75,13 +81,20 @@ class FrontendUIStructureTests(unittest.TestCase):
             "frontend/src/views/TaskManager.vue",
             "frontend/src/views/Scheduler.vue",
             "frontend/src/views/MonitorCenter.vue",
-            "frontend/src/views/AIAssistant.vue",
-            "frontend/src/views/AlertCenter.vue",
         ]:
             text = (ROOT / rel).read_text(encoding="utf-8")
             self.assertNotIn("eyebrow=", text, rel)
             self.assertNotIn("description=", text, rel)
             self.assertNotIn(":description=", text, rel)
+
+    def test_energy_ai_and_alert_pages_use_shared_workspace_summary(self):
+        energy_text = (ROOT / "frontend/src/views/EnergyOptimization.vue").read_text(encoding="utf-8")
+        ai_text = (ROOT / "frontend/src/views/AIAssistant.vue").read_text(encoding="utf-8")
+        alert_text = (ROOT / "frontend/src/views/AlertCenter.vue").read_text(encoding="utf-8")
+
+        self.assertIn("WorkspaceSummary", energy_text)
+        self.assertIn("WorkspaceSummary", ai_text)
+        self.assertIn("WorkspaceSummary", alert_text)
 
     def test_vite_build_still_available(self):
         package_json = (ROOT / "frontend/package.json").read_text(encoding="utf-8")
@@ -125,47 +138,99 @@ class FrontendUIStructureTests(unittest.TestCase):
         self.assertIn("path: '/change-password'", main_text)
         self.assertIn("router.beforeEach", main_text)
 
-    def test_primary_sidebar_keeps_header_nav_and_footer_isolated(self):
+    def test_primary_sidebar_keeps_compact_header_and_nav_layout(self):
         shell_text = (ROOT / "frontend/src/components/app/AppPrimarySidebar.vue").read_text(encoding="utf-8")
         nav_text = (ROOT / "frontend/src/components/app/SidebarNavRail.vue").read_text(encoding="utf-8")
         self.assertIn("grid-template-rows: auto minmax(0, 1fr) auto;", shell_text)
-        self.assertIn("app-primary-sidebar__main", shell_text)
+        self.assertIn("app-primary-sidebar__nav", shell_text)
+        self.assertIn("app-primary-sidebar__footer", shell_text)
         self.assertIn("app-primary-nav-rail", nav_text)
         self.assertIn("app-primary-nav__scroll", nav_text)
-        self.assertIn("overflow-y: auto", nav_text)
+        self.assertNotIn("overflow-y: auto", nav_text)
+
+    def test_primary_sidebar_avoids_nested_scroll_for_six_entry_layout(self):
+        console_text = (ROOT / "frontend/src/views/ConsoleShell.vue").read_text(encoding="utf-8")
+        nav_text = (ROOT / "frontend/src/components/app/SidebarNavRail.vue").read_text(encoding="utf-8")
+
+        self.assertNotRegex(console_text, r"\.app-sidebar\s*\{[^}]*overflow-y:\s*auto;")
+        self.assertIn("overflow: visible;", nav_text)
+        self.assertNotIn("max-height: 100%;", nav_text)
 
     def test_primary_sidebar_is_split_into_specialized_components(self):
         for rel in [
             "frontend/src/components/app/SidebarBrandCard.vue",
             "frontend/src/components/app/SidebarNavRail.vue",
-            "frontend/src/components/app/SidebarInfoDock.vue",
         ]:
             self.assertTrue((ROOT / rel).exists(), rel)
         text = (ROOT / "frontend/src/components/app/AppPrimarySidebar.vue").read_text(encoding="utf-8")
         self.assertIn("SidebarBrandCard", text)
         self.assertIn("SidebarNavRail", text)
-        self.assertIn("SidebarInfoDock", text)
+        self.assertNotIn("SidebarInfoDock", text)
 
-    def test_primary_sidebar_uses_group_tabs_for_navigation(self):
+    def test_primary_sidebar_uses_static_section_titles_for_navigation(self):
         shell_text = (ROOT / "frontend/src/composables/useConsoleShell.js").read_text(encoding="utf-8")
         nav_text = (ROOT / "frontend/src/components/app/SidebarNavRail.vue").read_text(encoding="utf-8")
         self.assertIn("group: 'governance'", shell_text)
         self.assertIn("group: 'analysis'", shell_text)
         self.assertIn("group: 'support'", shell_text)
-        self.assertIn("治理", nav_text)
-        self.assertIn("分析", nav_text)
-        self.assertIn("支持", nav_text)
-        self.assertIn("item.group === activeGroup.value", nav_text)
+        self.assertNotIn("const NAV_GROUPS", nav_text)
+        self.assertNotIn("activeGroup", nav_text)
+        self.assertNotIn("app-primary-nav__group", nav_text)
+        self.assertIn("app-primary-nav__section-title", nav_text)
+        self.assertIn('v-if="isActive(item)"', nav_text)
 
-    def test_primary_sidebar_uses_summary_header_and_time_footer(self):
+    def test_primary_sidebar_uses_compact_summary_header(self):
         brand_text = (ROOT / "frontend/src/components/app/SidebarBrandCard.vue").read_text(encoding="utf-8")
-        dock_text = (ROOT / "frontend/src/components/app/SidebarInfoDock.vue").read_text(encoding="utf-8")
+        sidebar_text = (ROOT / "frontend/src/components/app/AppPrimarySidebar.vue").read_text(encoding="utf-8")
         self.assertIn("summary", brand_text)
         self.assertIn("app-sidebar-brand-card__summary", brand_text)
+        self.assertIn("app-sidebar-brand-card__crest", brand_text)
+        self.assertIn("app-sidebar-brand-card__logo", brand_text)
+        self.assertIn("app-sidebar-brand-card__copy--collapsed", brand_text)
+        self.assertIn("app-sidebar-brand-card__switch-mark--hidden", brand_text)
+        self.assertNotIn('v-if="props.collapsed" class="app-sidebar-brand-card__switch-mark"', brand_text)
         self.assertIn("切换服务器", brand_text)
-        self.assertIn("时间", dock_text)
-        self.assertNotIn("运行台", dock_text)
-        self.assertNotIn("桌面端", dock_text)
+        self.assertNotIn("app-sidebar-brand-card__pill", brand_text)
+        self.assertNotIn("app-sidebar-brand-card__detail", brand_text)
+        self.assertNotIn("current-time", sidebar_text)
+        self.assertNotIn("telemetry", sidebar_text)
+
+    def test_primary_sidebar_supports_collapsed_desktop_mode(self):
+        sidebar_text = (ROOT / "frontend/src/components/app/AppPrimarySidebar.vue").read_text(encoding="utf-8")
+        brand_text = (ROOT / "frontend/src/components/app/SidebarBrandCard.vue").read_text(encoding="utf-8")
+        nav_text = (ROOT / "frontend/src/components/app/SidebarNavRail.vue").read_text(encoding="utf-8")
+        app_text = (ROOT / "frontend/src/App.vue").read_text(encoding="utf-8")
+
+        self.assertIn("collapsed", sidebar_text)
+        self.assertIn("toggle-collapse", sidebar_text)
+        self.assertIn("app-primary-sidebar--collapsed", sidebar_text)
+        self.assertIn("app-primary-sidebar__footer", sidebar_text)
+        self.assertIn("app-primary-sidebar__collapse-toggle", sidebar_text)
+        self.assertIn("app-primary-sidebar__collapse-icon--hidden", sidebar_text)
+        self.assertIn("app-primary-sidebar__collapse-label--collapsed", sidebar_text)
+        self.assertIn("props.collapsed", brand_text)
+        self.assertNotIn("app-sidebar-brand-card__toggle", brand_text)
+        self.assertIn("app-sidebar-brand-card__switch--icon", brand_text)
+        self.assertIn("props.collapsed", nav_text)
+        self.assertIn("app-primary-nav__seal--hidden", nav_text)
+        self.assertIn("app-primary-nav__body--collapsed", nav_text)
+        self.assertNotIn('v-if="props.collapsed" class="app-primary-nav__seal"', nav_text)
+        self.assertIn("app-primary-nav__item--collapsed", nav_text)
+        self.assertIn(".app-primary-sidebar__collapse-toggle", app_text)
+
+    def test_console_shell_uses_smooth_sidebar_transition_curve(self):
+        console_text = (ROOT / "frontend/src/views/ConsoleShell.vue").read_text(encoding="utf-8")
+        sidebar_text = (ROOT / "frontend/src/components/app/AppPrimarySidebar.vue").read_text(encoding="utf-8")
+        brand_text = (ROOT / "frontend/src/components/app/SidebarBrandCard.vue").read_text(encoding="utf-8")
+        nav_text = (ROOT / "frontend/src/components/app/SidebarNavRail.vue").read_text(encoding="utf-8")
+
+        self.assertIn("cubic-bezier(0.22, 1, 0.36, 1)", console_text)
+        self.assertIn("will-change: grid-template-columns;", console_text)
+        self.assertIn("cubic-bezier(0.22, 1, 0.36, 1)", sidebar_text)
+        self.assertIn("min-width: 0;", console_text)
+        self.assertIn("overflow-x: hidden;", sidebar_text)
+        self.assertIn("max-width: 100%;", brand_text)
+        self.assertIn("max-width: 100%;", nav_text)
 
     def test_console_shell_exposes_switch_server_action(self):
         shell_text = (ROOT / "frontend/src/composables/useConsoleShell.js").read_text(encoding="utf-8")
@@ -175,6 +240,32 @@ class FrontendUIStructureTests(unittest.TestCase):
         self.assertIn("router.replace(IMPORT_ROUTE)", shell_text)
         self.assertIn(":switch-server-busy", console_text)
         self.assertIn("@switch-server", console_text)
+
+    def test_console_shell_sidebar_wiring_is_trimmed(self):
+        shell_text = (ROOT / "frontend/src/composables/useConsoleShell.js").read_text(encoding="utf-8")
+        console_text = (ROOT / "frontend/src/views/ConsoleShell.vue").read_text(encoding="utf-8")
+        app_text = (ROOT / "frontend/src/App.vue").read_text(encoding="utf-8")
+        style_text = (ROOT / "frontend/src/style.css").read_text(encoding="utf-8")
+
+        self.assertNotIn(":current-time", console_text)
+        self.assertNotIn(":telemetry", console_text)
+        self.assertNotIn("currentTime = ref('')", shell_text)
+        self.assertNotIn("sidebarTelemetry", shell_text)
+        self.assertNotIn(".app-primary-nav__group", app_text)
+        self.assertNotIn(".app-primary-nav__group", style_text)
+
+    def test_console_shell_uses_transient_sidebar_collapse_state(self):
+        shell_text = (ROOT / "frontend/src/composables/useConsoleShell.js").read_text(encoding="utf-8")
+        console_text = (ROOT / "frontend/src/views/ConsoleShell.vue").read_text(encoding="utf-8")
+
+        self.assertIn("const sidebarCollapsed = ref(false)", shell_text)
+        self.assertIn("function toggleSidebarCollapsed()", shell_text)
+        self.assertIn("sidebarCollapsed", shell_text)
+        self.assertIn("toggleSidebarCollapsed", shell_text)
+        self.assertNotIn("localStorage", shell_text)
+        self.assertIn("app-shell--sidebar-collapsed", console_text)
+        self.assertIn(":collapsed=\"shell.sidebarCollapsed\"", console_text)
+        self.assertIn("@toggle-collapse=\"shell.toggleSidebarCollapsed\"", console_text)
 
     def test_desktop_shell_uses_updated_logo_assets(self):
         splash_text = (ROOT / "desktop-shell/splash.html").read_text(encoding="utf-8")
@@ -201,12 +292,13 @@ class FrontendUIStructureTests(unittest.TestCase):
     def test_dashboard_live_uses_grouped_live_workspace_component(self):
         text = (ROOT / "frontend/src/views/Dashboard.vue").read_text(encoding="utf-8")
         self.assertIn("DashboardLiveWorkspace", text)
-        self.assertIn("workspaceReady && activeTab === 'live'", text)
+        self.assertIn("activeTab === 'live'", text)
+        self.assertIn("liveSummary", text)
 
     def test_dashboard_overview_collapses_actions_into_single_main_card(self):
         text = (ROOT / "frontend/src/views/Dashboard.vue").read_text(encoding="utf-8")
-        self.assertIn("overview-layout", text)
-        self.assertIn("overviewRoutes", text)
+        self.assertIn("DashboardOverviewTab", text)
+        self.assertIn("overviewModel", text)
         self.assertNotIn("工作入口", text)
         self.assertNotIn("signal-grid", text)
 
@@ -214,11 +306,6 @@ class FrontendUIStructureTests(unittest.TestCase):
         text = (ROOT / "frontend/src/views/Dashboard.vue").read_text(encoding="utf-8")
         self.assertIn("dashboard-summary__meta", text)
         self.assertNotIn("governance-hero__side", text)
-
-    def test_scheduler_no_longer_hosts_energy_report(self):
-        text = (ROOT / "frontend/src/views/Scheduler.vue").read_text(encoding="utf-8")
-        self.assertNotIn("AI 能耗分析报告", text)
-        self.assertNotIn("getScheduleReport", text)
 
     def test_monitor_center_no_longer_hosts_replay_tab(self):
         text = (ROOT / "frontend/src/views/MonitorCenter.vue").read_text(encoding="utf-8")
@@ -255,12 +342,28 @@ class FrontendUIStructureTests(unittest.TestCase):
             text = (ROOT / rel).read_text(encoding="utf-8")
             self.assertNotIn("text-overflow: ellipsis", text, rel)
 
-    def test_task_manager_uses_responsive_process_ledger_component(self):
-        text = (ROOT / "frontend/src/views/TaskManager.vue").read_text(encoding="utf-8")
-        self.assertIn("TaskProcessLedger", text)
-        self.assertNotIn("<table class=\"task-table\">", text)
-        self.assertNotIn("min-width: 1480px", text)
-        self.assertNotIn("table-layout: fixed", text)
+    def test_user_rule_cards_keep_graphical_action_buttons(self):
+        text = (ROOT / "frontend/src/components/tasks/UserRuleCard.vue").read_text(encoding="utf-8")
+
+        self.assertIn("action-card", text)
+        self.assertIn("编辑规则", text)
+        self.assertIn("恢复默认", text)
+
+    def test_policy_console_exposes_pending_badges_and_inline_risk_banner(self):
+        text = (ROOT / "frontend/src/components/governance/PolicyBudgetConsole.vue").read_text(encoding="utf-8")
+        dock_text = (ROOT / "frontend/src/components/governance/PolicyActionDock.vue").read_text(encoding="utf-8")
+
+        self.assertIn("待应用", text)
+        self.assertIn("policy-budget-console__badge", text)
+        self.assertIn("execution-banner", dock_text)
+        self.assertIn("execution-banner--", dock_text)
+
+    def test_policies_console_uses_switch_first_control_language(self):
+        text = (ROOT / "frontend/src/components/governance/PolicyBudgetConsole.vue").read_text(encoding="utf-8")
+
+        self.assertIn("policy-switch", text)
+        self.assertIn("action-card", text)
+        self.assertIn("待应用", text)
 
     def test_energy_page_splits_overview_into_additional_tabs(self):
         text = (ROOT / "frontend/src/views/EnergyOptimization.vue").read_text(encoding="utf-8")
@@ -319,5 +422,13 @@ class FrontendUIStructureTests(unittest.TestCase):
         self.assertIn("update:modelValue", tabs_text)
         self.assertIn("temperature", helper_text)
         self.assertIn("self_check", helper_text)
+
+    def test_alert_archive_metrics_use_dark_surface_tokens(self):
+        text = (ROOT / "frontend/src/components/alerts/AlertArchiveBoard.vue").read_text(encoding="utf-8")
+
+        self.assertIn("archive-detail__metric", text)
+        self.assertIn("background: rgba(255, 255, 255, 0.03);", text)
+        self.assertIn("border: 1px solid var(--border-color);", text)
+        self.assertNotIn("background: rgba(250, 246, 239, 0.9);", text)
 if __name__ == "__main__":
     unittest.main()

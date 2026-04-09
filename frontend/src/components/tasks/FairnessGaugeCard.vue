@@ -1,7 +1,7 @@
 <script setup>
 /**
- * FairnessGaugeCard - 公平治理仪表盘卡片
- * 从 TaskManager.vue 提取，展示公平指数仪表盘、用户资源分布
+ * FairnessGaugeCard - 公平诊断仪表盘卡片
+ * 展示公平指数、倾斜等级和用户资源分布
  */
 import { computed } from 'vue'
 
@@ -39,8 +39,8 @@ function barColor(pct) {
   <div class="tech-card fairness-gauge-card">
     <div class="fairness-gauge-card__head">
       <div>
-        <div class="fairness-gauge-card__eyebrow">多用户资源公平度量化</div>
-        <div class="panel-card__title">公平治理仪表盘</div>
+        <div class="fairness-gauge-card__eyebrow">多用户资源倾斜诊断</div>
+        <div class="panel-card__title">公平诊断仪表盘</div>
       </div>
       <div class="fairness-gauge-card__seal">衡</div>
     </div>

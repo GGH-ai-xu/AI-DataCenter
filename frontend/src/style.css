@@ -110,7 +110,6 @@ body {
   color: var(--text-primary);
   font-family: var(--font-ui);
   -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
 }
 
 body::before,
@@ -205,7 +204,6 @@ canvas {
 .workspace-tab,
 .import-prep-tabs__item,
 .app-primary-nav__item,
-.app-primary-nav__group,
 .app-mobile-nav__item,
 .app-mobile-nav__action,
 .overview-route,
@@ -222,8 +220,8 @@ canvas {
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-color);
   background: var(--surface-overlay), var(--bg-card);
-  backdrop-filter: blur(18px) saturate(1.25);
-  -webkit-backdrop-filter: blur(18px) saturate(1.25);
+  backdrop-filter: blur(16px) saturate(1.25);
+  -webkit-backdrop-filter: blur(16px) saturate(1.25);
   box-shadow: var(--shadow-card);
   transition:
     transform 260ms var(--ease-expo),
@@ -334,8 +332,8 @@ canvas {
 
 .workspace-summary {
   display: grid;
-  gap: 16px;
-  padding: 22px 24px;
+  gap: 12px;
+  padding: 18px 20px;
 }
 
 .workspace-summary__eyebrow {
@@ -350,20 +348,20 @@ canvas {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 18px;
+  gap: 14px;
 }
 
 .workspace-summary__main {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .workspace-summary__title,
 .ink-page-head__title {
   font-family: var(--font-ui);
-  font-size: clamp(1.7rem, 2.7vw, 2.4rem);
+  font-size: clamp(1.45rem, 2.1vw, 1.92rem);
   font-weight: 600;
-  line-height: 1.06;
+  line-height: 1.12;
   letter-spacing: -0.03em;
   background: linear-gradient(180deg, rgba(255, 255, 255, 1) 0%, rgba(232, 238, 255, 0.96) 52%, rgba(186, 201, 238, 0.78) 100%);
   -webkit-background-clip: text;
@@ -374,21 +372,21 @@ canvas {
 .workspace-summary__desc,
 .ink-page-head__desc {
   max-width: 80ch;
-  font-size: 0.96rem;
-  line-height: 1.8;
+  font-size: 0.9rem;
+  line-height: 1.7;
   color: var(--text-secondary);
 }
 
 .workspace-summary__meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
   justify-content: flex-end;
 }
 
 .workspace-summary__body {
   display: grid;
-  gap: 14px;
+  gap: 10px;
 }
 
 .workspace-summary-strip {
@@ -810,7 +808,7 @@ textarea {
 
   .workspace-summary,
   .ink-page-head {
-    padding: 22px 20px;
+    padding: 18px 18px;
   }
 
   .workspace-summary__top,
@@ -844,7 +842,7 @@ textarea {
 
   .workspace-summary__title,
   .ink-page-head__title {
-    font-size: 1.52rem;
+    font-size: 1.34rem;
   }
 
   .workspace-summary__desc,
