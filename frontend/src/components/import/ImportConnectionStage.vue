@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import ImportSourcePanel from './ImportSourcePanel.vue'
 const SOURCE_MODES = Object.freeze([
-  { key: 'http_local', label: '本机' },
+  { key: 'http_local', label: '本机 Agent' },
   { key: 'http_remote', label: '远程 Agent' },
   { key: 'ssh_linux', label: 'SSH Linux' },
 ])
@@ -46,7 +46,7 @@ const authLabel = computed(() => (props.providerType === 'ssh_linux'
   : 'Agent 直连'))
 const providerLabel = computed(() => (props.providerType === 'ssh_linux'
   ? 'SSH Linux'
-  : (props.providerType === 'http_remote' ? '远程 Agent' : '本机')))
+  : (props.providerType === 'http_remote' ? '远程 Agent' : '本机 Agent')))
 
 const targetAddress = computed(() => {
   if (props.providerType === 'ssh_linux') {

@@ -47,3 +47,11 @@ export function watchSystemTheme(windowObject, onChange) {
 export function readThemeVar(name, root = document.documentElement) {
   return getComputedStyle(root).getPropertyValue(name).trim()
 }
+
+export function createPaletteProxy(source) {
+  return new Proxy({}, {
+    get(_target, key) {
+      return source.value[key]
+    },
+  })
+}

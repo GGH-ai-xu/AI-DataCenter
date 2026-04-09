@@ -145,12 +145,8 @@ const emit = defineEmits([
   gap: 12px 16px;
   padding: 12px 14px;
   border-radius: 18px;
-  background:
-    linear-gradient(180deg, rgba(132, 149, 255, 0.09) 0%, rgba(255, 255, 255, 0.03) 72%, rgba(255, 255, 255, 0.02) 100%),
-    rgba(17, 25, 43, 0.86);
-  box-shadow:
-    0 0 0 1px rgba(176, 190, 255, 0.06),
-    0 16px 40px rgba(0, 0, 0, 0.2);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-card);
 }
 
 .toolbar-card::before {
@@ -204,15 +200,15 @@ const emit = defineEmits([
   min-height: 40px;
   padding: 9px 12px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(10, 16, 31, 0.82);
+  border: 1px solid var(--field-border);
+  background: var(--field-background);
   color: var(--text-primary);
   font-size: 0.84rem;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .task-input::placeholder {
-  color: rgba(158, 168, 192, 0.76);
+  color: var(--text-muted);
 }
 
 .toolbar-segment {
@@ -220,8 +216,8 @@ const emit = defineEmits([
   align-items: center;
   padding: 4px;
   border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(10, 16, 31, 0.72);
+  border: 1px solid var(--border-color);
+  background: var(--bg-surface);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   gap: 4px;
 }
@@ -252,10 +248,10 @@ const emit = defineEmits([
 }
 
 .toolbar-segment__item--active {
-  color: #fdfdff;
-  background: linear-gradient(135deg, rgba(151, 165, 255, 0.92) 0%, rgba(127, 142, 255, 0.96) 56%, rgba(110, 184, 255, 0.92) 100%);
+  color: var(--state-ok-text);
+  background: var(--state-ok-bg);
   box-shadow:
-    0 8px 20px rgba(127, 142, 255, 0.24),
+    0 8px 20px rgba(127, 142, 255, 0.18),
     inset 0 1px 0 rgba(255, 255, 255, 0.22);
 }
 
@@ -278,8 +274,8 @@ const emit = defineEmits([
   min-height: 38px;
   padding: 0 14px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-color);
+  background: var(--bg-surface);
   color: var(--text-secondary);
   font-size: 0.8rem;
   font-weight: 700;
@@ -295,8 +291,8 @@ const emit = defineEmits([
 
 .toolbar-export:hover {
   color: var(--text-primary);
-  border-color: rgba(127, 142, 255, 0.3);
-  background: rgba(127, 142, 255, 0.12);
+  border-color: var(--state-ok-border);
+  background: var(--state-ok-bg);
   transform: translateY(-1px);
 }
 

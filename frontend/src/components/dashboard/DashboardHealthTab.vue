@@ -149,8 +149,8 @@ const actionTitle = computed(() => {
   border-radius: 24px;
   border: 1px solid var(--console-border, rgba(255, 255, 255, 0.08));
   background:
-    linear-gradient(145deg, rgba(14, 20, 29, 0.94), rgba(10, 15, 22, 0.9)),
-    var(--console-surface, rgba(255, 255, 255, 0.04));
+    var(--surface-overlay),
+    var(--bg-strong);
 }
 
 .dashboard-health__board-head {
@@ -205,7 +205,7 @@ const actionTitle = computed(() => {
   gap: 8px;
   min-height: 108px;
   padding: 16px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--bg-card);
 }
 
 .dashboard-health__item span,
@@ -223,12 +223,13 @@ const actionTitle = computed(() => {
 }
 
 .dashboard-health__item--warning {
-  background: rgba(242, 207, 123, 0.1);
-  border-color: rgba(242, 207, 123, 0.2);
+  background: var(--state-warning-bg);
+  border-color: var(--state-warning-border);
 }
 
 .dashboard-health__item--ok {
-  background: rgba(108, 210, 167, 0.08);
+  background: var(--state-ok-bg);
+  border-color: var(--state-ok-border);
 }
 
 .dashboard-health__focus-grid {
@@ -239,13 +240,11 @@ const actionTitle = computed(() => {
 .dashboard-health__focus-card {
   gap: 12px;
   padding: 16px;
-  background: rgba(255, 255, 255, 0.025);
+  background: var(--bg-card);
 }
 
 .dashboard-health__focus-card--signal {
-  background:
-    radial-gradient(circle at top right, rgba(242, 207, 123, 0.12), transparent 52%),
-    rgba(255, 255, 255, 0.025);
+  background: var(--bg-card);
 }
 
 .dashboard-health__focus-card--control {
@@ -272,13 +271,13 @@ const actionTitle = computed(() => {
   border-radius: 14px;
   padding: 12px 18px;
   font: inherit;
-  color: var(--console-text, var(--text-primary));
-  background: rgba(74, 101, 255, 0.16);
+  color: var(--state-ok-text);
+  background: var(--state-ok-bg);
   cursor: pointer;
 }
 
 .dashboard-health__toggle:hover {
-  background: rgba(74, 101, 255, 0.22);
+  background: var(--bg-card-hover);
 }
 
 .dashboard-health__details {
@@ -290,11 +289,11 @@ const actionTitle = computed(() => {
   display: grid;
   gap: 10px;
   padding: 16px;
-  background: var(--console-surface, rgba(255, 255, 255, 0.04));
+  background: var(--bg-card);
 }
 
 .dashboard-health__detail--priority {
-  border-color: rgba(242, 207, 123, 0.2);
+  border-color: var(--state-warning-border);
 }
 
 @media (max-width: 980px) {

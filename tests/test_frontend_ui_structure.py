@@ -202,6 +202,27 @@ class FrontendUIStructureTests(unittest.TestCase):
         self.assertIn("var(--state-warning-bg)", ai_text)
         self.assertIn("var(--state-danger-bg)", ai_text)
 
+    def test_governance_toolbar_dashboard_health_and_energy_use_theme_tokens(self):
+        governance_text = (ROOT / "frontend/src/components/governance/GovernanceActionsMainPane.vue").read_text(encoding="utf-8")
+        health_text = (ROOT / "frontend/src/components/dashboard/DashboardHealthTab.vue").read_text(encoding="utf-8")
+        energy_text = (ROOT / "frontend/src/views/EnergyOptimization.vue").read_text(encoding="utf-8")
+
+        self.assertIn("var(--bg-card)", governance_text)
+        self.assertIn("var(--field-background)", governance_text)
+        self.assertIn("var(--state-ok-bg)", governance_text)
+        self.assertNotIn("rgba(17, 25, 43, 0.86)", governance_text)
+
+        self.assertIn("var(--bg-strong)", health_text)
+        self.assertIn("var(--state-warning-bg)", health_text)
+        self.assertIn("var(--state-ok-bg)", health_text)
+        self.assertNotIn("linear-gradient(145deg, rgba(14, 20, 29, 0.94)", health_text)
+
+        self.assertIn("--energy-card: var(--bg-card);", energy_text)
+        self.assertIn("--energy-card-strong: var(--bg-strong);", energy_text)
+        self.assertIn("--energy-surface: var(--bg-surface);", energy_text)
+        self.assertIn("var(--state-danger-bg)", energy_text)
+        self.assertNotIn("--energy-card: rgba(19, 29, 50, 0.76);", energy_text)
+
     def test_primary_sidebar_keeps_compact_header_and_nav_layout(self):
         shell_text = (ROOT / "frontend/src/components/app/AppPrimarySidebar.vue").read_text(encoding="utf-8")
         nav_text = (ROOT / "frontend/src/components/app/SidebarNavRail.vue").read_text(encoding="utf-8")

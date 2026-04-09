@@ -9,7 +9,7 @@ import MonitorWorkspaceSummary from '../components/monitor/MonitorWorkspaceSumma
 import WorkspacePaneLayout from '../components/workspace/WorkspacePaneLayout.vue'
 import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
 import { useMonitorData } from '../composables/useMonitorData.js'
-import { readThemeVar } from '../lib/themeMode.js'
+import { createPaletteProxy, readThemeVar } from '../lib/themeMode.js'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart, BarChart, CustomChart, GaugeChart } from 'echarts/charts'
@@ -51,11 +51,7 @@ const monitorPalette = computed(() => ({
   panel: readThemeVar('--bg-strong'),
   inactive: readThemeVar('--text-muted'),
 }))
-const palette = new Proxy({}, {
-  get(_target, key) {
-    return palette.value[key]
-  },
-})
+const palette = createPaletteProxy(monitorPalette)
 const monitorFontUi = "'PingFang SC','Microsoft YaHei','Noto Sans SC','Segoe UI',sans-serif"
 const TIMELINE_RANGE_OPTIONS = Object.freeze([
   { hours: 1, label: '1小时' },

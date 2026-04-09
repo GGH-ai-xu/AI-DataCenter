@@ -7,6 +7,7 @@ import {
   normalizeThemePreference,
   resolveThemeFromPreference,
   applyResolvedThemeToDocument,
+  createPaletteProxy,
   watchSystemTheme,
 } from './themeMode.js'
 
@@ -58,4 +59,25 @@ test('watchSystemTheme returns a dispose function that unregisters the listener'
   watcher.dispose()
 
   assert.equal(removed, true)
+})
+
+test('createPaletteProxy reads from the reactive source without recursion', () => {
+  const paletteSource = {
+    value: {
+      primary: '#111111',
+      warning: '#ffcc00',
+    },
+  }
+
+  const palette = createPaletteProxy(paletteSource)
+
+  assert.equal(palette.primary, '#111111')
+  assert.equal(palette.warning, '#ffcc00')
+
+  paletteSource.value = {
+    primary: '#222222',
+    warning: '#ffaa00',
+  }
+
+  assert.equal(palette.primary, '#222222')
 })

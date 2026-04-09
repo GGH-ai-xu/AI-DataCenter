@@ -25,7 +25,7 @@ import { exportTextFile } from '../services/desktopExport'
 import WorkspaceSummary from '../components/workspace/WorkspaceSummary.vue'
 import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
 import { useEnergyData } from '../composables/useEnergyData.js'
-import { readThemeVar } from '../lib/themeMode.js'
+import { createPaletteProxy, readThemeVar } from '../lib/themeMode.js'
 
 use([
   CanvasRenderer,
@@ -90,11 +90,7 @@ const energyPalette = computed(() => ({
   purple: readThemeVar('--accent-secondary'),
   purpleSoft: readThemeVar('--bg-surface'),
 }))
-const palette = new Proxy({}, {
-  get(_target, key) {
-    return palette.value[key]
-  },
-})
+const palette = createPaletteProxy(energyPalette)
 const energyFontUi = "'PingFang SC','Microsoft YaHei','Noto Sans SC','Segoe UI',sans-serif"
 
 function anim(k, t, d=1400) {
@@ -397,7 +393,7 @@ function renderComp(){
     series:[
       {name:'基线功耗',type:'line',smooth:.4,symbol:'none',lineStyle:{width:2,color:palette.danger,type:'dashed',opacity:0.7},data:bs.map(p=>p.power),markLine:{silent:true,symbol:'none',lineStyle:{color:palette.primary,type:'dashed',width:1.5},data:markData.map(d=>({...d,label:{formatter:'优化点',color:palette.primary,fontSize:10,fontFamily:energyFontUi}}))}},
       {name:'实际功耗',type:'line',smooth:.4,symbol:'none',lineStyle:{width:2.5,color:palette.primary},areaStyle:{color:new graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(127, 142, 255, 0.14)'},{offset:1,color:'transparent'}])},data:as2.map(p=>p.power)},
-      {name:'节省量',type:'bar',barWidth:4,itemStyle:{color:'rgba(127, 142, 255, 0.38)',borderRadius:[2,2,0,0]},data:ss.map(p=>p.saved)},
+      {name:'节省量',type:'bar',barWidth:4,itemStyle:{color:palette.secondary,borderRadius:[2,2,0,0]},data:ss.map(p=>p.saved)},
     ],animationDuration:1500,
   })
 }
@@ -764,7 +760,7 @@ watch(activeTab, () => {
         <div class="trend-legend">
           <span class="trend-legend__i"><span class="trend-legend__bar" :style="{ background: palette.danger, borderStyle: 'dashed' }"></span>基线</span>
           <span class="trend-legend__i"><span class="trend-legend__bar" :style="{ background: palette.primary }"></span>实际</span>
-          <span class="trend-legend__i"><span class="trend-legend__bar" :style="{ background: 'rgba(127, 142, 255, 0.38)', height: '8px', borderRadius: '2px' }"></span>节省</span>
+          <span class="trend-legend__i"><span class="trend-legend__bar" :style="{ background: palette.secondary, height: '8px', borderRadius: '2px' }"></span>节省</span>
           <span v-if="historyComparison?.total_saved_kwh" class="comp-saved">累计节省 <b>{{ historyComparison.total_saved_kwh.toFixed(1) }}</b> kWh</span>
         </div>
       </div>
@@ -826,34 +822,40 @@ watch(activeTab, () => {
   position: relative;
   color: var(--text-primary);
   font-family: var(--font-ui);
-  --energy-card: rgba(19, 29, 50, 0.76);
-  --energy-card-strong: rgba(19, 29, 50, 0.92);
-  --energy-surface: rgba(127, 142, 255, 0.08);
-  --energy-surface-strong: rgba(127, 142, 255, 0.12);
+  --energy-card: var(--bg-card);
+  --energy-card-strong: var(--bg-strong);
+  --energy-surface: var(--bg-surface);
+  --energy-surface-strong: var(--bg-card-hover);
   --energy-border: var(--border-color);
-  --energy-line: rgba(184, 197, 236, 0.1);
+  --energy-line: var(--border-color);
   --energy-text: var(--text-primary);
   --energy-text-secondary: var(--text-secondary);
   --energy-text-muted: var(--text-tertiary);
   --energy-text-faint: var(--text-muted);
   --energy-shadow: var(--shadow-card);
+  --energy-ok-surface: var(--state-ok-bg);
+  --energy-ok-border: var(--state-ok-border);
+  --energy-warning-surface: var(--state-warning-bg);
+  --energy-warning-border: var(--state-warning-border);
+  --energy-danger-surface: var(--state-danger-bg);
+  --energy-danger-border: var(--state-danger-border);
 }
 
 .ink-export-feedback {
   margin: 0 0 18px;
   padding: 12px 16px;
   border-radius: 12px;
-  border: 1px solid rgba(127, 142, 255, 0.24);
-  background: linear-gradient(135deg, rgba(127, 142, 255, 0.16), rgba(110, 184, 255, 0.08));
+  border: 1px solid var(--energy-ok-border);
+  background: var(--energy-ok-surface);
   font-size: 0.8125rem;
   line-height: 1.7;
-  color: var(--accent-primary);
+  color: var(--state-ok-text);
 }
 
 .ink-export-feedback--error {
-  color: var(--accent-danger);
-  border-color: rgba(255, 111, 150, 0.22);
-  background: rgba(255, 111, 150, 0.12);
+  color: var(--state-danger-text);
+  border-color: var(--energy-danger-border);
+  background: var(--energy-danger-surface);
 }
 
 /* ===== 背景水墨山水 ===== */
@@ -979,8 +981,8 @@ watch(activeTab, () => {
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  background: linear-gradient(145deg, rgba(127, 142, 255, 0.16), rgba(110, 184, 255, 0.06));
-  border-color: rgba(127, 142, 255, 0.24);
+  background: var(--energy-ok-surface);
+  border-color: var(--energy-ok-border);
   position: relative;
   overflow: hidden;
 }
@@ -988,7 +990,7 @@ watch(activeTab, () => {
 .kpi-ink__brush {
   position: absolute;
   top: 0; left: 0; right: 0; height: 3px;
-  background: linear-gradient(90deg, transparent 5%, rgba(127, 142, 255, 0.18) 20%, rgba(110, 184, 255, 0.44) 40%, rgba(151, 165, 255, 0.3) 62%, rgba(127, 142, 255, 0.12) 82%, transparent 95%);
+  background: var(--gradient-green);
   border-radius: 2px;
 }
 
@@ -1168,7 +1170,7 @@ watch(activeTab, () => {
 
 .seal-btn:hover:not(:disabled) .seal-btn__stamp {
   background: var(--accent-danger);
-  color: #0B0E14;
+  color: var(--text-primary);
   box-shadow: 0 4px 16px rgba(255, 111, 150, 0.24);
 }
 
@@ -1189,7 +1191,7 @@ watch(activeTab, () => {
 .opt-empty-ink__char {
   font-family: 'Ma Shan Zheng', cursive;
   font-size: 5rem;
-  color: rgba(127, 142, 255, 0.1);
+  color: var(--border-strong);
   line-height: 1;
   margin-bottom: 12px;
 }
@@ -1252,7 +1254,7 @@ watch(activeTab, () => {
 
 .sug-ink__seal {
   width: 34px; height: 34px; flex-shrink: 0;
-  border: 2px solid rgba(127, 142, 255, 0.24);
+  border: 2px solid var(--energy-ok-border);
   border-radius: 4px;
   display: flex; align-items: center; justify-content: center;
   font-family: 'ZCOOL KuaiLe', cursive;
@@ -1263,8 +1265,8 @@ watch(activeTab, () => {
 
 .sug-ink__body { flex: 1; min-width: 0; }
 .sug-ink__top { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
-.sug-ink__tag { font-size: 0.6875rem; font-weight: 500; color: var(--accent-primary); background: rgba(127, 142, 255, 0.12); padding: 2px 8px; border-radius: 3px; }
-.sug-ink__gpu { font-size: 0.6875rem; font-weight: 500; color: var(--accent-tertiary); background: rgba(110, 184, 255, 0.12); padding: 2px 8px; border-radius: 3px; font-family: 'JetBrains Mono', monospace; }
+.sug-ink__tag { font-size: 0.6875rem; font-weight: 500; color: var(--accent-primary); background: var(--energy-ok-surface); padding: 2px 8px; border-radius: 3px; }
+.sug-ink__gpu { font-size: 0.6875rem; font-weight: 500; color: var(--accent-tertiary); background: var(--energy-surface); padding: 2px 8px; border-radius: 3px; font-family: 'JetBrains Mono', monospace; }
 .sug-ink__tgt { font-size: 0.6875rem; color: var(--energy-text-muted); font-family: 'JetBrains Mono', monospace; }
 .sug-ink__save { margin-left: auto; font-size: 0.8125rem; font-weight: 700; color: var(--accent-primary); font-family: 'JetBrains Mono', monospace; }
 .sug-ink__reason { font-size: 0.8125rem; color: var(--energy-text-secondary); line-height: 1.65; }
@@ -1278,11 +1280,11 @@ watch(activeTab, () => {
 .comp-saved {
   font-size: 0.75rem;
   color: var(--accent-primary);
-  background: rgba(127, 142, 255, 0.12);
+  background: var(--energy-ok-surface);
   padding: 2px 10px;
   border-radius: 4px;
   margin-left: 8px;
-  border: 1px solid rgba(127, 142, 255, 0.16);
+  border: 1px solid var(--energy-ok-border);
 }
 
 /* ===== 调度时间线 ===== */
@@ -1316,10 +1318,10 @@ watch(activeTab, () => {
   width: 10px; height: 10px;
   border-radius: 50%;
   background: var(--accent-primary);
-  border: 2px solid rgba(127, 142, 255, 0.2);
+  border: 2px solid var(--energy-ok-border);
   z-index: 1;
 }
-.timeline-dot--fail { background: var(--accent-danger); border-color: rgba(255, 111, 150, 0.22); }
+.timeline-dot--fail { background: var(--accent-danger); border-color: var(--energy-danger-border); }
 
 .timeline-line {
   position: absolute;
@@ -1357,17 +1359,17 @@ watch(activeTab, () => {
   font-size: 0.6875rem;
   font-weight: 500;
   color: var(--accent-primary);
-  background: rgba(127, 142, 255, 0.12);
+  background: var(--energy-ok-surface);
   padding: 1px 8px;
   border-radius: 3px;
 }
-.timeline-card__action--ai { color: var(--accent-tertiary); background: rgba(110, 184, 255, 0.12); }
+.timeline-card__action--ai { color: var(--accent-tertiary); background: var(--energy-surface); }
 
 .timeline-card__target {
   font-size: 0.6875rem;
   color: var(--accent-tertiary);
   font-family: 'JetBrains Mono', monospace;
-  background: rgba(110, 184, 255, 0.1);
+  background: var(--energy-surface);
   padding: 1px 8px;
   border-radius: 3px;
 }
@@ -1425,8 +1427,8 @@ watch(activeTab, () => {
 
 /* ===== AI 能力区块样式 ===== */
 .ink-card--ai {
-  background: linear-gradient(135deg, rgba(127, 142, 255, 0.16), rgba(18, 26, 46, 0.82));
-  border-color: rgba(127, 142, 255, 0.22);
+  background: var(--energy-card-strong);
+  border-color: var(--energy-ok-border);
 }
 .ink-stamp--ai { border: 2px solid var(--accent-secondary); color: var(--accent-secondary); opacity: 0.65; }
 
@@ -1437,9 +1439,9 @@ watch(activeTab, () => {
   letter-spacing: 0.05em;
   margin-left: auto;
 }
-.ai-risk-badge--low { color: var(--accent-primary); background: rgba(127, 142, 255, 0.12); }
-.ai-risk-badge--medium { color: var(--accent-warning); background: rgba(244, 185, 93, 0.12); }
-.ai-risk-badge--high { color: var(--accent-danger); background: rgba(255, 111, 150, 0.12); }
+.ai-risk-badge--low { color: var(--accent-primary); background: var(--energy-ok-surface); }
+.ai-risk-badge--medium { color: var(--accent-warning); background: var(--energy-warning-surface); }
+.ai-risk-badge--high { color: var(--accent-danger); background: var(--energy-danger-surface); }
 
 /* D2: AI洞察 */
 .ai-insight-body { padding: 0 4px; }
@@ -1461,10 +1463,10 @@ watch(activeTab, () => {
 .ai-insight-sug {
   font-size: 0.75rem;
   color: var(--accent-tertiary);
-  background: rgba(110, 184, 255, 0.1);
+  background: var(--energy-surface);
   padding: 4px 12px;
   border-radius: 4px;
-  border-left: 2px solid rgba(110, 184, 255, 0.28);
+  border-left: 2px solid var(--energy-ok-border);
 }
 
 /* D3: AI预测解读 */
@@ -1474,8 +1476,8 @@ watch(activeTab, () => {
   gap: 10px;
   margin-top: 14px;
   padding: 12px 16px;
-  background: rgba(110, 184, 255, 0.1);
-  border-left: 3px solid rgba(110, 184, 255, 0.28);
+  background: var(--energy-surface);
+  border-left: 3px solid var(--energy-ok-border);
   border-radius: 0 8px 8px 0;
 }
 .ai-interpret-icon {
@@ -1507,10 +1509,10 @@ watch(activeTab, () => {
 .ai-anomaly-item--critical { border-left-color: var(--accent-danger); }
 .ai-anomaly-item__head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .ai-anomaly-item__type { font-size: 0.8125rem; font-weight: 500; color: var(--energy-text); }
-.ai-anomaly-item__gpu { font-size: 0.6875rem; color: var(--accent-tertiary); background: rgba(110, 184, 255, 0.1); padding: 1px 8px; border-radius: 3px; font-family: 'JetBrains Mono', monospace; }
+.ai-anomaly-item__gpu { font-size: 0.6875rem; color: var(--accent-tertiary); background: var(--energy-surface); padding: 1px 8px; border-radius: 3px; font-family: 'JetBrains Mono', monospace; }
 .ai-anomaly-item__sev { margin-left: auto; font-size: 0.625rem; font-weight: 500; padding: 1px 8px; border-radius: 3px; }
-.ai-anomaly-item__sev--warning { color: var(--accent-warning); background: rgba(244, 185, 93, 0.12); }
-.ai-anomaly-item__sev--critical { color: var(--accent-danger); background: rgba(255, 111, 150, 0.12); }
+.ai-anomaly-item__sev--warning { color: var(--accent-warning); background: var(--energy-warning-surface); }
+.ai-anomaly-item__sev--critical { color: var(--accent-danger); background: var(--energy-danger-surface); }
 .ai-anomaly-item__desc { font-size: 0.8125rem; color: var(--energy-text-secondary); line-height: 1.6; }
 .ai-anomaly-item__sug { font-size: 0.75rem; color: var(--accent-tertiary); margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--energy-line); }
 
@@ -1521,7 +1523,7 @@ watch(activeTab, () => {
   gap: 8px;
   margin-top: 6px;
   padding-top: 6px;
-  border-top: 1px dashed rgba(127, 142, 255, 0.18);
+  border-top: 1px dashed var(--energy-ok-border);
 }
 .ai-eval-inline__score {
   font-family: var(--font-ui);
@@ -1619,7 +1621,7 @@ watch(activeTab, () => {
 }
 .ai-empty-hint__icon {
   width: 48px; height: 48px;
-  border: 2.5px dashed rgba(127, 142, 255, 0.32);
+  border: 2.5px dashed var(--energy-ok-border);
   border-radius: 50%;
   display: flex;
   align-items: center;

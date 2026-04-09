@@ -93,19 +93,23 @@ class FakeCredentials:
 
 
 class FakeImportContext:
+    def __init__(self):
+        self.selected = [0]
+
     def save_import(self, **payload):
+        self.selected = list(payload["gpu_indexes"])
         return {
             "valid": True,
             "provider_type": payload["provider_type"],
             "agent_label": payload["agent_label"],
-            "imported_gpu_indexes": payload["gpu_indexes"],
+            "imported_gpu_indexes": list(payload["gpu_indexes"]),
         }
 
     def snapshot(self):
         return {
             "valid": True,
             "provider_type": "ssh_linux",
-            "imported_gpu_indexes": [0],
+            "imported_gpu_indexes": list(self.selected),
         }
 
     def mark_invalid(self, reason: str):
@@ -113,8 +117,47 @@ class FakeImportContext:
             "valid": False,
             "invalid_reason": reason,
             "provider_type": "ssh_linux",
-            "imported_gpu_indexes": [0],
+            "imported_gpu_indexes": list(self.selected),
         }
+
+    def filter_gpus(self, gpus):
+        selected = set(self.selected)
+        return [gpu for gpu in (gpus or []) if int(gpu.get("index", -1)) in selected]
+
+    def filter_processes(self, processes):
+        selected = set(self.selected)
+        return [
+            process
+            for process in (processes or [])
+            if int(process.get("gpu_index", -1)) in selected
+        ]
+
+
+class FakePrivacy:
+    def sanitize_processes(self, processes):
+        return list(processes or [])
+
+
+def build_fake_main(app_state):
+    async def runtime_status_payload():
+        return await app_state.runtime.status()
+
+    def assign_active_provider(provider):
+        app_state.agent = provider
+
+    def resolve_import_context_snapshot(runtime_status, agent_health, gpus):
+        if runtime_status.get("status") == "connected" and hasattr(app_state.import_context, "validate_runtime"):
+            return app_state.import_context.validate_runtime(agent_health, gpus)
+        if runtime_status.get("status") == "invalid":
+            return app_state.import_context.mark_invalid("当前导入目标不可达，需要重新导入")
+        return app_state.import_context.snapshot()
+
+    return types.SimpleNamespace(
+        app_state=app_state,
+        assign_active_provider=assign_active_provider,
+        resolve_import_context_snapshot=resolve_import_context_snapshot,
+        runtime_status_payload=runtime_status_payload,
+    )
 
 
 class SshImportFlowTests(unittest.IsolatedAsyncioTestCase):
@@ -139,10 +182,11 @@ class SshImportFlowTests(unittest.IsolatedAsyncioTestCase):
             credentials=FakeCredentials(),
             import_context=FakeImportContext(),
             saved_hosts=saved_hosts,
+            privacy=FakePrivacy(),
         )
         request = ImportScanRequest(saved_host_id=8)
 
-        with mock.patch("app.main.app_state", fake_app_state):
+        with mock.patch.dict(sys.modules, {"app.main": build_fake_main(fake_app_state)}):
             with mock.patch(
                 "app.api.system.require_authenticated_user",
                 return_value={"id": 2, "username": "alice", "role": "member", "must_change_password": False},
@@ -158,6 +202,7 @@ class SshImportFlowTests(unittest.IsolatedAsyncioTestCase):
             runtime=FakeRuntime(),
             credentials=FakeCredentials(),
             import_context=FakeImportContext(),
+            privacy=FakePrivacy(),
         )
 
         request = ImportScanRequest(
@@ -166,7 +211,7 @@ class SshImportFlowTests(unittest.IsolatedAsyncioTestCase):
             agent_label="实验室 A",
         )
 
-        with mock.patch("app.main.app_state", fake_app_state):
+        with mock.patch.dict(sys.modules, {"app.main": build_fake_main(fake_app_state)}):
             response = await scan_import_context(request)
 
         self.assertTrue(response["success"])
@@ -179,6 +224,7 @@ class SshImportFlowTests(unittest.IsolatedAsyncioTestCase):
             runtime=FakeRuntime(),
             credentials=FakeCredentials(),
             import_context=FakeImportContext(),
+            privacy=FakePrivacy(),
         )
 
         request = ImportScanRequest(
@@ -197,7 +243,7 @@ class SshImportFlowTests(unittest.IsolatedAsyncioTestCase):
             },
         )
 
-        with mock.patch("app.main.app_state", fake_app_state):
+        with mock.patch.dict(sys.modules, {"app.main": build_fake_main(fake_app_state)}):
             response = await scan_import_context(request)
 
         self.assertTrue(response["success"])
@@ -220,6 +266,7 @@ class SshImportFlowTests(unittest.IsolatedAsyncioTestCase):
             runtime=runtime,
             credentials=FakeCredentials(),
             import_context=FakeImportContext(),
+            privacy=FakePrivacy(),
         )
 
         request = ImportScanRequest(
@@ -238,7 +285,7 @@ class SshImportFlowTests(unittest.IsolatedAsyncioTestCase):
             },
         )
 
-        with mock.patch("app.main.app_state", fake_app_state):
+        with mock.patch.dict(sys.modules, {"app.main": build_fake_main(fake_app_state)}):
             response = await scan_import_context(request)
 
         self.assertFalse(response["success"])
@@ -259,6 +306,7 @@ class SshImportFlowTests(unittest.IsolatedAsyncioTestCase):
             runtime=runtime,
             credentials=FakeCredentials(),
             import_context=FakeImportContext(),
+            privacy=FakePrivacy(),
         )
 
         request = ImportScanRequest(
@@ -277,7 +325,7 @@ class SshImportFlowTests(unittest.IsolatedAsyncioTestCase):
             },
         )
 
-        with mock.patch("app.main.app_state", fake_app_state):
+        with mock.patch.dict(sys.modules, {"app.main": build_fake_main(fake_app_state)}):
             response = await scan_import_context(request)
 
         self.assertFalse(response["success"])
@@ -289,6 +337,7 @@ class SshImportFlowTests(unittest.IsolatedAsyncioTestCase):
             runtime=FakeRuntime(),
             credentials=FakeCredentials(),
             import_context=FakeImportContext(),
+            privacy=FakePrivacy(),
         )
 
         request = ImportCommitRequest(
@@ -308,7 +357,7 @@ class SshImportFlowTests(unittest.IsolatedAsyncioTestCase):
             gpu_indexes=[9],
         )
 
-        with mock.patch("app.main.app_state", fake_app_state):
+        with mock.patch.dict(sys.modules, {"app.main": build_fake_main(fake_app_state)}):
             with self.assertRaises(HTTPException):
                 await commit_import_context(request)
 
@@ -327,6 +376,7 @@ class SshImportFlowTests(unittest.IsolatedAsyncioTestCase):
             runtime=runtime,
             credentials=FakeCredentials(),
             import_context=FakeImportContext(),
+            privacy=FakePrivacy(),
         )
 
         request = ImportCommitRequest(
@@ -346,7 +396,7 @@ class SshImportFlowTests(unittest.IsolatedAsyncioTestCase):
             gpu_indexes=[0],
         )
 
-        with mock.patch("app.main.app_state", fake_app_state):
+        with mock.patch.dict(sys.modules, {"app.main": build_fake_main(fake_app_state)}):
             with self.assertRaises(HTTPException) as raised:
                 await commit_import_context(request)
 
@@ -360,6 +410,7 @@ class SshImportFlowTests(unittest.IsolatedAsyncioTestCase):
             credentials=FakeCredentials(),
             import_context=FakeImportContext(),
             agent=None,
+            privacy=FakePrivacy(),
         )
 
         request = ImportCommitRequest(
@@ -379,7 +430,7 @@ class SshImportFlowTests(unittest.IsolatedAsyncioTestCase):
             gpu_indexes=[0],
         )
 
-        with mock.patch("app.main.app_state", fake_app_state):
+        with mock.patch.dict(sys.modules, {"app.main": build_fake_main(fake_app_state)}):
             await commit_import_context(request)
 
         self.assertIs(fake_app_state.agent, runtime.provider)
@@ -404,7 +455,7 @@ class SshImportFlowTests(unittest.IsolatedAsyncioTestCase):
             ),
         )
 
-        with mock.patch("app.main.app_state", fake_app_state):
+        with mock.patch.dict(sys.modules, {"app.main": build_fake_main(fake_app_state)}):
             response = await get_import_context()
 
         self.assertTrue(response["valid"])

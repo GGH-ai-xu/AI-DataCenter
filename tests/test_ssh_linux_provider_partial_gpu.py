@@ -68,6 +68,12 @@ class SshLinuxProviderPartialGpuTests(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
+    def test_build_gpu_metrics_query_uses_graphics_clock_field(self):
+        query = build_gpu_metrics_query(2)
+
+        self.assertIn("clocks.current.graphics", query)
+        self.assertNotIn("clocks.current.sm", query)
+
     async def test_get_all_gpus_returns_available_and_unavailable_rows(self):
         target = RuntimeTarget(
             provider_type="ssh_linux",

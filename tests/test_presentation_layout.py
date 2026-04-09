@@ -3,7 +3,10 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 
-ROOT = Path("/mnt/e/code/ai-datacenter/docs/presentations/ai_datacenter_showcase_ppt169_20260406/svg_output")
+ROOT = (
+    Path(__file__).resolve().parents[1]
+    / "docs/presentations/ai_datacenter_showcase_ppt169_20260406/svg_output"
+)
 SVG_NS = "{http://www.w3.org/2000/svg}"
 
 

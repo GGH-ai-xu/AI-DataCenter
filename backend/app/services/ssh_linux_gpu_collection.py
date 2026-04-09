@@ -16,7 +16,7 @@ GPU_PROCESS_FIELDS = "pid,gpu_uuid,used_memory"
 GPU_METRIC_FIELDS = (
     "index,uuid,name,pci.bus_id,temperature.gpu,power.draw,power.limit,"
     "utilization.gpu,utilization.memory,memory.used,memory.total,memory.free,"
-    "fan.speed,clocks.current.sm,clocks.current.memory"
+    "fan.speed,clocks.current.graphics,clocks.current.memory"
 )
 GPU_ERROR_BUS_ID_PATTERN = re.compile(r"GPU(?P<bus_id>(?:[0-9A-Fa-f]{4,8}:)?[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}\.[0-9A-Fa-f])")
 GPU_LIST_ERROR_PATTERN = re.compile(
