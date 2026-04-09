@@ -555,6 +555,17 @@ class FrontendUIStructureTests(unittest.TestCase):
         ]:
             self.assertTrue((ROOT / rel).exists(), rel)
 
+    def test_ai_workbench_component_files_exist(self):
+        for rel in [
+            "frontend/src/components/agent/AgentWorkbench.vue",
+            "frontend/src/components/agent/AgentSessionRail.vue",
+            "frontend/src/components/agent/AgentWorkbenchTopbar.vue",
+            "frontend/src/components/agent/AgentThread.vue",
+            "frontend/src/components/agent/AgentThreadRouteConfirmCard.vue",
+            "frontend/src/components/agent/AgentComposer.vue",
+        ]:
+            self.assertTrue((ROOT / rel).exists(), rel)
+
     def test_ai_assistant_uses_streaming_live_panel_and_stream_apis(self):
         text = (ROOT / "frontend/src/views/AIAssistant.vue").read_text(encoding="utf-8")
         api_text = (ROOT / "frontend/src/services/api.js").read_text(encoding="utf-8")
