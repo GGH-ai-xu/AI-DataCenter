@@ -7,6 +7,7 @@ from app.services.goal_runtime.goal_parser import parse_goal_message
 from app.services.goal_runtime.planner import build_initial_plan
 from app.services.goal_runtime.reasoning_trace import build_reasoning_trace
 from app.services.goal_runtime.session_events import build_goal_parsed_event
+from app.services.goal_runtime.session_view import build_session_view
 from app.services.goal_runtime.supervisor import execute_plan_session
 
 
@@ -225,7 +226,11 @@ class GoalRuntimeService:
         return {"session_id": session_id, "status": "completed"}
 
     async def get_session(self, session_id: str) -> dict | None:
-        return await self.store.get_agent_session(session_id)
+        session = await self.store.get_agent_session(session_id)
+        if session is None:
+            return None
+        events = await self.store.get_agent_events(session_id)
+        return build_session_view(session, events)
 
     async def get_events(self, session_id: str) -> list[dict]:
         return await self.store.get_agent_events(session_id)

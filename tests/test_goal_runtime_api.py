@@ -126,7 +126,16 @@ class FakeGoalRuntimeService:
 
     async def get_session(self, session_id):
         self.calls.append(("session", session_id))
-        return {"session_id": session_id, "status": "completed"}
+        return {
+            "session_id": session_id,
+            "status": "completed",
+            "event_count": 1,
+            "current_round": 1,
+            "llm_call_count": 0,
+            "awaiting_approval": False,
+            "pending_approval": None,
+            "latest_error": "",
+        }
 
     async def get_events(self, session_id):
         self.calls.append(("events", session_id))
@@ -208,6 +217,11 @@ class GoalRuntimeServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["status"], "awaiting_approval")
         session = await runtime.get_session(result["session_id"])
         self.assertEqual(session["status"], "awaiting_approval")
+        self.assertIn("event_count", session)
+        self.assertIn("current_round", session)
+        self.assertIn("llm_call_count", session)
+        self.assertIn("awaiting_approval", session)
+        self.assertIn("pending_approval", session)
         self.assertGreaterEqual(len(await runtime.get_events(result["session_id"])), 2)
 
     async def test_resolve_approval_completes_pending_runtime_action(self):
@@ -252,6 +266,8 @@ class GoalRuntimeRouteTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(started["status"], "awaiting_approval")
         self.assertEqual(approved["status"], "completed")
         self.assertEqual(session["status"], "completed")
+        self.assertIn("event_count", session)
+        self.assertIn("awaiting_approval", session)
         self.assertEqual(events["events"][0]["event_type"], "GoalParsed")
 
 
