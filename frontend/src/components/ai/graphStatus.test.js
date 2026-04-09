@@ -44,7 +44,7 @@ test('getGraphGenerateDisabledReason explains missing llm or paper content', () 
       llmReady: true,
       form: { title: '', abstract: 'abstract', content: '' },
     }),
-    /填写论文标题/,
+    /填写标题/,
   )
   assert.match(
     getGraphGenerateDisabledReason({

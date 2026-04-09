@@ -111,3 +111,102 @@ def test_build_graph_cypher_produces_merge_only_preview():
     assert "DETACH DELETE" not in cypher
     assert summary["node_count"] == 2
     assert summary["relation_count"] == 1
+
+
+def test_normalize_graph_draft_supports_optimization_mode():
+    graph, warnings = normalize_graph_draft(
+        {
+            "title": "智算中心优化规则",
+            "mode": "optimization",
+            "source": "optimization",
+            "source_type": "rule",
+            "domain_tag": "智算中心优化",
+            "scenario": "高峰限功",
+            "nodes": [
+                {"id": "policy_1", "label": "策略", "name": "三层调度总则"},
+                {"id": "constraint_1", "label": "约束", "name": "紧急任务不可暂停"},
+                {"id": "strategy_1", "label": "strategy", "name": "高峰限功调度"},
+                {"id": "template_1", "label": "代码模板", "name": "scheduler_power_guard"},
+            ],
+            "relations": [
+                {"from_id": "policy_1", "to_id": "constraint_1", "type": "约束"},
+                {"from_id": "strategy_1", "to_id": "template_1", "type": "uses template"},
+            ],
+        },
+        source="optimization",
+        title="智算中心优化规则",
+        mode="optimization",
+        source_type="rule",
+        domain_tag="智算中心优化",
+        scenario="高峰限功",
+    )
+
+    labels = {node["label"] for node in graph["nodes"]}
+    relation_types = {relation["type"] for relation in graph["relations"]}
+
+    assert labels == {"Policy", "Constraint", "OptimizationStrategy", "CodeTemplate"}
+    assert relation_types == {"CONSTRAINS", "USES_TEMPLATE"}
+    assert graph["mode"] == "optimization"
+    assert graph["source_type"] == "rule"
+    assert graph["domain_tag"] == "智算中心优化"
+    assert graph["scenario"] == "高峰限功"
+    assert warnings == []
+
+
+def test_build_graph_cypher_includes_optimization_metadata():
+    graph = {
+        "title": "绿算生金优化本体",
+        "mode": "optimization",
+        "source": "optimization",
+        "source_type": "strategy",
+        "domain_tag": "智算中心优化",
+        "scenario": "预算触发",
+        "nodes": [
+            {
+                "id": "strategy_1",
+                "label": "OptimizationStrategy",
+                "name": "预算触发调度",
+                "description": "当预算触顶时触发调度。",
+                "mode": "optimization",
+                "source": "optimization",
+                "source_type": "strategy",
+                "domain_tag": "智算中心优化",
+                "scenario": "预算触发",
+                "paper_title": "绿算生金优化本体",
+            },
+            {
+                "id": "metric_1",
+                "label": "Metric",
+                "name": "总功耗",
+                "description": "",
+                "mode": "optimization",
+                "source": "optimization",
+                "source_type": "strategy",
+                "domain_tag": "智算中心优化",
+                "scenario": "预算触发",
+                "paper_title": "绿算生金优化本体",
+            },
+        ],
+        "relations": [
+            {
+                "from_id": "strategy_1",
+                "to_id": "metric_1",
+                "type": "OPTIMIZES",
+                "description": "目标是压低总功耗。",
+                "mode": "optimization",
+                "source": "optimization",
+                "source_type": "strategy",
+                "domain_tag": "智算中心优化",
+                "scenario": "预算触发",
+                "paper_title": "绿算生金优化本体",
+            },
+        ],
+    }
+
+    cypher = build_graph_cypher(graph)
+
+    assert "// mode: optimization" in cypher
+    assert "MERGE (n0:OptimizationStrategy" in cypher
+    assert "source_type = \"strategy\"" in cypher
+    assert "domain_tag = \"智算中心优化\"" in cypher
+    assert "MERGE (rf0)-[rel0:OPTIMIZES]->(rt0)" in cypher

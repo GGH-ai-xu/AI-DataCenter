@@ -20,7 +20,7 @@ export function getGraphGenerateDisabledReason(options = {}) {
     return 'LLM 未就绪，暂时无法生成图谱草稿。'
   }
   if (!String(form.title || '').trim()) {
-    return '请先填写论文标题。'
+    return '请先填写标题。'
   }
   if (!String(form.abstract || '').trim() && !String(form.content || '').trim()) {
     return '至少提供摘要或正文片段，才能生成图谱草稿。'

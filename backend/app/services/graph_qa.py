@@ -5,14 +5,9 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from app.services.optimization_ontology import GRAPH_LABEL_PRIORITY
 
-LABEL_PRIORITY = {
-    "Paper": 0,
-    "Method": 1,
-    "Task": 2,
-    "Dataset": 3,
-    "Metric": 4,
-}
+LABEL_PRIORITY = GRAPH_LABEL_PRIORITY
 
 QUESTION_HINTS = {
     "论文": {"Paper"},
@@ -25,6 +20,19 @@ QUESTION_HINTS = {
     "dataset": {"Dataset"},
     "指标": {"Metric"},
     "metric": {"Metric"},
+    "策略": {"Policy", "OptimizationStrategy"},
+    "policy": {"Policy"},
+    "strategy": {"OptimizationStrategy"},
+    "约束": {"Constraint"},
+    "constraint": {"Constraint"},
+    "模板": {"CodeTemplate"},
+    "template": {"CodeTemplate"},
+    "接口": {"API"},
+    "api": {"API"},
+    "预算": {"PowerBudget", "CarbonTarget"},
+    "高峰期": {"TimePeriod"},
+    "低谷期": {"TimePeriod"},
+    "任务类型": {"TaskType"},
 }
 
 RELATION_HINTS = {
@@ -38,6 +46,16 @@ RELATION_HINTS = {
     "解决": {"SOLVES"},
     "效果": {"ACHIEVES"},
     "指标": {"ACHIEVES"},
+    "约束": {"CONSTRAINS"},
+    "限制": {"LIMITS", "CONSTRAINS"},
+    "适用": {"APPLIES_TO"},
+    "优化": {"OPTIMIZES"},
+    "模板": {"USES_TEMPLATE"},
+    "接口": {"CALLS_API"},
+    "调用": {"CALLS_API"},
+    "影响": {"AFFECTS"},
+    "触发": {"TRIGGERS"},
+    "依赖": {"USES", "REQUIRES"},
 }
 
 STOP_WORDS = {
@@ -333,7 +351,7 @@ def build_graph_answer_context(
     for node in selected_nodes[:6]:
         node_line = f"[{_normalize_text(node.get('label'))}] {_normalize_text(node.get('name'))}"
         if _normalize_text(node.get("paper_title")):
-            node_line += f" | 论文：{_normalize_text(node.get('paper_title'))}"
+            node_line += f" | 主题：{_normalize_text(node.get('paper_title'))}"
         if _normalize_text(node.get("description")):
             node_line += f" | 说明：{_normalize_text(node.get('description'))[:120]}"
         evidence_lines.append(node_line)
@@ -352,10 +370,17 @@ def build_graph_answer_context(
 
     label_counts = graph_view.get("label_counts") or {}
     relation_type_counts = graph_view.get("relation_type_counts") or {}
+    paper_node_count = len([node for node in nodes if _normalize_text(node.get("label")) == "Paper"])
+    topic_count = len(paper_titles) if paper_titles else 0
+    overview_scope = (
+        f"{paper_node_count} 篇论文"
+        if paper_node_count
+        else (f"{topic_count} 个主题条目" if topic_count else "0 篇论文")
+    )
     lines = [
         f"问题：{_normalize_text(question)}",
         (
-            f"图库总览：{len([node for node in nodes if _normalize_text(node.get('label')) == 'Paper'])} 篇论文，"
+            f"图库总览：{overview_scope}，"
             f"{len(nodes)} 个节点，{len(relationships)} 条关系。"
         ),
         "可用标签分布：" + "，".join(
@@ -397,10 +422,16 @@ def build_graph_answer_context(
             f"{_normalize_text(target.get('name') or '相关节点')} 的关系说明了什么？"
         )
     if not follow_ups:
-        follow_ups = [
-            "这几篇论文的共同主线是什么？",
-            "当前图谱里最核心的方法节点是谁？",
-        ]
+        if paper_titles:
+            follow_ups = [
+                "这几篇论文的共同主线是什么？",
+                "当前图谱里最核心的方法节点是谁？",
+            ]
+        else:
+            follow_ups = [
+                "当前图谱里最核心的优化策略节点是谁？",
+                "哪些约束和预算共同决定了当前策略？",
+            ]
 
     return {
         "question": _normalize_text(question),
@@ -424,7 +455,7 @@ def build_graph_answer_fallback(question: str, context: dict[str, Any]) -> dict[
     if not evidence_nodes and not evidence_relationships:
         return {
             "summary": "当前图库里还没有足够证据回答这个问题。",
-            "answer": "图谱里没有检索到足够相关的节点或关系。你可以先导入更多论文，或换一个更具体的问题再试。",
+            "answer": "图谱里没有检索到足够相关的节点或关系。你可以先导入更多图谱内容，或换一个更具体的问题再试。",
             "confidence": "low",
             "evidence": ["当前未检索到可直接支撑回答的图谱证据。"],
             "follow_ups": context.get("follow_ups") or [],
@@ -434,7 +465,7 @@ def build_graph_answer_fallback(question: str, context: dict[str, Any]) -> dict[
     top_node = evidence_nodes[0] if evidence_nodes else None
     summary_parts = []
     if paper_titles:
-        summary_parts.append(f"当前回答主要落在 {len(paper_titles)} 篇论文的图谱证据上")
+        summary_parts.append(f"当前回答主要落在 {len(paper_titles)} 个主题条目的图谱证据上")
     if matched_node_count:
         summary_parts.append(f"覆盖 {matched_node_count} 个相关节点")
     if matched_relationship_count:
@@ -449,7 +480,7 @@ def build_graph_answer_fallback(question: str, context: dict[str, Any]) -> dict[
         f"围绕“{_normalize_text(question)}”，当前图库里检索到了 {matched_node_count} 个相关节点和 {matched_relationship_count} 条相关关系。"
     ]
     if paper_titles:
-        answer_lines.append("相关论文包括：" + "、".join(paper_titles[:3]) + "。")
+        answer_lines.append("相关主题包括：" + "、".join(paper_titles[:3]) + "。")
     if evidence_relationships:
         top_relations = []
         node_map = {_normalize_text(node.get("id")): node for node in evidence_nodes}

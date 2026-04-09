@@ -1,17 +1,41 @@
 export const LABEL_PRIORITY = {
   Paper: 0,
-  Method: 1,
-  Task: 2,
-  Dataset: 3,
-  Metric: 4,
+  Policy: 1,
+  OptimizationStrategy: 2,
+  Constraint: 3,
+  PowerBudget: 4,
+  CarbonTarget: 5,
+  TaskType: 6,
+  TimePeriod: 7,
+  Metric: 8,
+  CodeTemplate: 9,
+  API: 10,
+  Cluster: 11,
+  GPU: 12,
+  Task: 13,
+  Method: 14,
+  Dataset: 15,
+  Action: 16,
 }
 
 export const LABEL_META = {
   Paper: { color: '#7F8EFF', size: 62 },
-  Method: { color: '#6EB8FF', size: 50 },
+  Policy: { color: '#9CA8FF', size: 58 },
+  OptimizationStrategy: { color: '#71B7FF', size: 56 },
+  Constraint: { color: '#FFB264', size: 50 },
+  PowerBudget: { color: '#67D7B5', size: 48 },
+  CarbonTarget: { color: '#63D3D8', size: 46 },
+  TaskType: { color: '#F4B95D', size: 44 },
+  TimePeriod: { color: '#C98FFF', size: 42 },
+  Metric: { color: '#FF6F96', size: 40 },
+  CodeTemplate: { color: '#7BE0FF', size: 38 },
+  API: { color: '#B5C0FF', size: 36 },
+  Cluster: { color: '#68D1AE', size: 34 },
+  GPU: { color: '#84C5FF', size: 32 },
   Task: { color: '#F4B95D', size: 42 },
+  Method: { color: '#6EB8FF', size: 50 },
   Dataset: { color: '#68D1AE', size: 40 },
-  Metric: { color: '#FF6F96', size: 38 },
+  Action: { color: '#FFD76F', size: 34 },
   Unknown: { color: '#9EA8C0', size: 34 },
 }
 
@@ -21,6 +45,17 @@ export const RELATION_COLOR = {
   USES: '#6EB8FF',
   ACHIEVES: '#FF6F96',
   EVALUATES: '#68D1AE',
+  CONSTRAINS: '#FFB264',
+  APPLIES_TO: '#C98FFF',
+  OPTIMIZES: '#67D7B5',
+  LIMITS: '#63D3D8',
+  USES_TEMPLATE: '#7BE0FF',
+  CALLS_API: '#B5C0FF',
+  AFFECTS: '#FF8BA7',
+  TRIGGERS: '#9CA8FF',
+  REQUIRES: '#FFD76F',
+  BELONGS_TO: '#8ED8BF',
+  RUNS_ON: '#7DAEFF',
 }
 
 function normalizeText(value) {
@@ -176,10 +211,14 @@ export function buildGraphInsights(graphView = {}) {
   const labelCounts = countGraphValues(nodes, 'label', 'Unknown')
   const relationTypeCounts = countGraphValues(relationships, 'type', 'UNKNOWN')
   const paperTitles = new Set()
+  const topicTitles = new Set()
   const sources = new Set()
 
   for (const node of nodes) {
     if (normalizeText(node.paper_title)) {
+      topicTitles.add(node.paper_title)
+    }
+    if (node.label === 'Paper' && normalizeText(node.paper_title)) {
       paperTitles.add(node.paper_title)
     }
     if (normalizeText(node.source)) {
@@ -233,6 +272,7 @@ export function buildGraphInsights(graphView = {}) {
     labelCounts,
     relationTypeCounts,
     paperCount: paperTitles.size,
+    topicCount: topicTitles.size,
     sourceCount: sources.size,
     componentCount,
     isolatedNodeCount,
@@ -315,7 +355,7 @@ export function buildGraphPaperGroups(graphView = {}, options = {}) {
   }
 
   for (const node of nodes) {
-    const title = normalizeText(node.paper_title) || '未标注论文'
+    const title = normalizeText(node.paper_title) || '未标注主题'
     const group = ensurePaperGroup(title)
     group.node_count += 1
     group.labels[node.label || 'Unknown'] = (group.labels[node.label || 'Unknown'] || 0) + 1
@@ -328,7 +368,7 @@ export function buildGraphPaperGroups(graphView = {}, options = {}) {
     const explicitTitle = normalizeText(relationship.paper_title)
     const sourceTitle = normalizeText(nodeMap.get(relationship.source_id)?.paper_title)
     const targetTitle = normalizeText(nodeMap.get(relationship.target_id)?.paper_title)
-    const title = explicitTitle || sourceTitle || targetTitle || '未标注论文'
+    const title = explicitTitle || sourceTitle || targetTitle || '未标注主题'
     ensurePaperGroup(title).relation_count += 1
   }
 
@@ -357,7 +397,7 @@ export function buildGraphJsonExport(graphView = {}) {
 }
 
 export function buildGraphCsvExport(rows = []) {
-  const headers = ['节点', '标签', '所属论文', '来源', '总连接数', '入边', '出边', '描述']
+  const headers = ['节点', '标签', '所属主题', '来源', '总连接数', '入边', '出边', '描述']
   const body = rows.map((row) => ([
     formatCsvCell(row.name),
     formatCsvCell(row.label),
@@ -385,19 +425,22 @@ export function buildGraphDefenseOverview(graphView = {}) {
   const taskCount = insights.labelCounts.Task || 0
   const datasetCount = insights.labelCounts.Dataset || 0
   const metricCount = insights.labelCounts.Metric || 0
+  const entryScopeLabel = insights.paperCount
+    ? `${insights.paperCount} 篇`
+    : `${insights.topicCount || paperGroups.length} 个主题`
 
   const focusCards = [
     {
       label: '图谱规模',
-      value: `${insights.paperCount} 篇 / ${insights.nodeCount} 节点 / ${insights.relationshipCount} 关系`,
-      detail: '适合在答辩开场时先说明图谱覆盖范围。',
+      value: `${entryScopeLabel} / ${insights.nodeCount} 节点 / ${insights.relationshipCount} 关系`,
+      detail: '适合在开场讲解时先说明图谱覆盖范围。',
     },
     {
       label: '核心实体',
       value: leadMethod ? leadMethod.name : '待补充',
       detail: leadMethod
         ? `当前连接度最高，累计 ${leadMethod.degree} 条边。`
-        : '导入更多论文后会自动突出热点实体。',
+        : (insights.paperCount ? '导入更多论文后会自动突出热点实体。' : '补充更多策略、约束和模板后会自动突出热点实体。'),
     },
     {
       label: '主导关系',
@@ -416,59 +459,59 @@ export function buildGraphDefenseOverview(graphView = {}) {
   const talkingPoints = [
     insights.paperCount
       ? `当前图库已经把 ${insights.paperCount} 篇论文连进一张图里，不再是单篇论文孤立展示。`
-      : '当前图库还没有论文级覆盖，建议先补充论文内容再展示。',
+      : `当前图库已经形成 ${insights.topicCount || paperGroups.length} 个优化主题，可直接展示策略、约束、预算和模板之间的关系。`,
     leadMethod
       ? `从连接度看，“${leadMethod.name}”是当前最核心的方法节点，说明它处在研究脉络的主干位置。`
-      : '当前还没有明显的核心方法节点。',
+      : '当前还没有明显的核心方法节点，适合改从策略、约束和模板关系切入。',
     topPaper
-      ? `从单篇覆盖看，“${topPaper.title}”目前最完整，已经展开 ${topPaper.node_count} 个节点和 ${topPaper.relation_count} 条关系。`
-      : '当前还没有形成可对比的论文覆盖面。',
+      ? `从单个主题看，“${topPaper.title}”目前最完整，已经展开 ${topPaper.node_count} 个节点和 ${topPaper.relation_count} 条关系。`
+      : '当前还没有形成可对比的主题覆盖面。',
     dominantRelationEntry
-      ? `从关系类型看，“${dominantRelationEntry[0]}”最突出，适合讲清楚“提出了什么、使用了什么、解决了什么”。`
+      ? `从关系类型看，“${dominantRelationEntry[0]}”最突出，适合讲清楚“约束了什么、优化了什么、调用了什么”。`
       : '当前关系类型还不够丰富，建议继续补图。',
     insights.componentCount > 1
-      ? `图谱当前分成 ${insights.componentCount} 个连通分量，后续还可以继续补跨论文关联。`
-      : '当前主图已经连成一个整体，适合说明几篇论文之间不是分散的，而是有承接关系的。',
+      ? `图谱当前分成 ${insights.componentCount} 个连通分量，后续还可以继续补跨主题关联。`
+      : '当前主图已经连成一个整体，适合说明不同知识条目之间不是分散的，而是有承接关系的。',
   ].filter(Boolean)
 
   const judgeQuestions = [
-    '这几篇论文之间的共同主线是什么？',
+    insights.paperCount ? '这几篇论文之间的共同主线是什么？' : '这些优化策略和约束之间的共同主线是什么？',
     leadMethod ? `为什么说“${leadMethod.name}”是当前图里的核心方法？` : '当前图里最核心的方法节点是谁？',
-    topPaper ? `“${topPaper.title}”在图里具体覆盖了哪些方法、任务和指标？` : '目前哪篇论文在图里展开得最完整？',
+    topPaper ? `“${topPaper.title}”在图里具体覆盖了哪些节点、关系和约束？` : '目前哪个主题在图里展开得最完整？',
     taskCount ? '当前图谱已经覆盖了哪些任务方向？' : '目前图里还缺哪些任务或数据集？',
   ].filter(Boolean)
 
   const presentationFlow = [
     insights.paperCount
       ? `先用“${insights.paperCount} 篇论文、${insights.nodeCount} 个节点、${insights.relationshipCount} 条关系”交代图谱规模。`
-      : '先说明当前图谱覆盖仍在补充阶段。',
+      : `先用“${entryScopeLabel}、${insights.nodeCount} 个节点、${insights.relationshipCount} 条关系”交代优化图谱规模。`,
     leadMethod
       ? `接着指出热点实体“${leadMethod.name}”，解释它为什么处在研究主线。`
-      : '接着从关系类型切入，说明图谱已经具备主线结构。',
+      : '接着从策略、约束和预算关系切入，说明图谱已经具备主线结构。',
     topPaper
-      ? `然后展开“${topPaper.title}”，展示单篇论文如何连到方法、任务和指标。`
+      ? `然后展开“${topPaper.title}”，展示单个主题如何连到策略、约束、预算和模板。`
       : '然后切到图谱沙盘，展示节点与关系如何互相连通。',
-    '最后切到“图谱问答”，用证据化回答承接评委追问。',
+    '最后切到“图谱问答”，用证据化回答承接进一步提问。',
   ]
 
   const answerReadyNotes = [
     leadMethod
-      ? `热点方法：${leadMethod.name}`
-      : '热点方法：待补更多论文后会更明显',
+      ? `热点实体：${leadMethod.name}`
+      : (insights.paperCount ? '热点实体：待补更多论文后会更明显' : '热点实体：待补更多优化条目后会更明显'),
     dominantRelationEntry
       ? `主导关系：${dominantRelationEntry[0]}`
       : '主导关系：当前样本仍较少',
     topPaper
-      ? `单篇展开优先展示：${topPaper.title}`
-      : '单篇展开优先展示：当前无明显优先项',
+      ? `优先展开主题：${topPaper.title}`
+      : '优先展开主题：当前无明显优先项',
   ]
 
   const headline = insights.paperCount
     ? `当前图库已把 ${insights.paperCount} 篇论文收敛进同一张研究关系图。`
-    : '当前图库还没有形成论文级图谱。'
+    : `当前图库已形成 ${entryScopeLabel} 的优化知识关系图。`
   const subline = insights.paperCount
     ? `图内共有 ${insights.nodeCount} 个节点、${insights.relationshipCount} 条关系，既能看研究主线，也能追到具体方法、任务和数据集。`
-    : '建议先补充论文内容，再用这块做答辩展示。'
+    : `图内共有 ${insights.nodeCount} 个节点、${insights.relationshipCount} 条关系，可直接说明约束、预算、策略和代码模板的连接方式。`
 
   return {
     headline,
@@ -514,7 +557,7 @@ export function buildGraphViewerOption(graphView = {}, selectedNodeId = '', opti
         return [
           `<div><strong>${escapeHtml(data.name || '')}</strong></div>`,
           `<div style="margin-top: 2px; color: #9EA8C0">${escapeHtml(data.label || 'Unknown')}</div>`,
-          data.paper_title ? `<div style="margin-top: 4px">论文：${escapeHtml(data.paper_title)}</div>` : '',
+          data.paper_title ? `<div style="margin-top: 4px">主题：${escapeHtml(data.paper_title)}</div>` : '',
           `<div style="margin-top: 4px">连接数：${escapeHtml(degreeMap.get(data.id) || 0)}</div>`,
           data.description ? `<div style="margin-top: 4px; color: #C6CEE1">${escapeHtml(summarizeText(data.description, 120))}</div>` : '',
         ].join('')

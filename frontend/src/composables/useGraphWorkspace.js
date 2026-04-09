@@ -1,4 +1,4 @@
-import { computed, getCurrentInstance, onMounted, ref } from 'vue'
+import { computed, getCurrentInstance, onMounted, ref, watch } from 'vue'
 
 import {
   getGraphSummary as getGraphSummaryRequest,
@@ -7,6 +7,7 @@ import {
   graphDraft as graphDraftRequest,
   graphExecute as graphExecuteRequest,
   graphQa as graphQaRequest,
+  rebuildGraphDemo as rebuildGraphDemoRequest,
   reconnectGraph as reconnectGraphRequest,
 } from '../services/api.js'
 
@@ -153,6 +154,7 @@ function defaultDeps() {
     graphDraftApi: graphDraftRequest,
     graphExecuteApi: graphExecuteRequest,
     graphQaApi: graphQaRequest,
+    rebuildGraphDemoApi: rebuildGraphDemoRequest,
     reconnectGraphApi: reconnectGraphRequest,
     requestTimeoutMs: 20000,
   }
@@ -185,7 +187,11 @@ export function useGraphWorkspace() {
     title: '',
     abstract: '',
     content: '',
+    mode: 'paper',
     source: 'paper',
+    sourceType: 'paper',
+    domainTag: '',
+    scenario: '',
   })
   const summary = ref(defaultSummary())
   const feedback = ref(null)
@@ -193,6 +199,7 @@ export function useGraphWorkspace() {
   const draftBusy = ref(false)
   const executeBusy = ref(false)
   const reconnectBusy = ref(false)
+  const demoBusy = ref(false)
   const viewBusy = ref(false)
   const expandBusy = ref(false)
   const qaBusy = ref(false)
@@ -228,6 +235,21 @@ export function useGraphWorkspace() {
     graphView.value.nodes.find((item) => item.id === selectedGraphNodeId.value) || null
   )
 
+  watch(() => form.value.mode, (nextMode, previousMode) => {
+    const normalizedMode = nextMode === 'optimization' ? 'optimization' : 'paper'
+    if (form.value.mode !== normalizedMode) {
+      form.value.mode = normalizedMode
+      return
+    }
+    form.value.source = normalizedMode
+    const previousDefaultSourceType = previousMode === 'optimization' ? 'rule' : 'paper'
+    const nextDefaultSourceType = normalizedMode === 'optimization' ? 'rule' : 'paper'
+    const currentSourceType = String(form.value.sourceType || '').trim()
+    if (!currentSourceType || currentSourceType === previousDefaultSourceType) {
+      form.value.sourceType = nextDefaultSourceType
+    }
+  }, { immediate: true })
+
   function requestTimeoutMs() {
     return Number(resolveDeps().requestTimeoutMs || 20000)
   }
@@ -254,6 +276,7 @@ export function useGraphWorkspace() {
     draftBusy.value = false
     executeBusy.value = false
     reconnectBusy.value = false
+    demoBusy.value = false
     viewBusy.value = false
     expandBusy.value = false
     qaBusy.value = false
@@ -412,7 +435,11 @@ export function useGraphWorkspace() {
           title: form.value.title.trim(),
           abstract: form.value.abstract.trim(),
           content: form.value.content.trim(),
-          source: form.value.source,
+          mode: form.value.mode,
+          source: form.value.mode,
+          source_type: form.value.sourceType,
+          domain_tag: form.value.domainTag.trim(),
+          scenario: form.value.scenario.trim(),
         }),
         '图谱草稿生成超时，请重试',
       )
@@ -439,11 +466,19 @@ export function useGraphWorkspace() {
     executeBusy.value = true
     feedback.value = null
     try {
+      const draftGraph = draftResult.value.graph || {}
       const response = await runWithTimeout(
         () => resolveDeps().graphExecuteApi({
-          graph: draftResult.value.graph,
+          graph: {
+            ...draftGraph,
+            mode: draftGraph.mode || form.value.mode,
+            source: draftGraph.source || form.value.mode,
+            source_type: draftGraph.source_type || form.value.sourceType,
+            domain_tag: draftGraph.domain_tag || form.value.domainTag.trim(),
+            scenario: draftGraph.scenario || form.value.scenario.trim(),
+          },
           cypher: draftResult.value.cypher || '',
-          source: form.value.source,
+          source: draftGraph.source || form.value.mode,
         }),
         '图谱写入超时，请重试',
       )
@@ -511,6 +546,44 @@ export function useGraphWorkspace() {
     }
   }
 
+  async function rebuildDemo(kind = 'optimization') {
+    const normalizedKind = String(kind || 'optimization').trim() === 'paper' ? 'paper' : 'optimization'
+    if (refreshBusy.value || draftBusy.value || executeBusy.value || reconnectBusy.value || expandBusy.value || demoBusy.value) return null
+    demoBusy.value = true
+    feedback.value = null
+    try {
+      const response = await runWithTimeout(
+        () => resolveDeps().rebuildGraphDemoApi(normalizedKind),
+        '演示图库切换超时，请重试',
+      )
+      const payload = response?.data || null
+      if (payload?.graph_summary) {
+        summary.value = {
+          ...defaultSummary(),
+          ...payload.graph_summary,
+        }
+      } else {
+        await refreshSummary({ silent: true })
+      }
+      graphFilters.value.query = ''
+      await refreshGraphView({ silent: true })
+      feedback.value = {
+        type: 'success',
+        text: payload?.message || '演示图库已切换。',
+      }
+      return payload
+    } catch (error) {
+      feedback.value = {
+        type: 'error',
+        text: error?.response?.data?.detail || error?.message || '演示图库切换失败',
+      }
+      await refreshSummary({ silent: true })
+      return null
+    } finally {
+      demoBusy.value = false
+    }
+  }
+
   async function askGraphQuestion(nextQuestion = '') {
     const question = String(nextQuestion || qaForm.value.question || '').trim()
     if (!question || qaBusy.value || reconnectBusy.value || draftBusy.value || executeBusy.value) {
@@ -572,6 +645,7 @@ export function useGraphWorkspace() {
     draftBusy,
     executeBusy,
     reconnectBusy,
+    demoBusy,
     viewBusy,
     expandBusy,
     qaBusy,
@@ -589,6 +663,7 @@ export function useGraphWorkspace() {
     generateDraft,
     executeImport,
     recoverConnection,
+    rebuildDemo,
     askGraphQuestion,
     selectGraphNode,
     resetWorkspaceState,

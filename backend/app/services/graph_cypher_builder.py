@@ -4,60 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-
-ALLOWED_NODE_LABELS = {
-    "paper": "Paper",
-    "method": "Method",
-    "task": "Task",
-    "dataset": "Dataset",
-    "metric": "Metric",
-}
-
-ALLOWED_RELATION_TYPES = {
-    "proposes": "PROPOSES",
-    "solves": "SOLVES",
-    "uses": "USES",
-    "achieves": "ACHIEVES",
-}
-
-NODE_MERGE_KEYS = {
-    "Paper": ("name",),
-    "Method": ("name",),
-    "Task": ("name",),
-    "Dataset": ("name",),
-    "Metric": ("name",),
-}
-
-NODE_NAME_ALIASES = {
-    "Method": {
-        "retrieval augmented generation": "Retrieval-Augmented Generation (RAG)",
-        "retrieval augmented generation rag": "Retrieval-Augmented Generation (RAG)",
-        "retrieval augmented generation rag model": "Retrieval-Augmented Generation (RAG)",
-        "rag": "Retrieval-Augmented Generation (RAG)",
-        "graph rag": "GraphRAG",
-        "self rag": "Self-RAG (Self-Reflective Retrieval-Augmented Generation)",
-        "rag sequence": "RAG-Sequence",
-        "rag token": "RAG-Token",
-    },
-    "Task": {
-        "open domain qa": "Open-Domain Question Answering (Open-Domain QA)",
-        "open domain question answering": "Open-Domain Question Answering (Open-Domain QA)",
-        "open domain question answering open domain qa": "Open-Domain Question Answering (Open-Domain QA)",
-        "query focused summarization": "Query-Focused Summarization",
-        "language generation tasks": "Language Generation",
-    },
-    "Dataset": {
-        "wikipedia corpus": "Wikipedia",
-        "wikipedia passages": "Wikipedia",
-    },
-}
-
-METHOD_DEPENDENCY_MAP = {
-    "GraphRAG": ["Retrieval-Augmented Generation (RAG)"],
-    "Self-RAG (Self-Reflective Retrieval-Augmented Generation)": ["Retrieval-Augmented Generation (RAG)"],
-    "RAG-Sequence": ["Retrieval-Augmented Generation (RAG)"],
-    "RAG-Token": ["Retrieval-Augmented Generation (RAG)"],
-}
+from app.services.optimization_ontology import (
+    get_graph_mode_config,
+    graph_source_default,
+    graph_source_type_default,
+    normalize_graph_mode,
+)
 
 
 def _clean_text(value: Any, limit: int = 500) -> str:
@@ -76,7 +28,7 @@ def _safe_id(value: Any, fallback: str) -> str:
     return normalized or fallback
 
 
-def _normalize_lookup_key(value: str) -> str:
+def _normalize_lookup_key(value: Any) -> str:
     chars: list[str] = []
     last_space = False
     for ch in str(value or "").strip().lower():
@@ -106,20 +58,22 @@ def _cypher_map(properties: dict[str, Any]) -> str:
     return "{ " + ", ".join(items) + " }"
 
 
-def _canonical_node_label(value: Any) -> str:
-    return ALLOWED_NODE_LABELS.get(_clean_text(value, 40).lower(), "")
+def _canonical_node_label(value: Any, config: dict[str, Any]) -> str:
+    lookup = _normalize_lookup_key(value)
+    return config["allowed_node_labels"].get(lookup, "")
 
 
-def _canonical_relation_type(value: Any) -> str:
-    return ALLOWED_RELATION_TYPES.get(_clean_text(value, 40).lower(), "")
+def _canonical_relation_type(value: Any, config: dict[str, Any]) -> str:
+    lookup = _normalize_lookup_key(value)
+    return config["allowed_relation_types"].get(lookup, "")
 
 
-def _canonical_node_name(label: str, value: Any) -> str:
+def _canonical_node_name(label: str, value: Any, config: dict[str, Any]) -> str:
     cleaned = _clean_text(value, 300)
     if not cleaned:
         return ""
     lookup = _normalize_lookup_key(cleaned)
-    alias = NODE_NAME_ALIASES.get(label, {}).get(lookup)
+    alias = config.get("node_name_aliases", {}).get(label, {}).get(lookup)
     if alias:
         return alias
     if label == "Method":
@@ -132,8 +86,8 @@ def _canonical_node_name(label: str, value: Any) -> str:
     return cleaned
 
 
-def _merge_key_props(node: dict[str, Any]) -> dict[str, Any]:
-    keys = NODE_MERGE_KEYS[node["label"]]
+def _merge_key_props(node: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
+    keys = config["node_merge_keys"][node["label"]]
     return {key: node.get(key, "") for key in keys}
 
 
@@ -146,7 +100,11 @@ def summarize_graph_draft(graph: dict[str, Any]) -> dict[str, Any]:
         relation_counts[relation["type"]] = relation_counts.get(relation["type"], 0) + 1
     return {
         "title": graph.get("title", ""),
+        "mode": graph.get("mode", "paper"),
         "source": graph.get("source", ""),
+        "source_type": graph.get("source_type", ""),
+        "domain_tag": graph.get("domain_tag", ""),
+        "scenario": graph.get("scenario", ""),
         "node_count": len(graph.get("nodes", [])),
         "relation_count": len(graph.get("relations", [])),
         "labels": label_counts,
@@ -163,7 +121,7 @@ def _ensure_supporting_node(
     nodes_by_key: dict[tuple[str, str], dict[str, Any]],
     label: str,
     name: str,
-    graph_source: str,
+    graph: dict[str, Any],
 ) -> dict[str, Any]:
     key = (label, name.casefold())
     existing = nodes_by_key.get(key)
@@ -174,33 +132,38 @@ def _ensure_supporting_node(
         "label": label,
         "name": name,
         "description": "",
-        "source": graph_source,
-        "paper_title": "",
+        "mode": graph.get("mode", "paper"),
+        "source": graph.get("source", ""),
+        "source_type": graph.get("source_type", ""),
+        "domain_tag": graph.get("domain_tag", ""),
+        "scenario": graph.get("scenario", ""),
+        "paper_title": graph.get("title", ""),
     }
     nodes.append(node)
     nodes_by_key[key] = node
     return node
 
 
-def enrich_graph_draft(graph: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+def enrich_graph_draft(graph: dict[str, Any], config: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
     warnings: list[str] = []
     nodes = list(graph.get("nodes", []))
     relations = list(graph.get("relations", []))
-    graph_source = graph.get("source", "paper")
     nodes_by_key = {_node_key(node): node for node in nodes}
     relation_keys = {(rel["from_id"], rel["type"], rel["to_id"]) for rel in relations}
+    supporting_dependencies = config.get("supporting_dependencies", {})
+    dependency_source_labels = set(config.get("dependency_source_labels", set()))
 
     for node in list(nodes):
-        if node["label"] != "Method":
+        if dependency_source_labels and node["label"] not in dependency_source_labels:
             continue
-        dependencies = METHOD_DEPENDENCY_MAP.get(node["name"], [])
+        dependencies = supporting_dependencies.get(node["name"], [])
         for dependency_name in dependencies:
             dependency = _ensure_supporting_node(
                 nodes,
                 nodes_by_key,
                 "Method",
                 dependency_name,
-                graph_source,
+                graph,
             )
             rel_key = (node["id"], "USES", dependency["id"])
             if rel_key in relation_keys:
@@ -210,8 +173,12 @@ def enrich_graph_draft(graph: dict[str, Any]) -> tuple[dict[str, Any], list[str]
                 "from_id": node["id"],
                 "to_id": dependency["id"],
                 "type": "USES",
-                "description": f"{node['name']} 建立在 {dependency_name} 的检索增强生成范式之上。",
-                "source": graph_source,
+                "description": f"{node['name']} 建立在 {dependency_name} 之上。",
+                "mode": graph.get("mode", "paper"),
+                "source": graph.get("source", ""),
+                "source_type": graph.get("source_type", ""),
+                "domain_tag": graph.get("domain_tag", ""),
+                "scenario": graph.get("scenario", ""),
                 "paper_title": graph.get("title", ""),
             })
 
@@ -220,10 +187,27 @@ def enrich_graph_draft(graph: dict[str, Any]) -> tuple[dict[str, Any], list[str]
     return graph, warnings
 
 
-def normalize_graph_draft(raw: dict[str, Any] | None, source: str = "paper", title: str = "") -> tuple[dict[str, Any], list[str]]:
+def normalize_graph_draft(
+    raw: dict[str, Any] | None,
+    source: str = "paper",
+    title: str = "",
+    mode: str = "paper",
+    source_type: str = "",
+    domain_tag: str = "",
+    scenario: str = "",
+) -> tuple[dict[str, Any], list[str]]:
     payload = raw or {}
+    graph_mode = normalize_graph_mode(payload.get("mode") or mode)
+    config = get_graph_mode_config(graph_mode)
     graph_title = _clean_text(payload.get("title") or title, 300)
-    graph_source = _clean_text(payload.get("source") or source, 120) or "paper"
+    graph_source = _clean_text(payload.get("source") or source or graph_source_default(graph_mode), 120) or graph_source_default(graph_mode)
+    graph_source_type = _clean_text(
+        payload.get("source_type") or source_type or graph_source_type_default(graph_mode),
+        120,
+    ) or graph_source_type_default(graph_mode)
+    graph_domain_tag = _clean_text(payload.get("domain_tag") or domain_tag, 120)
+    graph_scenario = _clean_text(payload.get("scenario") or scenario, 200)
+
     warnings: list[str] = []
     nodes: list[dict[str, Any]] = []
     relations: list[dict[str, Any]] = []
@@ -235,11 +219,11 @@ def normalize_graph_draft(raw: dict[str, Any] | None, source: str = "paper", tit
         if not isinstance(item, dict):
             warnings.append(f"第 {index} 个节点不是对象，已跳过。")
             continue
-        label = _canonical_node_label(item.get("label"))
+        label = _canonical_node_label(item.get("label"), config)
         if not label:
-            warnings.append(f"第 {index} 个节点类型不在白名单内，已跳过。")
+            warnings.append(f"第 {index} 个节点类型不在当前模式白名单内，已跳过。")
             continue
-        name = _canonical_node_name(label, item.get("name") or item.get("title"))
+        name = _canonical_node_name(label, item.get("name") or item.get("title"), config)
         if not name:
             warnings.append(f"第 {index} 个节点缺少名称，已跳过。")
             continue
@@ -251,8 +235,14 @@ def normalize_graph_draft(raw: dict[str, Any] | None, source: str = "paper", tit
         if existing_id:
             id_map[raw_id] = existing_id
             existing = nodes_by_id[existing_id]
-            if not existing.get("description"):
-                existing["description"] = _clean_text(item.get("description"), 2000)
+            for key, limit in (
+                ("description", 2000),
+                ("source_type", 120),
+                ("domain_tag", 120),
+                ("scenario", 200),
+            ):
+                if not existing.get(key):
+                    existing[key] = _clean_text(item.get(key), limit)
             continue
 
         node = {
@@ -260,7 +250,11 @@ def normalize_graph_draft(raw: dict[str, Any] | None, source: str = "paper", tit
             "label": label,
             "name": name,
             "description": _clean_text(item.get("description"), 2000),
+            "mode": graph_mode,
             "source": _clean_text(item.get("source") or graph_source, 120),
+            "source_type": _clean_text(item.get("source_type") or graph_source_type, 120),
+            "domain_tag": _clean_text(item.get("domain_tag") or graph_domain_tag, 120),
+            "scenario": _clean_text(item.get("scenario") or graph_scenario, 200),
             "paper_title": paper_title,
         }
         nodes.append(node)
@@ -273,9 +267,9 @@ def normalize_graph_draft(raw: dict[str, Any] | None, source: str = "paper", tit
         if not isinstance(item, dict):
             warnings.append(f"第 {index} 条关系不是对象，已跳过。")
             continue
-        relation_type = _canonical_relation_type(item.get("type"))
+        relation_type = _canonical_relation_type(item.get("type"), config)
         if not relation_type:
-            warnings.append(f"第 {index} 条关系类型不在白名单内，已跳过。")
+            warnings.append(f"第 {index} 条关系类型不在当前模式白名单内，已跳过。")
             continue
         raw_from = str(item.get("from_id") or item.get("from") or "")
         raw_to = str(item.get("to_id") or item.get("to") or "")
@@ -293,25 +287,36 @@ def normalize_graph_draft(raw: dict[str, Any] | None, source: str = "paper", tit
             "to_id": to_id,
             "type": relation_type,
             "description": _clean_text(item.get("description"), 1000),
+            "mode": graph_mode,
             "source": _clean_text(item.get("source") or graph_source, 120),
+            "source_type": _clean_text(item.get("source_type") or graph_source_type, 120),
+            "domain_tag": _clean_text(item.get("domain_tag") or graph_domain_tag, 120),
+            "scenario": _clean_text(item.get("scenario") or graph_scenario, 200),
             "paper_title": _clean_text(item.get("paper_title") or graph_title, 300),
         })
 
     graph = {
         "title": graph_title,
+        "mode": graph_mode,
         "source": graph_source,
+        "source_type": graph_source_type,
+        "domain_tag": graph_domain_tag,
+        "scenario": graph_scenario,
         "nodes": nodes,
         "relations": relations,
     }
-    graph, enrich_warnings = enrich_graph_draft(graph)
+    graph, enrich_warnings = enrich_graph_draft(graph, config)
     warnings.extend(enrich_warnings)
     return graph, warnings
 
 
 def build_graph_cypher(graph: dict[str, Any]) -> str:
+    graph_mode = normalize_graph_mode(graph.get("mode"))
+    config = get_graph_mode_config(graph_mode)
     lines = [
         "// Auto-generated knowledge graph import",
         f"// title: {graph.get('title', '')}",
+        f"// mode: {graph_mode}",
     ]
     nodes = graph.get("nodes", [])
     relations = graph.get("relations", [])
@@ -319,21 +324,25 @@ def build_graph_cypher(graph: dict[str, Any]) -> str:
 
     for index, node in enumerate(nodes):
         var_name = f"n{index}"
-        merge_props = _merge_key_props(node)
+        merge_props = _merge_key_props(node, config)
         lines.append(f"MERGE ({var_name}:{node['label']} {_cypher_map(merge_props)})")
-        assignments = {"source": node.get("source", "")}
-        if node["label"] == "Paper" and node.get("paper_title"):
-            assignments["paper_title"] = node["paper_title"]
+        assignments = {
+            "mode": node.get("mode", graph_mode),
+            "source": node.get("source", ""),
+            "source_type": node.get("source_type", ""),
+            "domain_tag": node.get("domain_tag", ""),
+            "scenario": node.get("scenario", ""),
+            "paper_title": node.get("paper_title", ""),
+        }
         if node.get("description"):
             assignments["description"] = node["description"]
-        if assignments:
-            set_clause = ", ".join(
-                f"{var_name}.{key} = {_cypher_literal(value)}"
-                for key, value in assignments.items()
-                if value != ""
-            )
-            if set_clause:
-                lines.append(f"ON CREATE SET {set_clause}")
+        set_clause = ", ".join(
+            f"{var_name}.{key} = {_cypher_literal(value)}"
+            for key, value in assignments.items()
+            if value != ""
+        )
+        if set_clause:
+            lines.append(f"ON CREATE SET {set_clause}")
 
     if relations and nodes:
         lines.append("WITH 1 AS _")
@@ -346,11 +355,15 @@ def build_graph_cypher(graph: dict[str, Any]) -> str:
         rel_var = f"rel{index}"
         if index > 0:
             lines.append("WITH 1 AS _")
-        lines.append(f"MATCH ({from_var}:{from_node['label']} {_cypher_map(_merge_key_props(from_node))})")
-        lines.append(f"MATCH ({to_var}:{to_node['label']} {_cypher_map(_merge_key_props(to_node))})")
+        lines.append(f"MATCH ({from_var}:{from_node['label']} {_cypher_map(_merge_key_props(from_node, config))})")
+        lines.append(f"MATCH ({to_var}:{to_node['label']} {_cypher_map(_merge_key_props(to_node, config))})")
         lines.append(f"MERGE ({from_var})-[{rel_var}:{relation['type']}]->({to_var})")
         rel_assignments = {
+            "mode": relation.get("mode", graph_mode),
             "source": relation.get("source", ""),
+            "source_type": relation.get("source_type", ""),
+            "domain_tag": relation.get("domain_tag", ""),
+            "scenario": relation.get("scenario", ""),
             "paper_title": relation.get("paper_title", ""),
         }
         if relation.get("description"):

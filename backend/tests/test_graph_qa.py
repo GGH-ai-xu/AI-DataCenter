@@ -108,3 +108,64 @@ def test_build_graph_answer_fallback_reports_evidence_and_followups():
     assert fallback["confidence"] in {"medium", "high"}
     assert fallback["evidence"]
     assert fallback["follow_ups"]
+
+
+def test_build_graph_answer_fallback_handles_optimization_ontology():
+    graph_view = {
+        "nodes": [
+            {
+                "id": "policy_1",
+                "label": "Policy",
+                "name": "三层调度总则",
+                "paper_title": "绿算生金优化本体",
+                "description": "规则引擎保底线，预算引擎控成本，AI 引擎做全局优化。",
+                "source": "optimization",
+            },
+            {
+                "id": "strategy_1",
+                "label": "OptimizationStrategy",
+                "name": "高峰限功调度",
+                "paper_title": "绿算生金优化本体",
+                "description": "高峰期优先降低可延迟任务功率。",
+                "source": "optimization",
+            },
+            {
+                "id": "constraint_1",
+                "label": "Constraint",
+                "name": "紧急任务不可暂停",
+                "paper_title": "绿算生金优化本体",
+                "description": "urgent 任务不能被暂停。",
+                "source": "optimization",
+            },
+        ],
+        "relationships": [
+            {
+                "id": "rel_1",
+                "source_id": "strategy_1",
+                "target_id": "constraint_1",
+                "type": "REQUIRES",
+                "description": "高峰限功调度必须服从紧急任务保护约束。",
+                "paper_title": "绿算生金优化本体",
+            },
+        ],
+        "label_counts": {
+            "Policy": 1,
+            "OptimizationStrategy": 1,
+            "Constraint": 1,
+        },
+        "relation_type_counts": {
+            "REQUIRES": 1,
+        },
+    }
+
+    context = build_graph_answer_context(
+        "高峰限功调度为什么不能影响紧急任务？",
+        graph_view,
+        max_nodes=6,
+        max_relationships=6,
+    )
+    fallback = build_graph_answer_fallback("高峰限功调度为什么不能影响紧急任务？", context)
+
+    assert "高峰限功调度" in fallback["answer"]
+    assert "紧急任务不可暂停" in fallback["answer"]
+    assert fallback["follow_ups"]

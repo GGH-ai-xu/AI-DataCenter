@@ -6,10 +6,12 @@ from fastapi import APIRouter, HTTPException
 
 from app.models.schemas import (
     AIControlExecuteRequest,
+    AIGraphStrategyRequest,
     AIControlPlanRequest,
     ChatRequest,
 )
-from app.services.ai_control import execute_control_actions, plan_control_actions
+from app.services.ai_control import build_control_context, execute_control_actions, plan_control_actions
+from app.services.graph_strategy import build_graph_strategy_context, build_graph_strategy_fallback
 
 router = APIRouter(prefix="/api/ai", tags=["AI"])
 
@@ -85,3 +87,58 @@ async def control_execute(req: AIControlExecuteRequest):
 
     payload = [item.model_dump() for item in req.actions]
     return await execute_control_actions(app_state, payload)
+
+
+@router.post("/graph-strategy")
+async def graph_strategy(req: AIGraphStrategyRequest):
+    """图谱支撑的优化策略与代码模板生成。"""
+    from app.main import app_state
+
+    message = req.message.strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="请输入优化目标")
+
+    graph_view = await app_state.graph.view_graph(query="", limit=180)
+    if not graph_view["ok"]:
+        status_code = 503 if not graph_view["neo4j_connected"] or not graph_view["configured"] else 500
+        raise HTTPException(status_code=status_code, detail=graph_view["message"])
+
+    control_context = await build_control_context(app_state)
+    strategy_context = build_graph_strategy_context(
+        message,
+        graph_view,
+        control_context,
+        max_nodes=req.max_nodes,
+        max_relationships=req.max_relationships,
+    )
+    fallback = build_graph_strategy_fallback(message, strategy_context)
+
+    llm_result = None
+    if app_state.llm:
+        llm_result = await app_state.llm.generate_graph_strategy_plan(
+            message,
+            strategy_context["context_text"],
+            strategy_context["runtime_summary"],
+        )
+
+    payload = llm_result or fallback
+    return {
+        "message": message,
+        "summary": payload.get("summary") or fallback["summary"],
+        "strategy_steps": payload.get("strategy_steps") or fallback["strategy_steps"],
+        "control_prompt": payload.get("control_prompt") or fallback["control_prompt"],
+        "code_title": payload.get("code_title") or fallback["code_title"],
+        "code_language": payload.get("code_language") or fallback["code_language"],
+        "code_snippet": payload.get("code_snippet") or fallback["code_snippet"],
+        "risk_notice": payload.get("risk_notice") or fallback["risk_notice"],
+        "evidence": payload.get("evidence") or fallback["evidence"],
+        "follow_ups": payload.get("follow_ups") or fallback["follow_ups"],
+        "used_llm": bool(llm_result),
+        "matched_node_count": strategy_context["matched_node_count"],
+        "matched_relationship_count": strategy_context["matched_relationship_count"],
+        "paper_titles": strategy_context["paper_titles"],
+        "evidence_nodes": strategy_context["evidence_nodes"],
+        "evidence_relationships": strategy_context["evidence_relationships"],
+        "focus": strategy_context["focus"],
+        "runtime_summary": strategy_context["runtime_summary"],
+    }

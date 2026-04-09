@@ -10,16 +10,12 @@ try:
 except ImportError:  # pragma: no cover - 依赖缺失时走降级路径
     AsyncGraphDatabase = None
 
+from app.services.optimization_ontology import GRAPH_LABEL_PRIORITY
+
 
 logger = logging.getLogger(__name__)
 
-LABEL_PRIORITY = {
-    "Paper": 0,
-    "Method": 1,
-    "Task": 2,
-    "Dataset": 3,
-    "Metric": 4,
-}
+LABEL_PRIORITY = GRAPH_LABEL_PRIORITY
 
 
 def _primary_label(labels: list[str]) -> str:
@@ -34,7 +30,11 @@ def _public_node(element_id: str, labels: list[str], props: dict[str, Any]) -> d
         "labels": labels,
         "name": str(props.get("name") or props.get("paper_title") or element_id),
         "description": str(props.get("description") or ""),
+        "mode": str(props.get("mode") or ""),
         "source": str(props.get("source") or ""),
+        "source_type": str(props.get("source_type") or ""),
+        "domain_tag": str(props.get("domain_tag") or ""),
+        "scenario": str(props.get("scenario") or ""),
         "paper_title": str(props.get("paper_title") or ""),
     }
 
@@ -47,7 +47,11 @@ def _public_relation(record: dict[str, Any]) -> dict[str, Any]:
         "target_id": str(record.get("target_id") or ""),
         "type": str(record.get("type") or ""),
         "description": str(props.get("description") or ""),
+        "mode": str(props.get("mode") or ""),
         "source": str(props.get("source") or ""),
+        "source_type": str(props.get("source_type") or ""),
+        "domain_tag": str(props.get("domain_tag") or ""),
+        "scenario": str(props.get("scenario") or ""),
         "paper_title": str(props.get("paper_title") or ""),
     }
 
@@ -62,6 +66,13 @@ def _summarize_graph_view(nodes: list[dict[str, Any]], relationships: list[dict[
         rel_type = str(relationship.get("type") or "UNKNOWN")
         relation_type_counts[rel_type] = relation_type_counts.get(rel_type, 0) + 1
     return label_counts, relation_type_counts
+
+
+def _cypher_label_order_case(alias: str) -> str:
+    ordered = sorted(LABEL_PRIORITY.items(), key=lambda item: (item[1], item[0]))
+    lines = [f"WHEN '{label}' IN labels({alias}) THEN {priority}" for label, priority in ordered]
+    lines.append("ELSE 99")
+    return "\n                        ".join(lines)
 
 
 class GraphStore:
@@ -194,6 +205,9 @@ class GraphStore:
                 "configured": True,
             }
 
+    async def clear_graph(self) -> dict:
+        return await self.execute_cypher("MATCH (n) DETACH DELETE n")
+
     async def view_graph(self, query: str = "", limit: int = 60) -> dict:
         driver = await self._ensure_driver()
         if not driver:
@@ -218,7 +232,7 @@ class GraphStore:
         try:
             async with driver.session(database=self.database) as session:
                 node_result = await session.run(
-                    """
+                    f"""
                     MATCH (n)
                     WHERE $search_text = ''
                       OR toLower(coalesce(n.name, '')) CONTAINS $search_text
@@ -229,12 +243,7 @@ class GraphStore:
                            properties(n) AS props
                     ORDER BY
                       CASE
-                        WHEN 'Paper' IN labels(n) THEN 0
-                        WHEN 'Method' IN labels(n) THEN 1
-                        WHEN 'Task' IN labels(n) THEN 2
-                        WHEN 'Dataset' IN labels(n) THEN 3
-                        WHEN 'Metric' IN labels(n) THEN 4
-                        ELSE 9
+                        {_cypher_label_order_case('n')}
                       END,
                       coalesce(n.name, n.paper_title, elementId(n))
                     LIMIT $seed_limit
@@ -258,7 +267,7 @@ class GraphStore:
 
                 if normalized_query and node_ids and len(nodes) < safe_limit:
                     neighbor_result = await session.run(
-                        """
+                        f"""
                         MATCH (a)-[r]-(b)
                         WHERE elementId(a) IN $node_ids
                           AND NOT elementId(b) IN $node_ids
@@ -267,12 +276,7 @@ class GraphStore:
                                properties(b) AS props
                         ORDER BY
                           CASE
-                            WHEN 'Paper' IN labels(b) THEN 0
-                            WHEN 'Method' IN labels(b) THEN 1
-                            WHEN 'Task' IN labels(b) THEN 2
-                            WHEN 'Dataset' IN labels(b) THEN 3
-                            WHEN 'Metric' IN labels(b) THEN 4
-                            ELSE 9
+                            {_cypher_label_order_case('b')}
                           END,
                           coalesce(b.name, b.paper_title, elementId(b))
                         LIMIT $remaining_limit
@@ -410,7 +414,7 @@ class GraphStore:
                 node_seen = {normalized_node_id}
 
                 neighbor_result = await session.run(
-                    """
+                    f"""
                     MATCH (center)-[r]-(neighbor)
                     WHERE elementId(center) = $node_id
                     RETURN DISTINCT elementId(neighbor) AS element_id,
@@ -418,12 +422,7 @@ class GraphStore:
                            properties(neighbor) AS props
                     ORDER BY
                       CASE
-                        WHEN 'Paper' IN labels(neighbor) THEN 0
-                        WHEN 'Method' IN labels(neighbor) THEN 1
-                        WHEN 'Task' IN labels(neighbor) THEN 2
-                        WHEN 'Dataset' IN labels(neighbor) THEN 3
-                        WHEN 'Metric' IN labels(neighbor) THEN 4
-                        ELSE 9
+                        {_cypher_label_order_case('neighbor')}
                       END,
                       coalesce(neighbor.name, neighbor.paper_title, elementId(neighbor))
                     LIMIT $neighbor_limit

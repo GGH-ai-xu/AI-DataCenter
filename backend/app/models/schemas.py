@@ -117,6 +117,12 @@ class AIControlPlanRequest(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
 
 
+class AIGraphStrategyRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=2000)
+    max_nodes: int = Field(default=10, ge=4, le=16)
+    max_relationships: int = Field(default=12, ge=4, le=24)
+
+
 class AIControlAction(BaseModel):
     action: str = Field(
         pattern=r"^(set_power_limit|pause_task|resume_task|terminate_task|set_task_priority|configure_budget|run_schedule_once)$"
@@ -236,6 +242,10 @@ class GraphNodeDraft(BaseModel):
     name: str = Field(min_length=1, max_length=300)
     description: str = Field(default="", max_length=2000)
     source: str = Field(default="", max_length=120)
+    mode: str = Field(default="paper", pattern=r"^(paper|optimization)$")
+    source_type: str = Field(default="", max_length=120)
+    domain_tag: str = Field(default="", max_length=120)
+    scenario: str = Field(default="", max_length=200)
     paper_title: str = Field(default="", max_length=300)
 
 
@@ -245,12 +255,20 @@ class GraphRelationDraft(BaseModel):
     type: str = Field(min_length=1, max_length=40)
     description: str = Field(default="", max_length=1000)
     source: str = Field(default="", max_length=120)
+    mode: str = Field(default="paper", pattern=r"^(paper|optimization)$")
+    source_type: str = Field(default="", max_length=120)
+    domain_tag: str = Field(default="", max_length=120)
+    scenario: str = Field(default="", max_length=200)
     paper_title: str = Field(default="", max_length=300)
 
 
 class GraphDraftPayload(BaseModel):
     title: str = Field(default="", max_length=300)
+    mode: str = Field(default="paper", pattern=r"^(paper|optimization)$")
     source: str = Field(default="paper", max_length=120)
+    source_type: str = Field(default="", max_length=120)
+    domain_tag: str = Field(default="", max_length=120)
+    scenario: str = Field(default="", max_length=200)
     nodes: list[GraphNodeDraft] = Field(default_factory=list)
     relations: list[GraphRelationDraft] = Field(default_factory=list)
 
@@ -259,7 +277,11 @@ class GraphDraftRequest(BaseModel):
     title: str = Field(min_length=1, max_length=300)
     abstract: str = Field(default="", max_length=8000)
     content: str = Field(default="", max_length=30000)
+    mode: str = Field(default="paper", pattern=r"^(paper|optimization)$")
     source: str = Field(default="paper", max_length=120)
+    source_type: str = Field(default="", max_length=120)
+    domain_tag: str = Field(default="", max_length=120)
+    scenario: str = Field(default="", max_length=200)
 
 
 class GraphExecuteRequest(BaseModel):

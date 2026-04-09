@@ -9,6 +9,7 @@ from app.services.graph_cypher_builder import (
     normalize_graph_draft,
     summarize_graph_draft,
 )
+from app.services.graph_demo_library import get_graph_demo_payload, list_graph_demo_kinds
 from app.services.graph_qa import build_graph_answer_context, build_graph_answer_fallback
 
 
@@ -101,6 +102,56 @@ async def reconnect_graph_service(request: Request):
     }
 
 
+@router.get("/demo/kinds")
+async def get_graph_demo_kinds(request: Request):
+    require_authenticated_user(request)
+    return {
+        "kinds": list_graph_demo_kinds(),
+        "default_kind": "optimization",
+    }
+
+
+@router.post("/demo/rebuild")
+async def rebuild_graph_demo(request: Request, kind: str = Query(default="optimization", pattern=r"^(paper|optimization)$")):
+    require_authenticated_user(request)
+
+    from app.main import app_state
+
+    payload = get_graph_demo_payload(kind)
+    graph, warnings = normalize_graph_draft(
+        payload,
+        source=payload.get("source", kind),
+        title=payload.get("title", ""),
+        mode=payload.get("mode", kind),
+        source_type=payload.get("source_type", ""),
+        domain_tag=payload.get("domain_tag", ""),
+        scenario=payload.get("scenario", ""),
+    )
+    if not graph["nodes"]:
+        raise HTTPException(status_code=400, detail="内置演示图为空，无法重建。")
+
+    clear_result = await app_state.graph.clear_graph()
+    if not clear_result["ok"]:
+        status_code = 503 if not clear_result["neo4j_connected"] or not clear_result["configured"] else 500
+        raise HTTPException(status_code=status_code, detail=clear_result["message"])
+
+    cypher = build_graph_cypher(graph)
+    result = await app_state.graph.execute_cypher(cypher)
+    if not result["ok"]:
+        status_code = 503 if not result["neo4j_connected"] or not result["configured"] else 500
+        raise HTTPException(status_code=status_code, detail=result["message"])
+
+    graph_summary = await _graph_summary_payload()
+    return {
+        "success": True,
+        "kind": kind,
+        "message": "已切换到优化本体演示图。" if kind == "optimization" else "已切换到论文演示图。",
+        "warnings": warnings,
+        "draft_summary": summarize_graph_draft(graph),
+        "graph_summary": graph_summary,
+    }
+
+
 @router.post("/qa")
 async def answer_graph_question(request: Request, req: GraphQaRequest):
     require_authenticated_user(request)
@@ -155,12 +206,24 @@ async def generate_graph_draft(req: GraphDraftRequest):
         req.title,
         req.abstract,
         req.content,
+        req.mode,
         req.source,
+        req.source_type,
+        req.domain_tag,
+        req.scenario,
     )
     if not isinstance(graph_payload, dict):
         raise HTTPException(status_code=502, detail="AI 未返回有效的图谱草稿")
 
-    graph, warnings = normalize_graph_draft(graph_payload, source=req.source, title=req.title)
+    graph, warnings = normalize_graph_draft(
+        graph_payload,
+        source=req.source,
+        title=req.title,
+        mode=req.mode,
+        source_type=req.source_type,
+        domain_tag=req.domain_tag,
+        scenario=req.scenario,
+    )
     if not graph["nodes"]:
         raise HTTPException(status_code=422, detail="AI 返回了空图谱，请换一段更完整的论文内容再试")
 
@@ -180,6 +243,10 @@ async def execute_graph_import(req: GraphExecuteRequest):
         req.graph.model_dump(),
         source=req.source or req.graph.source,
         title=req.graph.title,
+        mode=req.graph.mode,
+        source_type=req.graph.source_type,
+        domain_tag=req.graph.domain_tag,
+        scenario=req.graph.scenario,
     )
     if not graph["nodes"]:
         raise HTTPException(status_code=400, detail="当前没有可导入的图谱节点")

@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, proxyRefs, ref, watch } from 'vue'
 import {
   aiChat,
   aiControlExecute,
+  aiGraphStrategy,
   aiControlPlan,
   getLlmConfig,
   testLlmConfig,
@@ -13,6 +14,7 @@ import GraphExecuteResult from '../components/ai/GraphExecuteResult.vue'
 import GraphCatalogViewer from '../components/ai/GraphCatalogViewer.vue'
 import GraphImportPanel from '../components/ai/GraphImportPanel.vue'
 import GraphQAPanel from '../components/ai/GraphQAPanel.vue'
+import GraphStrategyGenerator from '../components/ai/GraphStrategyGenerator.vue'
 import WorkspaceSummary from '../components/workspace/WorkspaceSummary.vue'
 import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
 import { useGraphWorkspace } from '../composables/useGraphWorkspace.js'
@@ -32,16 +34,17 @@ const knowledgeTab = ref('import')
 const assistantTabs = [
   { key: 'control', label: '执行控制', desc: '规划、执行' },
   { key: 'chat', label: '对话解释', desc: '问答与说明' },
-  { key: 'knowledge', label: '知识入图', desc: '论文 -> Cypher' },
+  { key: 'knowledge', label: '知识入图', desc: '论文 / 优化知识 -> Cypher' },
   { key: 'model', label: '模型配置', desc: 'LLM 接入与测试' },
 ]
 const activeTabLabel = computed(() => (
   assistantTabs.find((item) => item.key === activeTab.value)?.label || '执行控制台'
 ))
 const knowledgeTabs = [
-  { key: 'import', label: '入图工作台', desc: '草稿与写入' },
-  { key: 'catalog', label: '答辩展示台', desc: '总览与讲解' },
-  { key: 'qa', label: '图谱问答', desc: '证据化回答' },
+  { key: 'import', label: '知识入图', desc: '工作台' },
+  { key: 'catalog', label: '图谱展示', desc: '分析台' },
+  { key: 'qa', label: '图谱问答', desc: '问答台' },
+  { key: 'strategy', label: '策略生成', desc: '策略台' },
 ]
 
 const messages = ref([{ role: 'assistant', content: DEFAULT_INTRO }])
@@ -78,6 +81,11 @@ const controlPlan = ref(null)
 const controlResult = ref(null)
 const controlRiskAcknowledged = ref(false)
 const graphWorkspace = proxyRefs(useGraphWorkspace())
+const graphStrategyForm = ref({
+  message: '',
+})
+const graphStrategyBusy = ref(false)
+const graphStrategyResult = ref(null)
 
 const llmSourceLabel = computed(() => {
   const source = llmConfig.value.source
@@ -111,6 +119,9 @@ const llmUpdatedAt = computed(() => {
 })
 
 const canPlanControl = computed(() => !!controlInput.value.trim())
+const canGenerateGraphStrategy = computed(() =>
+  !!graphStrategyForm.value.message.trim() && !!graphWorkspace.summary.neo4j_connected
+)
 const executableActions = computed(() =>
   (controlPlan.value?.actions || []).filter((item) => item.valid !== false)
 )
@@ -364,6 +375,54 @@ async function sendMessage() {
   scrollBottom()
 }
 
+async function generateGraphStrategy() {
+  const message = graphStrategyForm.value.message.trim()
+  if (!message || graphStrategyBusy.value) return
+
+  graphStrategyBusy.value = true
+  try {
+    const { data } = await aiGraphStrategy({ message })
+    graphStrategyResult.value = data
+  } catch (error) {
+    graphStrategyResult.value = {
+      summary: error?.response?.data?.detail || '图谱策略生成失败。',
+      strategy_steps: [],
+      control_prompt: '',
+      code_title: '未生成',
+      code_language: 'python',
+      code_snippet: '# 图谱策略生成失败，请检查 Neo4j 和当前图谱内容',
+      risk_notice: '请先确认图谱已导入且 Neo4j 在线。',
+      evidence: [],
+      follow_ups: [],
+      matched_node_count: 0,
+      matched_relationship_count: 0,
+      used_llm: false,
+      focus: {},
+      runtime_summary: '',
+    }
+  } finally {
+    graphStrategyBusy.value = false
+  }
+}
+
+function sendGraphStrategyToControl(prompt = '') {
+  const nextPrompt = String(prompt || graphStrategyResult.value?.control_prompt || '').trim()
+  if (!nextPrompt) return false
+  controlInput.value = nextPrompt
+  controlPlan.value = null
+  controlResult.value = null
+  controlRiskAcknowledged.value = false
+  activeTab.value = 'control'
+  return true
+}
+
+async function sendGraphStrategyToControlPlan(prompt = '') {
+  const accepted = sendGraphStrategyToControl(prompt)
+  if (!accepted) return
+  await nextTick()
+  await generateControlPlan()
+}
+
 function useSuggestion(text) {
   input.value = text
   sendMessage()
@@ -411,7 +470,7 @@ watch(knowledgeTab, (tab) => {
     return
   }
   void graphWorkspace.refreshSummary({ silent: true })
-  if (tab === 'catalog') {
+  if (tab === 'catalog' || tab === 'strategy') {
     void graphWorkspace.refreshGraphView({ silent: true })
   }
 })
@@ -436,6 +495,7 @@ watch(knowledgeTab, (tab) => {
         <WorkspaceTabs
           v-model="activeTab"
           :items="assistantTabs"
+          compact
         />
       </div>
 
@@ -693,6 +753,7 @@ watch(knowledgeTab, (tab) => {
             <WorkspaceTabs
               v-model="knowledgeTab"
               :items="knowledgeTabs"
+              compact
             />
           </div>
 
@@ -707,20 +768,23 @@ watch(knowledgeTab, (tab) => {
               :draft-busy="graphWorkspace.draftBusy"
               :execute-busy="graphWorkspace.executeBusy"
               :reconnect-busy="graphWorkspace.reconnectBusy"
+              :demo-busy="graphWorkspace.demoBusy"
               :can-generate="graphWorkspace.canGenerate"
               :can-execute="graphWorkspace.canExecute"
-              :busy="graphWorkspace.draftBusy || graphWorkspace.executeBusy || graphWorkspace.reconnectBusy"
+              :busy="graphWorkspace.draftBusy || graphWorkspace.executeBusy || graphWorkspace.reconnectBusy || graphWorkspace.demoBusy"
               @refresh="graphWorkspace.refreshSummary"
               @recover="graphWorkspace.recoverConnection"
               @generate="graphWorkspace.generateDraft"
               @execute="graphWorkspace.executeImport"
               @reset="graphWorkspace.resetWorkspaceState"
+              @demo="graphWorkspace.rebuildDemo"
             />
 
             <div class="graph-workspace__stack">
               <GraphCypherPreview :draft-result="graphWorkspace.draftResult" />
               <GraphExecuteResult
                 :summary="graphWorkspace.summary"
+                :mode="graphWorkspace.form.mode"
                 :execution-result="graphWorkspace.executionResult"
               />
             </div>
@@ -743,13 +807,27 @@ watch(knowledgeTab, (tab) => {
           />
 
           <GraphQAPanel
-            v-else
+            v-else-if="knowledgeTab === 'qa'"
             :summary="graphWorkspace.summary"
             :form="graphWorkspace.qaForm"
             :result="graphWorkspace.qaResult"
             :busy="graphWorkspace.qaBusy"
             :can-ask="graphWorkspace.canAsk"
             @ask="graphWorkspace.askGraphQuestion"
+          />
+
+          <GraphStrategyGenerator
+            v-else
+            :summary="graphWorkspace.summary"
+            :form="graphStrategyForm"
+            :result="graphStrategyResult"
+            :busy="graphStrategyBusy"
+            :can-generate="canGenerateGraphStrategy"
+            :llm-ready="llmReady"
+            @generate="generateGraphStrategy"
+            @use-control="sendGraphStrategyToControl"
+            @use-control-plan="sendGraphStrategyToControlPlan"
+            @ask="openGraphQa"
           />
     </section>
 

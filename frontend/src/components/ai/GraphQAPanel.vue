@@ -62,10 +62,10 @@ function submitQuestion(question = '') {
   <section class="graph-qa tech-card">
     <div class="graph-qa__head">
       <div>
-        <div class="graph-qa__eyebrow">Evidence Answering</div>
-        <div class="graph-qa__title">图谱问答闭环</div>
+        <div class="graph-qa__eyebrow">图谱问答</div>
+        <div class="graph-qa__title">图谱问答台</div>
         <div class="graph-qa__subtitle">
-          先从图库检索证据，再组织成回答。你可以直接向评委展示：这段结论对应了哪些节点、哪些关系、来自哪些论文。
+          先从图谱里取证，再生成回答和追问，适合直接回答“结论是什么、依据是什么”。
         </div>
       </div>
       <div class="ink-inline-meta">
@@ -93,13 +93,13 @@ function submitQuestion(question = '') {
           :disabled="!props.canAsk"
           @click="submitQuestion()"
         >
-          {{ props.busy ? '分析中...' : '从图里回答' }}
+          {{ props.busy ? '分析中...' : '生成回答' }}
         </button>
       </div>
     </div>
 
     <div class="graph-qa__samples">
-      <span class="graph-qa__samples-label">演示问题</span>
+      <span class="graph-qa__samples-label">快捷问题</span>
       <button
         v-for="question in SAMPLE_QUESTIONS"
         :key="question"
@@ -131,27 +131,27 @@ function submitQuestion(question = '') {
 
     <div class="graph-qa__summary-bar">
       <div class="graph-qa__summary-item">
-        <span>回答方式</span>
+        <span>问答方式</span>
         <strong>{{ answerModeLabel }}</strong>
       </div>
       <div class="graph-qa__summary-item">
-        <span>回答范围</span>
+        <span>命中范围</span>
         <strong>{{ questionScopeLabel }}</strong>
       </div>
       <div class="graph-qa__summary-item">
-        <span>演示建议</span>
-        <strong>先读结论，再展示证据节点和证据关系。</strong>
+        <span>使用建议</span>
+        <strong>先看摘要，再展开证据节点和证据关系。</strong>
       </div>
     </div>
 
     <div v-if="!props.result.summary && !props.busy" class="graph-qa__empty">
-      这里会把回答整理成“结论 + 证据 + 后续追问”的形式，适合答辩时直接证明“这不是模型乱说，而是图里有依据”。
+      这里会把结果整理成“摘要 + 证据 + 后续问题”的形式，方便直接展示依据。
     </div>
 
     <template v-else>
       <div class="graph-qa__answer">
         <div class="graph-qa__answer-card graph-qa__answer-card--summary">
-          <div class="graph-qa__answer-label">一句话结论</div>
+          <div class="graph-qa__answer-label">回答摘要</div>
           <div class="graph-qa__answer-value">{{ props.result.summary || '正在整理图谱回答...' }}</div>
         </div>
         <div class="graph-qa__answer-card">
@@ -189,7 +189,7 @@ function submitQuestion(question = '') {
                 <span class="status-badge status-badge--ok">{{ node.label }}</span>
                 <span class="graph-qa__node-name">{{ node.name }}</span>
               </div>
-              <div v-if="node.paper_title" class="graph-qa__node-meta">所属论文：{{ node.paper_title }}</div>
+              <div v-if="node.paper_title" class="graph-qa__node-meta">所属主题：{{ node.paper_title }}</div>
               <div v-if="node.description" class="graph-qa__node-desc">{{ node.description }}</div>
             </div>
           </div>
@@ -218,7 +218,7 @@ function submitQuestion(question = '') {
       </article>
 
       <article v-if="props.result.follow_ups?.length" class="graph-qa__panel">
-        <div class="graph-qa__panel-head">可继续追问</div>
+        <div class="graph-qa__panel-head">后续问题</div>
         <div class="graph-qa__follow-ups">
           <button
             v-for="question in props.result.follow_ups"
@@ -320,7 +320,7 @@ function submitQuestion(question = '') {
   padding: 8px 12px;
   border-radius: 999px;
   border: 1px solid var(--border-color);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--bg-surface);
   color: var(--text-secondary);
   cursor: pointer;
   transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
@@ -348,7 +348,7 @@ function submitQuestion(question = '') {
   padding: 12px 14px;
   border-radius: 16px;
   border: 1px solid var(--border-color);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--bg-surface);
 }
 
 .graph-qa__summary-item span {
@@ -381,7 +381,7 @@ function submitQuestion(question = '') {
   padding: 12px 14px;
   border-radius: 14px;
   border: 1px solid var(--border-color);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--bg-surface);
   color: var(--text-secondary);
   line-height: 1.8;
 }
@@ -393,8 +393,8 @@ function submitQuestion(question = '') {
 }
 
 .graph-qa__answer-card--summary {
-  background: rgba(127, 142, 255, 0.1);
-  border-color: rgba(127, 142, 255, 0.22);
+  background: var(--state-ok-bg);
+  border-color: var(--state-ok-border);
 }
 
 .graph-qa__answer-body {

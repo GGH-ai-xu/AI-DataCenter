@@ -1,14 +1,27 @@
 <script setup>
+import { computed } from 'vue'
+
 const props = defineProps({
   summary: {
     type: Object,
     required: true,
+  },
+  mode: {
+    type: String,
+    default: 'paper',
   },
   executionResult: {
     type: Object,
     default: null,
   },
 })
+
+const entryLabel = computed(() =>
+  props.mode === 'optimization' ? '当前知识条目' : '当前论文数'
+)
+const entryValue = computed(() =>
+  props.mode === 'optimization' ? (props.summary.node_count || 0) : (props.summary.paper_count || 0)
+)
 </script>
 
 <template>
@@ -25,8 +38,8 @@ const props = defineProps({
 
     <div class="graph-result__board">
       <div class="graph-result__item">
-        <span>当前论文数</span>
-        <strong>{{ props.summary.paper_count || 0 }}</strong>
+        <span>{{ entryLabel }}</span>
+        <strong>{{ entryValue }}</strong>
       </div>
       <div class="graph-result__item">
         <span>当前节点总数</span>

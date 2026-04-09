@@ -611,3 +611,145 @@ test('useGraphWorkspace asks graph qa and exposes matched evidence', async () =>
 
   resetGraphWorkspaceDependencies()
 })
+
+
+test('useGraphWorkspace sends optimization metadata when generating draft', async () => {
+  let receivedPayload = null
+
+  setGraphWorkspaceDependencies({
+    getGraphSummaryApi: async () => ({ data: {} }),
+    getGraphViewApi: async () => ({ data: { nodes: [], relationships: [] } }),
+    graphExecuteApi: async () => ({ data: {} }),
+    reconnectGraphApi: async () => ({ data: {} }),
+    graphDraftApi: async (payload) => {
+      receivedPayload = payload
+      return {
+        data: {
+          graph: {
+            title: payload.title,
+            mode: payload.mode,
+            source: payload.source,
+            source_type: payload.source_type,
+            domain_tag: payload.domain_tag,
+            scenario: payload.scenario,
+            nodes: [
+              { id: 'strategy_1', label: 'OptimizationStrategy', name: '高峰限功调度' },
+            ],
+            relations: [],
+          },
+          summary: {
+            title: payload.title,
+            mode: payload.mode,
+            node_count: 1,
+            relation_count: 0,
+          },
+          cypher: 'MERGE (...)',
+          warnings: [],
+        },
+      }
+    },
+  })
+
+  const workspace = useGraphWorkspace()
+  workspace.form.value.mode = 'optimization'
+  workspace.form.value.title = '高峰限功调度'
+  workspace.form.value.abstract = '高峰期压低总功耗，但保护紧急任务。'
+  workspace.form.value.sourceType = 'strategy'
+  workspace.form.value.domainTag = '智算中心优化'
+  workspace.form.value.scenario = '高峰限功'
+
+  await workspace.generateDraft()
+
+  assert.deepEqual(receivedPayload, {
+    title: '高峰限功调度',
+    abstract: '高峰期压低总功耗，但保护紧急任务。',
+    content: '',
+    mode: 'optimization',
+    source: 'optimization',
+    source_type: 'strategy',
+    domain_tag: '智算中心优化',
+    scenario: '高峰限功',
+  })
+
+  resetGraphWorkspaceDependencies()
+})
+
+
+test('useGraphWorkspace rebuilds builtin demo graph and refreshes graph view', async () => {
+  let rebuildKind = ''
+  let viewCalls = 0
+
+  setGraphWorkspaceDependencies({
+    getGraphSummaryApi: async () => ({
+      data: {
+        ready: true,
+        configured: true,
+        dependency_installed: true,
+        neo4j_connected: true,
+        database: 'neo4j',
+        paper_count: 0,
+        node_count: 21,
+        relation_count: 24,
+        message: 'Neo4j 已就绪',
+      },
+    }),
+    getGraphViewApi: async () => {
+      viewCalls += 1
+      return {
+        data: {
+          nodes: [
+            { id: 'paper_1', label: 'Paper', name: 'GraphRAG 演示图' },
+            { id: 'method_1', label: 'Method', name: 'GraphRAG' },
+          ],
+          relationships: [
+            { id: 'rel_1', source_id: 'paper_1', target_id: 'method_1', type: 'PROPOSES' },
+          ],
+          label_counts: { Paper: 1, Method: 1 },
+          relation_type_counts: { PROPOSES: 1 },
+        },
+      }
+    },
+    graphDraftApi: async () => ({ data: {} }),
+    graphExecuteApi: async () => ({ data: {} }),
+    reconnectGraphApi: async () => ({ data: {} }),
+    rebuildGraphDemoApi: async (kind) => {
+      rebuildKind = kind
+      return {
+        data: {
+          success: true,
+          kind,
+          message: '已切换到论文演示图。',
+          graph_summary: {
+            ready: true,
+            configured: true,
+            dependency_installed: true,
+            neo4j_connected: true,
+            database: 'neo4j',
+            paper_count: 3,
+            node_count: 16,
+            relation_count: 16,
+            message: 'Neo4j 已就绪',
+          },
+        },
+      }
+    },
+  })
+
+  const workspace = useGraphWorkspace()
+  workspace.graphFilters.value.query = 'stale-query'
+
+  const result = await workspace.rebuildDemo('paper')
+
+  assert.equal(rebuildKind, 'paper')
+  assert.equal(result.kind, 'paper')
+  assert.equal(workspace.demoBusy.value, false)
+  assert.equal(workspace.summary.value.paper_count, 3)
+  assert.equal(workspace.summary.value.node_count, 16)
+  assert.equal(workspace.graphFilters.value.query, '')
+  assert.equal(workspace.graphView.value.nodes.length, 2)
+  assert.equal(workspace.graphView.value.relationships.length, 1)
+  assert.equal(viewCalls, 1)
+  assert.match(workspace.feedback.value.text, /论文演示图/)
+
+  resetGraphWorkspaceDependencies()
+})

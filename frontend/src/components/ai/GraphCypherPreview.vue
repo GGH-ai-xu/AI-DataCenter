@@ -124,15 +124,15 @@ const props = defineProps({
 }
 
 .graph-preview__warning {
-  color: #f7d79d;
-  border-color: rgba(244, 185, 93, 0.22);
-  background: rgba(244, 185, 93, 0.1);
+  color: var(--state-warning-text);
+  border-color: var(--state-warning-border);
+  background: var(--state-warning-bg);
 }
 
 .graph-preview__code-wrap {
   border-radius: 16px;
   border: 1px solid var(--border-color);
-  background: rgba(7, 11, 20, 0.95);
+  background: var(--field-background);
   overflow: hidden;
 }
 
@@ -142,7 +142,7 @@ const props = defineProps({
   overflow: auto;
   font-size: 0.78rem;
   line-height: 1.7;
-  color: #dbe0ff;
+  color: var(--text-primary);
   font-family: 'Consolas', 'SFMono-Regular', 'Courier New', monospace;
 }
 
