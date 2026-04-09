@@ -47,6 +47,10 @@ from app.services.runtime_snapshot import (
     build_runtime_snapshot,
     empty_runtime_snapshot,
 )
+from app.services.goal_runtime.platform_capabilities import (
+    build_platform_capability_registry,
+)
+from app.services.goal_runtime.service import GoalRuntimeService
 from app.services.saved_host_service import SavedHostService
 from app.services.ssh_linux_provider import SshLinuxProvider
 from app.ws.realtime import ws_manager
@@ -91,6 +95,7 @@ class AppState:
     import_context: ImportContextService
     llm_settings: LLMSettingsService
     runtime: RuntimeProviderManager
+    goal_runtime: GoalRuntimeService
     latest_runtime_snapshot: dict
     _collect_task: asyncio.Task | None = None
     _cleanup_task: asyncio.Task | None = None
@@ -418,6 +423,13 @@ async def lifespan(app: FastAPI):
         app_state.privacy,
         app_state.governance,
     )
+    app_state.goal_runtime = GoalRuntimeService(
+        store=app_state.store,
+        registry=build_platform_capability_registry(app_state),
+        import_context=app_state.import_context,
+        runtime_status_reader=runtime_status_payload,
+        llm_service_reader=lambda: app_state.llm,
+    )
     bind_llm_service(app_state.llm)
 
     # 启动采集循环
@@ -473,6 +485,7 @@ from app.api.audit import router as audit_router
 from app.api.auth import router as auth_router
 from app.api.admin_users import router as admin_users_router
 from app.api.hosts import router as hosts_router
+from app.api.agent_runtime import router as agent_runtime_router
 
 app.include_router(gpu_router)
 app.include_router(tasks_router)
@@ -489,6 +502,7 @@ app.include_router(audit_router)
 app.include_router(auth_router)
 app.include_router(admin_users_router)
 app.include_router(hosts_router)
+app.include_router(agent_runtime_router)
 
 
 @app.get("/api/health")
