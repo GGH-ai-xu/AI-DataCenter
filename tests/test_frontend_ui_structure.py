@@ -333,6 +333,17 @@ class FrontendUIStructureTests(unittest.TestCase):
         ]:
             self.assertRegex(text, rf"\.{cls}\s*\{{[^}}]*padding:", cls)
 
+    def test_monitor_center_timeline_uses_compact_ledger_layout(self):
+        text = (ROOT / "frontend/src/views/MonitorCenter.vue").read_text(encoding="utf-8")
+
+        self.assertIn("timeline-toolbar", text)
+        self.assertIn("timeline-range-chips", text)
+        self.assertIn("timeline-ledger-list", text)
+        self.assertIn("timeline-ledger-item", text)
+        self.assertIn("timeline-ledger-item__meta", text)
+        self.assertIn("timeline-ledger-item__command", text)
+        self.assertNotIn("<table class=\"data-table\">", text)
+
     def test_views_do_not_use_ellipsis_to_hide_text(self):
         for rel in [
             "frontend/src/views/MonitorCenter.vue",

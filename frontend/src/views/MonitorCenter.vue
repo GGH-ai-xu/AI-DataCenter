@@ -51,6 +51,14 @@ const monitorPalette = Object.freeze({
   inactive: '#7380A0',
 })
 const monitorFontUi = "'PingFang SC','Microsoft YaHei','Noto Sans SC','Segoe UI',sans-serif"
+const TIMELINE_RANGE_OPTIONS = Object.freeze([
+  { hours: 1, label: '1小时' },
+  { hours: 6, label: '6小时' },
+  { hours: 24, label: '1天' },
+  { hours: 72, label: '3天' },
+])
+const TIMELINE_CHART_LIMIT = 24
+const TIMELINE_LEDGER_LIMIT = 28
 
 // ===== 格式化工具 =====
 const fmtBytes = (b) => {
@@ -79,6 +87,27 @@ function usageColor(value, warning = 70, critical = 90, normal = monitorPalette.
   if (value >= critical) return monitorPalette.danger
   if (value >= warning) return monitorPalette.warning
   return normal
+}
+
+function timelineTaskCommand(task) {
+  const command = task.command?.trim()
+  return command || `PID ${task.pid}`
+}
+
+function timelineTaskName(task) {
+  const command = timelineTaskCommand(task)
+  const entry = command.split('/').pop() || command
+  return entry.split(' ')[0] || `PID ${task.pid}`
+}
+
+function timelineTaskDuration(task) {
+  const now = Date.now() / 1000
+  const end = task.is_active ? now : task.last_seen
+  return fmtDuration(end - task.first_seen)
+}
+
+function timelineTaskStatus(task) {
+  return task.is_active ? '运行中' : '已结束'
 }
 
 // ===== 数据加载 =====
@@ -123,6 +152,12 @@ function applyMonitorTabData(tab, payload) {
   }
   taskTimeline.value = payload || []
 }
+
+const activeTimelineRangeLabel = computed(() =>
+  TIMELINE_RANGE_OPTIONS.find(({ hours }) => hours === timelineHours.value)?.label || `${timelineHours.value}小时`
+)
+const timelineChartItems = computed(() => taskTimeline.value.slice(0, TIMELINE_CHART_LIMIT))
+const timelineLedgerItems = computed(() => taskTimeline.value.slice(0, TIMELINE_LEDGER_LIMIT))
 
 // ===== 图表配置 =====
 const cpuCoreOption = computed(() => {
@@ -216,35 +251,42 @@ const trainingChartOption = computed(() => {
 const timelineOption = computed(() => {
   if (!taskTimeline.value.length) return null
   const now = Date.now() / 1000
-  const items = taskTimeline.value.slice(0, 20)
-  const categories = items.map((t, i) => {
-    const cmd = (t.command || '').split('/').pop().split(' ')[0] || 'PID:' + t.pid
-    return `${t.username}/${cmd}`
-  })
+  const items = timelineChartItems.value
+  const categories = items.map((task) => `${task.username} · ${timelineTaskName(task)}`)
 
   return {
     tooltip: {
       backgroundColor: monitorPalette.panel, borderColor: monitorPalette.border, textStyle: { color: monitorPalette.text, fontFamily: monitorFontUi },
       formatter: (p) => {
         const t = items[p.dataIndex]
-        const dur = (t.last_seen - t.first_seen)
-        return `<b>${t.username}</b><br/>PID: ${t.pid} | GPU ${t.gpu_index}<br/>命令: ${t.command}<br/>时长: ${fmtDuration(dur)}<br/>显存: ${fmtBytes(t.gpu_memory_used)}<br/>状态: ${t.is_active ? '运行中' : '已结束'}`
+        return `<b>${t.username}</b><br/>PID: ${t.pid} | GPU ${t.gpu_index}<br/>命令: ${timelineTaskCommand(t)}<br/>时长: ${timelineTaskDuration(t)}<br/>显存: ${fmtBytes(t.gpu_memory_used)}<br/>状态: ${timelineTaskStatus(t)}`
       }
     },
-    grid: { top: 16, right: 80, bottom: 24, left: 160 },
+    grid: { top: 18, right: 28, bottom: 26, left: 136 },
     xAxis: {
       type: 'time',
       axisLabel: { color: monitorPalette.textMuted, formatter: (v) => new Date(v).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }), fontFamily: monitorFontUi },
       axisLine: { lineStyle: { color: monitorPalette.line } }, splitLine: { lineStyle: { color: monitorPalette.line } },
     },
-    yAxis: { type: 'category', data: categories, axisLabel: { color: monitorPalette.textSecondary, fontSize: 11, width: 150, overflow: 'break', fontFamily: monitorFontUi }, axisLine: { lineStyle: { color: monitorPalette.line } } },
+    yAxis: {
+      type: 'category',
+      data: categories,
+      axisLabel: {
+        color: monitorPalette.textSecondary,
+        fontSize: 11,
+        width: 124,
+        overflow: 'truncate',
+        fontFamily: monitorFontUi,
+      },
+      axisLine: { lineStyle: { color: monitorPalette.line } },
+    },
     series: [{
       type: 'custom',
       renderItem: (params, api) => {
         const catIdx = api.value(0)
         const start = api.coord([api.value(1), catIdx])
         const end = api.coord([api.value(2), catIdx])
-        const height = 16
+        const height = 18
         return {
           type: 'rect', shape: { x: start[0], y: start[1] - height / 2, width: Math.max(end[0] - start[0], 4), height },
           style: { fill: api.value(3) ? monitorPalette.primary : monitorPalette.inactive, opacity: 0.8 },
@@ -448,14 +490,29 @@ watch(timelineHours, () => {
     <div v-if="activeTab === 'timeline'" class="tab-content">
       <WorkspacePaneLayout>
         <template #main>
-          <div class="timeline-controls">
-            <span class="timeline-controls__label">时间范围</span>
-            <button v-for="h in [1, 6, 24, 72]" :key="h" class="btn-tech btn-sm" :class="{ 'btn-tech--active': timelineHours === h }"
-              @click="timelineHours = h">{{ h >= 24 ? (h/24) + '天' : h + '小时' }}</button>
+          <div class="timeline-toolbar">
+            <div class="timeline-toolbar__group">
+              <span class="timeline-toolbar__label">时间范围</span>
+              <div class="timeline-range-chips">
+                <button
+                  v-for="option in TIMELINE_RANGE_OPTIONS"
+                  :key="option.hours"
+                  class="timeline-range-chip"
+                  :class="{ 'timeline-range-chip--active': timelineHours === option.hours }"
+                  @click="timelineHours = option.hours"
+                >
+                  {{ option.label }}
+                </button>
+              </div>
+            </div>
+            <span class="timeline-toolbar__summary">近 {{ activeTimelineRangeLabel }} · {{ taskTimeline.length }} 条任务</span>
           </div>
           <div class="tech-card timeline-chart-card" v-if="timelineOption">
-            <div class="card-title">GPU任务占用时间线</div>
-            <v-chart :option="timelineOption" style="height: 400px" autoresize />
+            <div class="timeline-panel-head">
+              <div class="card-title">GPU任务占用时间线</div>
+              <span class="timeline-panel-count">{{ timelineChartItems.length }} 条</span>
+            </div>
+            <v-chart :option="timelineOption" class="timeline-chart-card__chart" autoresize />
           </div>
           <div v-else class="empty-state">
             <div class="empty-icon">时</div>
@@ -466,25 +523,38 @@ watch(timelineHours, () => {
 
         <template #side>
           <div class="tech-card timeline-ledger-card">
-            <div class="card-title">时间线台账 <span style="color: var(--text-muted); font-size: 0.75rem">({{ taskTimeline.length }} 条)</span></div>
-            <div v-if="taskTimeline.length" class="table-wrap panel-scroll">
-              <table class="data-table">
-                <thead>
-                  <tr><th>用户</th><th>PID</th><th>GPU</th><th>命令</th><th>显存</th><th>开始</th><th>时长</th><th>状态</th></tr>
-                </thead>
-                <tbody>
-                  <tr v-for="t in taskTimeline.slice(0, 30)" :key="t.id">
-                    <td>{{ t.username }}</td>
-                    <td class="stat-value">{{ t.pid }}</td>
-                    <td><span class="proc-gpu">GPU{{ t.gpu_index }}</span></td>
-                    <td class="proc-cmd-cell" :title="t.command">{{ t.command }}</td>
-                    <td class="stat-value">{{ fmtBytes(t.gpu_memory_used) }}</td>
-                    <td>{{ fmtTime(t.first_seen) }}</td>
-                    <td class="stat-value">{{ fmtDuration(t.last_seen - t.first_seen) }}</td>
-                    <td><span :class="t.is_active ? 'status-badge status-badge--ok' : 'status-badge'">{{ t.is_active ? '运行中' : '已结束' }}</span></td>
-                  </tr>
-                </tbody>
-              </table>
+            <div class="timeline-panel-head">
+              <div class="card-title">时间线台账</div>
+              <span class="timeline-panel-count">{{ taskTimeline.length }} 条</span>
+            </div>
+            <div v-if="timelineLedgerItems.length" class="timeline-ledger-list panel-scroll">
+              <article
+                v-for="task in timelineLedgerItems"
+                :key="task.id || `${task.pid}-${task.first_seen}-${task.gpu_index}`"
+                class="timeline-ledger-item"
+              >
+                <div class="timeline-ledger-item__head">
+                  <div class="timeline-ledger-item__identity">
+                    <span class="timeline-ledger-item__user">{{ task.username }}</span>
+                    <span class="proc-gpu">GPU{{ task.gpu_index }}</span>
+                    <span
+                      class="status-badge timeline-ledger-item__status"
+                      :class="{ 'status-badge--ok': task.is_active, 'timeline-ledger-item__status--ended': !task.is_active }"
+                    >
+                      {{ timelineTaskStatus(task) }}
+                    </span>
+                  </div>
+                  <span class="timeline-ledger-item__memory stat-value">{{ fmtBytes(task.gpu_memory_used) }}</span>
+                </div>
+                <div class="timeline-ledger-item__meta">
+                  <span class="stat-value">PID {{ task.pid }}</span>
+                  <span>{{ fmtTime(task.first_seen) }}</span>
+                  <span>{{ timelineTaskDuration(task) }}</span>
+                </div>
+                <div class="timeline-ledger-item__command" :title="timelineTaskCommand(task)">
+                  {{ timelineTaskCommand(task) }}
+                </div>
+              </article>
             </div>
             <div v-else class="empty-state empty-state--compact">时间线明细会在这里持续累积。</div>
           </div>
@@ -599,31 +669,159 @@ watch(timelineHours, () => {
 /* ===== 时间线 ===== */
 .timeline-chart-card { padding: 18px 20px; }
 .timeline-ledger-card { padding: 18px 20px; }
-.timeline-controls {
+.timeline-toolbar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.timeline-toolbar__group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.timeline-toolbar__label {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+}
+.timeline-range-chips {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.02);
+}
+.timeline-range-chip {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  line-height: 1;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+.timeline-range-chip:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.04);
+}
+.timeline-range-chip--active {
+  background: linear-gradient(135deg, rgba(127, 142, 255, 0.2), rgba(110, 184, 255, 0.1));
+  border-color: rgba(127, 142, 255, 0.32);
+  color: var(--text-primary);
+}
+.timeline-toolbar__summary {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+.timeline-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.timeline-panel-head .card-title {
+  margin-bottom: 0;
+}
+.timeline-panel-count {
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(127, 142, 255, 0.16);
+  background: rgba(127, 142, 255, 0.08);
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+.timeline-chart-card__chart {
+  height: 428px;
+}
+.timeline-ledger-list {
+  display: grid;
+  gap: 10px;
+  max-height: 528px;
+  padding-right: 2px;
+}
+.timeline-ledger-item {
+  display: grid;
   gap: 8px;
-  margin-bottom: 16px;
   padding: 12px 14px;
   border-radius: 12px;
   border: 1px solid var(--border-color);
-  background: var(--bg-card);
-  box-shadow: var(--shadow-card);
+  background: rgba(255, 255, 255, 0.025);
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
 }
-.timeline-controls__label {
+.timeline-ledger-item:hover {
+  border-color: rgba(127, 142, 255, 0.26);
+  background: rgba(255, 255, 255, 0.04);
+  transform: translateY(-1px);
+}
+.timeline-ledger-item__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.timeline-ledger-item__identity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.timeline-ledger-item__user {
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.timeline-ledger-item__status {
+  white-space: nowrap;
+}
+.timeline-ledger-item__status--ended {
   color: var(--text-secondary);
-  font-size: 0.78rem;
-  letter-spacing: 0.08em;
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.08);
 }
-.btn-sm { padding: 4px 12px; font-size: 0.75rem; }
-.btn-tech--active { background: linear-gradient(135deg, rgba(127, 142, 255, 0.16), rgba(110, 184, 255, 0.08)); color: var(--text-primary); border-color: var(--border-strong); }
+.timeline-ledger-item__memory {
+  color: var(--accent-primary);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+.timeline-ledger-item__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+.timeline-ledger-item__command {
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+  line-height: 1.5;
+  font-family: 'JetBrains Mono', monospace;
+  display: -webkit-box;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
 
-.table-wrap { overflow-x: auto; }
-.data-table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
-.data-table th { text-align: left; padding: 8px 12px; color: var(--text-muted); font-weight: 500; border-bottom: 1px solid var(--border-color); }
-.data-table td { padding: 8px 12px; border-bottom: 1px solid var(--border-color); }
-.data-table tr:hover td { background: var(--bg-surface); }
-.proc-cmd-cell { max-width: 250px; white-space: normal; overflow-wrap: anywhere; word-break: break-word; font-family: 'JetBrains Mono', monospace; color: var(--text-secondary); font-size: 0.75rem; line-height: 1.6; }
+@media (max-width: 900px) {
+  .timeline-chart-card__chart {
+    height: 360px;
+  }
+
+  .timeline-ledger-list {
+    max-height: none;
+  }
+}
 
 /* ===== 空状态 ===== */
 .empty-state { text-align: center; padding: 60px 20px; color: var(--text-secondary); }
