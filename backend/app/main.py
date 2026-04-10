@@ -478,7 +478,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="智算中心优化代码生成系统",
     description="面向智算中心场景的优化治理与代码生成系统",
-    version="1.1.1",
+    version="1.1.2",
     lifespan=lifespan,
 )
 
