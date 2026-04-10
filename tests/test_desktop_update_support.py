@@ -6,6 +6,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class DesktopUpdateSupportTests(unittest.TestCase):
+    def test_desktop_shell_package_includes_dev_session_binding_module(self):
+        package_text = (ROOT / "desktop-shell" / "package.json").read_text(encoding="utf-8")
+        main_text = (ROOT / "desktop-shell" / "main.js").read_text(encoding="utf-8")
+
+        self.assertIn('"devSessionBinding.js"', package_text)
+        self.assertIn("function loadDesktopDevSessionBinding()", main_text)
+        self.assertIn("DEV_SESSION_BINDING_FALLBACK", main_text)
+
     def test_desktop_shell_disables_update_check_in_dev_mode(self):
         text = (ROOT / "desktop-shell" / "main.js").read_text(encoding="utf-8")
 

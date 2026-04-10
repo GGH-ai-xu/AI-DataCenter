@@ -7,9 +7,13 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from repo_test_bootstrap import prepare_backend_test_env
+
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, os.path.join(ROOT, "backend"))
+missing_deps = prepare_backend_test_env("cryptography")
+if missing_deps:
+    raise unittest.SkipTest(f"missing backend test dependencies: {', '.join(missing_deps)}; run install-deps.bat")
 
 from app import main as backend_main  # noqa: E402
 from app.services.data_store import DataStore  # noqa: E402

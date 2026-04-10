@@ -1,6 +1,6 @@
 {
   "name": "gpu-governance-workbench-desktop",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "GPU shared governance desktop shell",
   "main": "main.js",
   "author": "Open Source",
@@ -19,7 +19,7 @@
   },
   "build": {
     "appId": "com.gpu.governance.workbench",
-    "productName": "GPU 共享治理平台",
+    "productName": "智算中心优化代码生成系统",
     "executableName": "GPUGovernanceWorkbench",
     "directories": {
       "output": "../dist/electron",
@@ -29,6 +29,7 @@
       "build/icon.ico",
       "build/icon.png",
       "build/logo.svg",
+      "devSessionBinding.js",
       "main.js",
       "preload.js",
       "splash.html",
@@ -71,7 +72,7 @@
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
       "installerHeaderIcon": "build/icon.ico",
-      "shortcutName": "GPU 共享治理平台",
+      "shortcutName": "智算中心优化代码生成系统",
       "artifactName": "GPUGovernanceWorkbench-Setup-${version}.${ext}"
     }
   }

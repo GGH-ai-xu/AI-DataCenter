@@ -6,15 +6,33 @@ const http = require('node:http')
 const net = require('node:net')
 const { spawn } = require('node:child_process')
 const DESKTOP_PACKAGE = require('./package.json')
+const DEV_SESSION_BINDING_FALLBACK = Object.freeze({
+  clearDesktopDevSession() {},
+  startDesktopDevLauncherWatch() {},
+  stopDesktopDevLauncherWatch() {},
+  writeDesktopDevSession() {},
+})
+
+function loadDesktopDevSessionBinding() {
+  try {
+    return require('./devSessionBinding')
+  } catch (error) {
+    if (error?.code !== 'MODULE_NOT_FOUND' || !String(error?.message || '').includes('./devSessionBinding')) {
+      throw error
+    }
+    return DEV_SESSION_BINDING_FALLBACK
+  }
+}
+
 const {
   clearDesktopDevSession,
   startDesktopDevLauncherWatch,
   stopDesktopDevLauncherWatch,
   writeDesktopDevSession,
-} = require('./devSessionBinding')
+} = loadDesktopDevSessionBinding()
 
 const APP_ID = 'com.gpu.governance.workbench'
-const APP_TITLE = 'GPU 共享治理平台'
+const APP_TITLE = '智算中心优化代码生成系统'
 const APP_SLUG = 'GPU-Governance-Workbench'
 const LOCAL_HOST = '127.0.0.1'
 const DEFAULT_BACKEND_PORT = 8000

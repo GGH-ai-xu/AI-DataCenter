@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-GPU 共享治理平台 — a full-stack GPU governance workbench for shared GPU environments (labs, small servers). Three independently deployed components: a Vue 3 frontend, a FastAPI backend, and a FastAPI server-agent that runs on the GPU machine. An Electron desktop shell wraps everything into a Windows installer.
+智算中心优化代码生成系统 — a full-stack GPU governance workbench for shared GPU environments (labs, small servers). Three independently deployed components: a Vue 3 frontend, a FastAPI backend, and a FastAPI server-agent that runs on the GPU machine. An Electron desktop shell wraps everything into a Windows installer.
 
 Design principle: only provide conclusions based on real data; when data is insufficient, show "数据不足" rather than falling back to simulated values.
 

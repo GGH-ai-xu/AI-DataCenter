@@ -136,7 +136,7 @@ const emit = defineEmits(['navigate', 'switch-server'])
         <img class="app-sidebar-brand-card__logo" src="/logo.svg" alt="AI-DataCenter logo" />
       </div>
       <div class="app-sidebar-brand-card__copy">
-        <h1 class="app-sidebar-brand-card__title">{{ props.appInfo.name || 'GPU 共享治理平台' }}</h1>
+        <h1 class="app-sidebar-brand-card__title">{{ props.appInfo.name || '智算中心优化代码生成系统' }}</h1>
         <p class="app-sidebar-brand-card__summary">{{ props.summary || '导入范围待确认' }}</p>
       </div>
       <button

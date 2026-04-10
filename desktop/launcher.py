@@ -1,4 +1,4 @@
-"""Windows 桌面启动器 - 启动后台服务并打开治理工作台"""
+"""Windows 桌面启动器 - 启动后台服务并打开智算中心优化代码生成系统"""
 
 from __future__ import annotations
 
@@ -68,7 +68,7 @@ def wait_http(url: str, seconds: float) -> bool:
     return False
 
 
-def show_message(text: str, title: str = "GPU 共享治理平台"):
+def show_message(text: str, title: str = "智算中心优化代码生成系统"):
     if os.name == "nt":
         try:
             import ctypes

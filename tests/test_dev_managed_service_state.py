@@ -1,5 +1,6 @@
 import shutil
 import subprocess
+import sys
 import unittest
 from pathlib import Path
 
@@ -14,12 +15,7 @@ class DevManagedServiceStateTests(unittest.TestCase):
             self.skipTest("powershell.exe not available")
 
         helper = ROOT / "scripts" / "dev-managed-service-state.ps1"
-        helper_windows = subprocess.run(
-            ["wslpath", "-w", str(helper)],
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout.strip()
+        helper_windows = self._resolve_powershell_path(helper)
         command = (
             "$ErrorActionPreference='Stop'; "
             f". '{helper_windows}'; "
@@ -52,6 +48,21 @@ class DevManagedServiceStateTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.strip(), "True", result.stdout)
+
+    def _resolve_powershell_path(self, path: Path) -> str:
+        if sys.platform == "win32":
+            return str(path).replace("'", "''")
+
+        wslpath = shutil.which("wslpath")
+        if not wslpath:
+            self.skipTest("wslpath is required to invoke powershell.exe from a non-Windows Python runtime")
+
+        return subprocess.run(
+            [wslpath, "-w", str(path)],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip().replace("'", "''")
 
 
 if __name__ == "__main__":

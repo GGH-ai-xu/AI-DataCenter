@@ -95,7 +95,7 @@ EVALUATE_PROMPT = """上次调度执行了以下操作：
 严格按JSON返回：
 {{"score": 0, "verdict": "一句话评价", "effective_actions": [], "ineffective_actions": [], "improvement": "改进建议"}}"""
 
-CONTROL_PROMPT = """你是 GPU 治理工作台里的 AI 执行控制台规划器。
+CONTROL_PROMPT = """你是智算中心优化代码生成系统里的 AI 执行控制台规划器。
 
 你的任务不是直接执行动作，而是把用户的自然语言要求翻译成“可审核、可执行”的结构化动作计划。
 
@@ -131,7 +131,7 @@ CONTROL_PROMPT = """你是 GPU 治理工作台里的 AI 执行控制台规划器
   ]
 }}"""
 
-GRAPH_QA_PROMPT = """你是 GPU 治理平台里的图谱问答助手。
+GRAPH_QA_PROMPT = """你是智算中心优化代码生成系统里的图谱问答助手。
 
 你只能依据给定的图谱证据回答，不允许引用图外知识，不允许把常识当成图谱事实。
 
@@ -150,7 +150,7 @@ GRAPH_QA_PROMPT = """你是 GPU 治理平台里的图谱问答助手。
   "follow_ups": ["后续问题1", "后续问题2"]
 }"""
 
-GRAPH_STRATEGY_PROMPT = """你是 GPU 治理平台里的本体 GraphRAG 策略生成助手。
+GRAPH_STRATEGY_PROMPT = """你是智算中心优化代码生成系统里的本体 GraphRAG 策略生成助手。
 
 你必须先阅读给定的“图谱证据”和“当前运行态”，再给出可解释的优化策略和代码模板。
 你不能编造图里没有出现过的约束、策略名、模板名或接口名。

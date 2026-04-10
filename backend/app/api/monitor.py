@@ -15,7 +15,7 @@ _LOW_SIGNAL_COMMAND_KEYWORDS = (
     "chrome.exe",
     "edgewebview",
     "gpugovernanceworkbench",
-    "共享治理平台",
+    "智算中心优化代码生成系统",
 )
 
 _LOW_SIGNAL_MEMORY_BYTES = 64 * 1024 * 1024

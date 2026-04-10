@@ -202,13 +202,13 @@
 
 - **Layout**: Full-screen clean background + centered title + bottom metadata
 - **Title**: AI DataCenter
-- **Subtitle**: 面向共享算力场景的 GPU 导入、监控与治理平台
+- **Subtitle**: 智算中心优化代码生成系统
 - **Info**: 产品展示 / 答辩稿 | 2026.04
 
 #### Slide 02 - 一句话项目定义
 
 - **Layout**: Single column centered + 3 supporting cards
-- **Title**: 这不是一个“看 GPU 数据”的页面，而是一套共享算力治理平台
+- **Title**: 这不是一个“看 GPU 数据”的页面，而是智算中心优化代码生成系统
 - **Content**:
   - 平台先登录，再进入独立导入层
   - 导入前先扫描硬件并确认治理范围
