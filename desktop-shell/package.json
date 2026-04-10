@@ -1,7 +1,7 @@
 {
   "name": "gpu-governance-workbench-desktop",
-  "version": "1.1.1",
-  "description": "GPU shared governance desktop shell",
+  "version": "1.1.2",
+  "description": "Intelligent computing center optimization and code generation desktop shell",
   "main": "main.js",
   "author": "Open Source",
   "license": "MIT",

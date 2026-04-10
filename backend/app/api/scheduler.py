@@ -269,6 +269,8 @@ async def manual_power_limit(req: PowerLimitRequest):
     _ensure_gpu_in_scope(app_state, req.gpu_index)
     app_state.scheduler.clear_managed_gpu(req.gpu_index)
     result = await app_state.agent.set_power_limit(req.gpu_index, req.power_limit)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "功耗限制写入失败"))
     result["applied"] = bool(result.get("success"))
     return result
 

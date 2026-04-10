@@ -10,8 +10,8 @@ from fastapi import HTTPException
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(ROOT, "backend"))
 
-from app.api.scheduler import build_fallback_report, generate_report, run_schedule_once  # noqa: E402
-from app.models.schemas import ScheduleRunRequest  # noqa: E402
+from app.api.scheduler import build_fallback_report, generate_report, manual_power_limit, run_schedule_once  # noqa: E402
+from app.models.schemas import PowerLimitRequest, ScheduleRunRequest  # noqa: E402
 from app.services.privacy import PrivacyService  # noqa: E402
 from app.services.scheduler import SchedulerEngine  # noqa: E402
 
@@ -103,6 +103,32 @@ class FakeRouteScheduler:
 
     def get_carbon_budget_status(self, gpus):
         return {"gpu_count": len(gpus)}
+
+
+class FakeManualPowerLimitAgent:
+    def __init__(self, result):
+        self.result = result
+        self.calls = []
+
+    async def set_power_limit(self, gpu_index, power_limit):
+        self.calls.append((gpu_index, power_limit))
+        return dict(self.result)
+
+
+class FakeManualPowerLimitScheduler:
+    def __init__(self):
+        self.cleared = []
+
+    def clear_managed_gpu(self, gpu_index):
+        self.cleared.append(gpu_index)
+
+
+class FakeImportContext:
+    def __init__(self):
+        self.allowed = []
+
+    def ensure_gpu_allowed(self, gpu_index):
+        self.allowed.append(gpu_index)
 
 
 def _route_snapshot(gpus=None, processes=None):
@@ -243,6 +269,36 @@ class SchedulerEngineTests(unittest.IsolatedAsyncioTestCase):
 
 
 class SchedulerRunOnceRouteTests(unittest.IsolatedAsyncioTestCase):
+    async def test_manual_power_limit_raises_when_agent_reports_failure(self):
+        agent = FakeManualPowerLimitAgent(
+            {"success": False, "error": "not supported in current scope"}
+        )
+        scheduler = FakeManualPowerLimitScheduler()
+        import_context = FakeImportContext()
+        fake_main = types.SimpleNamespace(
+            app_state=types.SimpleNamespace(
+                agent=agent,
+                scheduler=scheduler,
+                import_context=import_context,
+            )
+        )
+
+        with mock.patch.dict(sys.modules, {"app.main": fake_main}):
+            with self.assertRaises(HTTPException) as ctx:
+                await manual_power_limit(
+                    PowerLimitRequest(
+                        gpu_index=0,
+                        power_limit=120,
+                        acknowledge_risk=True,
+                    )
+                )
+
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertEqual(ctx.exception.detail, "not supported in current scope")
+        self.assertEqual(import_context.allowed, [0])
+        self.assertEqual(scheduler.cleared, [0])
+        self.assertEqual(agent.calls, [(0, 120)])
+
     async def test_run_schedule_once_requires_risk_acknowledgement(self):
         fake_main = types.SimpleNamespace(
             app_state=types.SimpleNamespace(
