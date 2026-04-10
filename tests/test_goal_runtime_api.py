@@ -11,8 +11,10 @@ sys.path.insert(0, os.path.join(ROOT, "backend"))
 
 from app.api.agent_runtime import (  # noqa: E402
     approve_agent_runtime_session,
+    delete_agent_runtime_session,
     get_agent_runtime_events,
     get_agent_runtime_session,
+    list_agent_runtime_sessions,
     start_agent_runtime_session,
     stream_agent_runtime_session,
 )
@@ -101,6 +103,12 @@ class FakeStore:
     async def get_agent_stream_state(self, session_id, stream_kind):
         return self.stream_states.get((session_id, stream_kind))
 
+    async def delete_agent_session(self, session_id):
+        self.sessions.pop(session_id, None)
+        self.events.pop(session_id, None)
+        for key in [key for key in self.stream_states if key[0] == session_id]:
+            self.stream_states.pop(key, None)
+
 
 def build_registry():
     registry = CapabilityRegistry()
@@ -178,6 +186,21 @@ class FakeGoalRuntimeService:
     async def get_events(self, session_id):
         self.calls.append(("events", session_id))
         return [{"event_type": "GoalParsed"}]
+
+    async def list_sessions(self, limit=20):
+        self.calls.append(("list", limit))
+        return [
+            {
+                "session_id": "sess-route",
+                "status": "completed",
+                "summary": "暂停当前低优先级任务",
+                "updated_at": 1700000000.0,
+            }
+        ]
+
+    async def delete_session(self, session_id):
+        self.calls.append(("delete", session_id))
+        return {"session_id": session_id, "deleted": True}
 
     async def stream_session(self, session_id):
         self.calls.append(("stream", session_id))
@@ -287,6 +310,95 @@ class GoalRuntimeServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("live_phase", session)
         self.assertIn("planner_stream", session)
 
+    async def test_start_session_persists_original_message_in_goal_json_raw_message(self):
+        store = FakeStore()
+        runtime = GoalRuntimeService(
+            store=store,
+            registry=build_registry(),
+            import_context=FakeImportContext(),
+            runtime_status_reader=None,
+            llm_service_reader=lambda: None,
+            task_spawner=lambda coro: asyncio.create_task(coro),
+        )
+
+        result = await runtime.start_session(
+            "把 GPU 0 的功耗上限调到 220W",
+            "low",
+        )
+
+        self.assertEqual(
+            store.sessions[result["session_id"]]["goal_json"]["raw_message"],
+            "把 GPU 0 的功耗上限调到 220W",
+        )
+
+    async def test_start_session_accepts_code_fenced_streamed_control_plan(self):
+        class CodeFencedStreamingLLM:
+            def supports_control_plan_stream(self):
+                return True
+
+            async def generate_control_plan_stream(self, _message, _context):
+                yield "```json\n"
+                yield '{"summary":"把 GPU 0 的功耗上限调到 220W","risk_level":"medium",'
+                yield '"requires_confirmation":true,"warnings":[],"actions":[{"action":"set_power_limit","target":{"gpu_index":0,"power_limit":220},"reason":"削峰"}]}'
+                yield "\n```"
+
+        store = FakeStore()
+        runtime = GoalRuntimeService(
+            store=store,
+            registry=build_registry(),
+            import_context=FakeImportContext(),
+            runtime_status_reader=None,
+            llm_service_reader=lambda: CodeFencedStreamingLLM(),
+            task_spawner=lambda coro: asyncio.create_task(coro),
+        )
+
+        result = await runtime.start_session(
+            "把 GPU 0 的功耗上限调到 220W",
+            "low",
+        )
+        await runtime.wait_for_idle()
+        events = await runtime.get_events(result["session_id"])
+        event_types = [item["event_type"] for item in events]
+
+        self.assertIn("LLMRequestPrepared", event_types)
+        self.assertIn("LLMResponseReceived", event_types)
+        self.assertNotIn("LLMCallFailed", event_types)
+
+    async def test_start_session_records_friendly_llm_parse_failure_and_attempt_count(self):
+        class InvalidStreamingLLM:
+            def supports_control_plan_stream(self):
+                return True
+
+            async def generate_control_plan_stream(self, _message, _context):
+                yield "先分析一下当前情况。"
+
+        store = FakeStore()
+        runtime = GoalRuntimeService(
+            store=store,
+            registry=build_registry(),
+            import_context=FakeImportContext(),
+            runtime_status_reader=None,
+            llm_service_reader=lambda: InvalidStreamingLLM(),
+            task_spawner=lambda coro: asyncio.create_task(coro),
+        )
+
+        result = await runtime.start_session(
+            "把 GPU 0 的功耗上限调到 220W",
+            "low",
+        )
+        await runtime.wait_for_idle()
+
+        session = await runtime.get_session(result["session_id"])
+        events = await runtime.get_events(result["session_id"])
+        failure_event = next(
+            item for item in events
+            if item["event_type"] == "LLMCallFailed"
+        )
+
+        self.assertEqual(session["llm_call_count"], 1)
+        self.assertEqual(session["status"], "awaiting_approval")
+        self.assertIn("合法 JSON", failure_event["payload"]["error"])
+
     async def test_start_session_reaches_awaiting_approval_after_background_run(self):
         store = FakeStore()
         runtime = GoalRuntimeService(
@@ -335,6 +447,64 @@ class GoalRuntimeServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(resolved["status"], "completed")
         self.assertEqual(store.sessions[started["session_id"]]["status"], "completed")
 
+    async def test_delete_session_removes_completed_session(self):
+        store = FakeStore()
+        runtime = GoalRuntimeService(
+            store=store,
+            registry=build_registry(),
+            import_context=FakeImportContext(),
+            runtime_status_reader=None,
+            llm_service_reader=lambda: None,
+            task_spawner=lambda coro: asyncio.create_task(coro),
+        )
+        await store.create_agent_session(
+            "sess-completed",
+            {"message": "删除已完成会话"},
+            "low",
+            "completed",
+            "删除已完成会话",
+        )
+        await store.append_agent_event(
+            "sess-completed",
+            "SessionCompleted",
+            {"summary": "完成"},
+        )
+        await store.upsert_agent_stream_state(
+            "sess-completed",
+            "planner",
+            latest_text="最终计划",
+            latest_char_count=4,
+            revision=1,
+        )
+
+        result = await runtime.delete_session("sess-completed")
+
+        self.assertEqual(result["session_id"], "sess-completed")
+        self.assertTrue(result["deleted"])
+        self.assertNotIn("sess-completed", store.sessions)
+        self.assertEqual(store.events.get("sess-completed"), None)
+
+    async def test_delete_session_rejects_running_session(self):
+        store = FakeStore()
+        runtime = GoalRuntimeService(
+            store=store,
+            registry=build_registry(),
+            import_context=FakeImportContext(),
+            runtime_status_reader=None,
+            llm_service_reader=lambda: None,
+            task_spawner=lambda coro: asyncio.create_task(coro),
+        )
+        await store.create_agent_session(
+            "sess-running",
+            {"message": "删除运行中会话"},
+            "low",
+            "running",
+            "删除运行中会话",
+        )
+
+        with self.assertRaises(RuntimeError):
+            await runtime.delete_session("sess-running")
+
 
 class GoalRuntimeRouteTests(unittest.IsolatedAsyncioTestCase):
     async def test_routes_delegate_to_goal_runtime_service(self):
@@ -376,6 +546,30 @@ class GoalRuntimeRouteTests(unittest.IsolatedAsyncioTestCase):
         payload = "".join(chunks)
         self.assertIn("event: planner_snapshot", payload)
         self.assertIn('"latest_text": "正在生成计划"', payload)
+
+    async def test_list_sessions_route_delegates_to_goal_runtime_service(self):
+        fake_runtime = FakeGoalRuntimeService()
+        fake_main = types.SimpleNamespace(
+            app_state=types.SimpleNamespace(goal_runtime=fake_runtime)
+        )
+
+        with mock.patch.dict(sys.modules, {"app.main": fake_main}):
+            payload = await list_agent_runtime_sessions(limit=20)
+
+        self.assertEqual(payload["sessions"][0]["session_id"], "sess-route")
+        self.assertIn(("list", 20), fake_runtime.calls)
+
+    async def test_delete_session_route_delegates_to_goal_runtime_service(self):
+        fake_runtime = FakeGoalRuntimeService()
+        fake_main = types.SimpleNamespace(
+            app_state=types.SimpleNamespace(goal_runtime=fake_runtime)
+        )
+
+        with mock.patch.dict(sys.modules, {"app.main": fake_main}):
+            payload = await delete_agent_runtime_session("sess-route")
+
+        self.assertTrue(payload["deleted"])
+        self.assertIn(("delete", "sess-route"), fake_runtime.calls)
 
 
 if __name__ == "__main__":

@@ -8,8 +8,8 @@ function formatHistoryTime(value) {
 }
 
 function buildSessionTitle(session) {
-  const fallback = session?.goal_json?.message || '未命名会话'
-  return String(session?.summary || fallback).trim()
+  const originalMessage = session?.goal_json?.raw_message || session?.goal_json?.message
+  return String(originalMessage || session?.summary || '未命名会话').trim()
 }
 
 export function buildAgentSessionHistory(sessions = []) {
@@ -17,6 +17,7 @@ export function buildAgentSessionHistory(sessions = []) {
     id: session.session_id,
     title: buildSessionTitle(session),
     status: session.status || 'idle',
+    canDelete: session.status !== 'running',
     timeLabel: formatHistoryTime(session.updated_at),
   }))
 }

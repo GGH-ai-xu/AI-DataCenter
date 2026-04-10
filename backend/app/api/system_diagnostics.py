@@ -12,6 +12,7 @@ from app.services.runtime_snapshot import (
     snapshot_scoped_processes,
     snapshot_scoped_system,
 )
+from app.services.workspace_context import current_workspace_key
 from app.ws.realtime import ws_manager
 
 
@@ -41,6 +42,7 @@ def _build_checks(
     llm_available: bool,
     system_info: dict | None,
     budget: dict,
+    ws_connections: int,
 ) -> list[dict]:
     return [
         _status_check("backend", "治理后端", "ok", "治理后端在线，REST API 已可用。"),
@@ -86,9 +88,9 @@ def _build_checks(
         _status_check(
             "websocket",
             "实时推送",
-            "ok" if ws_manager.connection_count > 0 else "warning",
-            f"当前有 {ws_manager.connection_count} 个前端实时连接。"
-            if ws_manager.connection_count > 0
+            "ok" if ws_connections > 0 else "warning",
+            f"当前有 {ws_connections} 个前端实时连接。"
+            if ws_connections > 0
             else "当前还没有活跃的前端实时连接。",
         ),
         _status_check(
@@ -113,6 +115,7 @@ def _build_checks(
 def _build_summary(
     agent_health: dict | None,
     gpus: list[dict],
+    ws_connections: int,
 ) -> dict:
     if not agent_health:
         return {
@@ -126,7 +129,7 @@ def _build_summary(
             "title": "平台可用，但当前没有真实 GPU 数据",
             "message": "采集链路已通，但还没有拿到真实 GPU。可以先确认接入目标是否真的是带 GPU 的主机。",
         }
-    if ws_manager.connection_count <= 0:
+    if ws_connections <= 0:
         return {
             "status": "warning",
             "title": "平台主体可用，但前端实时连接尚未建立",
@@ -141,7 +144,11 @@ def _build_summary(
 
 def _cached_self_check_data(app_state, snapshot: dict):
     agent_health = snapshot_agent_health(snapshot)
-    connection = app_state.connection.snapshot(agent_health)
+    workspace_service = getattr(app_state, "workspaces", None)
+    if workspace_service is None:
+        connection = app_state.connection.snapshot(agent_health)
+    else:
+        connection = workspace_service.current_connection_snapshot(agent_health)
     gpus = snapshot_scoped_gpus(snapshot)
     processes = snapshot_scoped_processes(snapshot)
     system_info = snapshot_scoped_system(snapshot)
@@ -166,7 +173,11 @@ async def _collect_self_check_data():
         return _cached_self_check_data(app_state, snapshot)
 
     agent_health = await app_state.agent.health_check()
-    connection = app_state.connection.snapshot(agent_health)
+    workspace_service = getattr(app_state, "workspaces", None)
+    if workspace_service is None:
+        connection = app_state.connection.snapshot(agent_health)
+    else:
+        connection = workspace_service.current_connection_snapshot(agent_health)
     gpus = await app_state.agent.get_all_gpus() if agent_health else []
     processes = await app_state.agent.get_processes() if agent_health else []
     gpus = app_state.import_context.filter_gpus(gpus)
@@ -182,9 +193,10 @@ async def self_check():
 
     checked_at, connection, agent_health, gpus, processes, system_info, budget, data_source = await _collect_self_check_data()
     llm_available = app_state.llm is not None
+    ws_connections = ws_manager.connection_count_for(current_workspace_key())
     return {
         "checked_at": checked_at,
-        "summary": _build_summary(agent_health, gpus),
+        "summary": _build_summary(agent_health, gpus, ws_connections),
         "checks": _build_checks(
             connection,
             agent_health,
@@ -193,13 +205,14 @@ async def self_check():
             llm_available,
             system_info,
             budget,
+            ws_connections,
         ),
         "connection": connection,
         "budget": budget,
         "agent_connected": bool(agent_health),
         "gpu_count": len(gpus),
         "process_count": len(processes),
-        "ws_connections": ws_manager.connection_count,
+        "ws_connections": ws_connections,
         "llm_available": llm_available,
         "data_source": data_source,
     }

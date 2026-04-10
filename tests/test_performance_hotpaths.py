@@ -7,13 +7,9 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from repo_test_bootstrap import prepare_backend_test_env
-
 
 ROOT = Path(__file__).resolve().parents[1]
-missing_deps = prepare_backend_test_env("cryptography")
-if missing_deps:
-    raise unittest.SkipTest(f"missing backend test dependencies: {', '.join(missing_deps)}; run install-deps.bat")
+sys.path.insert(0, os.path.join(ROOT, "backend"))
 
 from app import main as backend_main  # noqa: E402
 from app.services.data_store import DataStore  # noqa: E402
@@ -179,14 +175,39 @@ class BroadcastTests(unittest.IsolatedAsyncioTestCase):
                 self.messages.append(message)
 
         sockets = [FakeSocket(), FakeSocket(), FakeSocket()]
-        manager._connections = set(sockets)
+        manager._connections = {
+            "user:1": set(sockets),
+            "user:2": {FakeSocket()},
+        }
 
         started = time.perf_counter()
-        await manager.broadcast({"type": "realtime", "gpus": []})
+        await manager.broadcast("user:1", {"type": "realtime", "gpus": []})
         elapsed = time.perf_counter() - started
 
         self.assertLess(elapsed, 0.13)
         self.assertTrue(all(socket.messages for socket in sockets))
+
+    async def test_broadcast_only_reaches_current_workspace_connections(self):
+        manager = ConnectionManager()
+
+        class FakeSocket:
+            def __init__(self):
+                self.messages = []
+
+            async def send_text(self, message):
+                self.messages.append(message)
+
+        mine = FakeSocket()
+        other = FakeSocket()
+        manager._connections = {
+            "user:1": {mine},
+            "user:2": {other},
+        }
+
+        await manager.broadcast("user:1", {"type": "runtime"})
+
+        self.assertEqual(len(mine.messages), 1)
+        self.assertEqual(other.messages, [])
 
 
 if __name__ == "__main__":

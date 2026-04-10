@@ -85,7 +85,7 @@ test('policies loader only requests policy dependencies', async () => {
   assert.equal(payload.rules[0].role, 'protected')
 })
 
-test('review loader only requests audit and evaluation data', async () => {
+test('review loader requests command records and evaluation data', async () => {
   const calls = []
   const api = {
     getTasks: async () => {
@@ -108,20 +108,20 @@ test('review loader only requests audit and evaluation data', async () => {
       calls.push('rules')
       return { data: { rules: [] } }
     },
-    getAuditLogs: async (limit, hours) => {
-      calls.push(`audit:${limit}:${hours}`)
-      return { data: { logs: [{ action: 'run_schedule_once' }] } }
-    },
     getScheduleEvaluation: async () => {
       calls.push('evaluation')
       return { data: { summary: 'ok' } }
+    },
+    listControlCommands: async (limit) => {
+      calls.push(`commands:${limit}`)
+      return { data: { commands: [{ command_id: 'cmd-1' }] } }
     },
   }
 
   const loaders = createGovernanceLoaders(api)
   const payload = await loaders.loadReviewBundle()
 
-  assert.deepEqual(calls, ['audit:100:72', 'evaluation'])
-  assert.equal(payload.auditLogs.length, 1)
+  assert.deepEqual(calls, ['commands:100', 'evaluation'])
+  assert.equal(payload.commandRecords.length, 1)
   assert.equal(payload.evaluation.summary, 'ok')
 })

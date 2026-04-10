@@ -22,20 +22,34 @@ from collectors.training_monitor import get_training_logs
 from controllers.power_control import set_power_limit
 from controllers.task_control import pause_task, resume_task, terminate_task
 from config import HOST, PORT, POWER_LIMIT_MIN, POWER_LIMIT_MAX
+from job_runtime import JobRuntime
+from runtime_store import RuntimeStore
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+NO_LOCAL_GPU_HINT = "若当前机器不是 NVIDIA 主机，或当前只使用 SSH Linux / 远程 Agent，可忽略此提示。"
+
+
+def build_agent_startup_message() -> tuple[int, str]:
+    if gpu_monitor.device_count > 0:
+        return logging.INFO, f"Agent启动，检测到 {gpu_monitor.device_count} 张GPU"
+
+    issue = gpu_monitor.startup_issue or "当前未检测到可采集的真实 GPU"
+    return (
+        logging.WARNING,
+        f"Agent启动，但当前未检测到可采集的真实 GPU: {issue} {NO_LOCAL_GPU_HINT}",
+    )
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     gpu_monitor.init()
-    if gpu_monitor.device_count > 0:
-        logger.info("Agent启动，检测到 %s 张GPU", gpu_monitor.device_count)
-    else:
-        logger.warning("Agent启动，但当前未检测到可采集的真实 GPU")
+    level, message = build_agent_startup_message()
+    logger.log(level, message)
     yield
+    job_runtime.shutdown()
     gpu_monitor.shutdown()
     logger.info("Agent已关闭")
 
@@ -62,6 +76,26 @@ class PowerLimitRequest(BaseModel):
 
 class TaskActionRequest(BaseModel):
     pid: int = Field(gt=0, description="进程ID")
+
+
+class RuntimeReservationRequest(BaseModel):
+    reservation_id: str = Field(min_length=1, max_length=120)
+    job_id: str = Field(min_length=1, max_length=120)
+    gpu_indexes: list[int] = Field(default_factory=list)
+    cpu_cores: list[int] = Field(default_factory=list)
+
+
+class RuntimeJobLaunchRequest(BaseModel):
+    job_handle: str = Field(min_length=1, max_length=120)
+    job_id: str = Field(min_length=1, max_length=120)
+    reservation_id: str = Field(min_length=1, max_length=120)
+    command: list[str] = Field(min_length=1)
+    env: dict[str, str] = Field(default_factory=dict)
+    working_dir: str | None = Field(default=None, max_length=500)
+
+
+runtime_store = RuntimeStore()
+job_runtime = JobRuntime(runtime_store)
 
 
 # ========== API路由 ==========
@@ -153,6 +187,19 @@ def api_terminate_task(req: TaskActionRequest):
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result["error"])
     return result
+
+
+@app.post("/api/runtime/reservations")
+def create_runtime_reservation(req: RuntimeReservationRequest):
+    return runtime_store.create_reservation(req.model_dump())
+
+
+@app.post("/api/runtime/jobs/launch")
+def launch_runtime_job(req: RuntimeJobLaunchRequest):
+    reservation = runtime_store.get_reservation(req.reservation_id)
+    if reservation is None:
+        raise HTTPException(status_code=404, detail="reservation not found")
+    return job_runtime.launch(req.model_dump())
 
 
 if __name__ == "__main__":

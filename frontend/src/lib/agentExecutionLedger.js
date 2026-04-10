@@ -1,5 +1,7 @@
 const HIGHLIGHT_EVENT_TYPES = new Set([
   'AwaitingApproval',
+  'LLMUnavailable',
+  'LLMCallFailed',
   'LLMResponseReceived',
   'PlanRevised',
   'StepFailed',
@@ -48,7 +50,7 @@ export function buildExecutionLedgerView({ session, events }) {
   let llmCallCount = 0
 
   for (const event of sortedEvents) {
-    if (event.event_type === 'LLMResponseReceived') {
+    if (event.event_type === 'LLMRequestPrepared') {
       llmCallCount += 1
     }
     const roundIndex = Number(event.round_index || 0)

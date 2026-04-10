@@ -211,6 +211,19 @@ class ImportContextServiceTests(unittest.TestCase):
         self.assertEqual(snapshot["invalid_reason"], "尚未导入任何 GPU")
         persist_mock.assert_not_called()
 
+    def test_validate_runtime_without_import_keeps_workspace_invalid_even_if_target_reachable(self):
+        self.service.load()
+
+        with mock.patch.object(self.service, "_persist") as persist_mock:
+            snapshot = self.service.validate_runtime(
+                {"status": "ok"},
+                [{"index": 0, "name": "RTX 4090"}],
+            )
+
+        self.assertFalse(snapshot["valid"])
+        self.assertEqual(snapshot["invalid_reason"], "尚未导入任何 GPU")
+        persist_mock.assert_not_called()
+
     def test_save_import_with_empty_scope_is_still_valid(self):
         self.service.load()
 

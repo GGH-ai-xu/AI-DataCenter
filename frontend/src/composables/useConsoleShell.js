@@ -19,7 +19,7 @@ const NAV_ITEMS = Object.freeze([
   { path: '/energy', label: '能耗', icon: '能', desc: '节能复盘与测算', group: 'analysis' },
   { path: '/monitor', label: '观察', icon: '观', desc: '画像与过程观察', group: 'analysis' },
   { path: '/alerts', label: '告警', icon: '警', desc: '风险台与异常确认', group: 'analysis' },
-  { path: '/ai', label: '智能', icon: '智', desc: 'AI 解释与问答', group: 'support' },
+  { path: '/ai', matchPrefix: '/ai', label: '智能', icon: '智', desc: 'AI 解释与问答', group: 'support' },
 ])
 
 const GROUP_META = Object.freeze({

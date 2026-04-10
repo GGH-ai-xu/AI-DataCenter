@@ -28,6 +28,17 @@ class DashboardWorkspaceStructureTests(unittest.TestCase):
         self.assertNotIn('props.governance', live)
         self.assertNotIn('governance:', live)
 
+    def test_live_workspace_and_gpu_detail_use_shared_gpu_memory_formatter(self):
+        live = (ROOT / 'frontend/src/components/dashboard/DashboardLiveWorkspace.vue').read_text(encoding='utf-8')
+        detail = (ROOT / 'frontend/src/views/GpuDetail.vue').read_text(encoding='utf-8')
+
+        self.assertIn("formatGpuMemoryGiB", live)
+        self.assertIn("gpuMemoryUsagePercent", live)
+        self.assertNotIn("/ 1073741824", live)
+
+        self.assertIn("formatGpuMemoryGiB", detail)
+        self.assertNotIn("/ 1073741824", detail)
+
     def test_dashboard_health_tab_uses_board_card_layout(self):
         text = (ROOT / 'frontend/src/components/dashboard/DashboardHealthTab.vue').read_text(encoding='utf-8')
 

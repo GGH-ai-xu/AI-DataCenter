@@ -51,10 +51,28 @@ from app.services.goal_runtime.platform_capabilities import (
     build_platform_capability_registry,
 )
 from app.services.goal_runtime.service import GoalRuntimeService
-from app.services.graph_store import GraphStore
-from app.services.local_neo4j import LocalNeo4jService
+from app.services.cluster_control.control_plane import ClusterControlPlaneService
+from app.services.control_plane import ControlPlaneService
+from app.services.cluster_control.execution_backend import (
+    HTTPAgentProcessBackend,
+    LocalProcessBackend,
+    SSHProcessBackend,
+)
+from app.services.cluster_control.execution_orchestrator import ExecutionOrchestrator
+from app.services.cluster_control.scheduler_core import ClusterSchedulerCore
 from app.services.saved_host_service import SavedHostService
 from app.services.ssh_linux_provider import SshLinuxProvider
+from app.services.user_workspace_service import UserWorkspaceService
+from app.services.workspace_context import (
+    PUBLIC_WORKSPACE_KEY,
+    current_workspace_key,
+    workspace_scope,
+)
+from app.services.workspace_proxies import (
+    WorkspaceAgentProxy,
+    WorkspaceImportContextProxy,
+    WorkspaceRuntimeProxy,
+)
 from app.ws.realtime import ws_manager
 
 load_dotenv()
@@ -97,12 +115,30 @@ class AppState:
     import_context: ImportContextService
     llm_settings: LLMSettingsService
     runtime: RuntimeProviderManager
+    workspaces: UserWorkspaceService
     goal_runtime: GoalRuntimeService
-    graph: GraphStore
-    local_neo4j: LocalNeo4jService
-    latest_runtime_snapshot: dict
+    control_plane: ControlPlaneService
+    cluster_scheduler: ClusterSchedulerCore
+    cluster_orchestrator: ExecutionOrchestrator
+    cluster_control: ClusterControlPlaneService
+    _legacy_runtime_snapshot: dict
     _collect_task: asyncio.Task | None = None
     _cleanup_task: asyncio.Task | None = None
+
+    @property
+    def latest_runtime_snapshot(self) -> dict:
+        workspaces = getattr(self, "workspaces", None)
+        if workspaces is None:
+            return getattr(self, "_legacy_runtime_snapshot", empty_runtime_snapshot())
+        return workspaces.current_snapshot()
+
+    @latest_runtime_snapshot.setter
+    def latest_runtime_snapshot(self, snapshot: dict) -> None:
+        workspaces = getattr(self, "workspaces", None)
+        if workspaces is None:
+            self._legacy_runtime_snapshot = snapshot
+            return
+        workspaces.set_current_snapshot(snapshot)
 
 
 app_state = AppState()
@@ -136,11 +172,7 @@ async def build_runtime_provider(target, secret):
 
 
 def assign_active_provider(provider):
-    app_state.agent = provider
-    for attr in ("scheduler", "governance", "energy"):
-        service = getattr(app_state, attr, None)
-        if service is not None and hasattr(service, "agent"):
-            service.agent = provider
+    return None
 
 
 def build_runtime_target_payload(connection_state: dict) -> dict:
@@ -181,7 +213,7 @@ async def runtime_status_payload() -> dict:
 
 
 async def broadcast_runtime_state(import_context: dict) -> None:
-    await ws_manager.broadcast({
+    await ws_manager.broadcast(current_workspace_key(), {
         "type": "runtime",
         "runtime": await runtime_status_payload(),
         "import_context": import_context,
@@ -247,6 +279,16 @@ async def collect_loop():
     logger.info(f"数据采集循环启动，间隔 {interval}s")
 
     while True:
+        workspaces = app_state.workspaces.all_workspaces()
+        await asyncio.gather(
+            *(_collect_workspace_cycle(workspace.key) for workspace in workspaces),
+            return_exceptions=True,
+        )
+        await asyncio.sleep(interval)
+
+
+async def _collect_workspace_cycle(workspace_key: str) -> None:
+    with workspace_scope(workspace_key):
         try:
             snapshot, priorities = await asyncio.gather(
                 collect_agent_snapshot(app_state.agent),
@@ -260,33 +302,30 @@ async def collect_loop():
                 {"status": "ok"} if runtime_online else None,
                 gpus,
             )
-
-            if runtime_online:
-                runtime_status = await app_state.runtime.record_success()
-                runtime_snapshot = build_runtime_snapshot(
-                    import_context=app_state.import_context,
-                    privacy=app_state.privacy,
-                    system=system,
-                    gpus=gpus,
-                    processes=processes,
-                    priorities=priorities,
-                    agent_health={"status": "ok"},
-                    runtime_status=runtime_status,
-                    import_context_state=import_context,
-                )
-                app_state.latest_runtime_snapshot = runtime_snapshot
-                scoped = runtime_snapshot["scoped"]
-                alerts = app_state.alert_engine.check_all_gpus(scoped["gpus"])
-
-                await app_state.store.save_collection_cycle(
-                    scoped["gpus"],
-                    scoped["processes"],
-                    alerts,
-                )
-
-                await asyncio.gather(
-                    app_state.scheduler.tick(scoped["gpus"], scoped["processes"]),
-                    ws_manager.broadcast({
+            if not runtime_online:
+                await _log_runtime_failure("runtime returned no data")
+                return
+            runtime_status = await app_state.runtime.record_success()
+            runtime_snapshot = build_runtime_snapshot(
+                import_context=app_state.import_context,
+                privacy=app_state.privacy,
+                system=system,
+                gpus=gpus,
+                processes=processes,
+                priorities=priorities,
+                agent_health={"status": "ok"},
+                runtime_status=runtime_status,
+                import_context_state=import_context,
+            )
+            app_state.latest_runtime_snapshot = runtime_snapshot
+            scoped = runtime_snapshot["scoped"]
+            alerts = app_state.alert_engine.check_all_gpus(scoped["gpus"])
+            await app_state.store.save_collection_cycle(scoped["gpus"], scoped["processes"], alerts)
+            await asyncio.gather(
+                app_state.scheduler.tick(scoped["gpus"], scoped["processes"]),
+                ws_manager.broadcast(
+                    workspace_key,
+                    {
                         "type": "realtime",
                         "gpus": scoped["gpus"],
                         "system": scoped["system"],
@@ -295,28 +334,23 @@ async def collect_loop():
                         "runtime": runtime_status,
                         "import_context": import_context,
                         "workspace_ready": bool(import_context.get("valid")),
-                    }),
-                )
-            else:
-                runtime_status, _ = await handle_runtime_failure("runtime returned no data")
-                if runtime_status["status"] != "connected":
-                    logger.warning(
-                        "运行时当前不可用，status=%s failures=%s",
-                        runtime_status["status"],
-                        runtime_status["reconnect_failures"],
-                    )
+                    },
+                ),
+            )
+        except Exception as exc:
+            logger.exception("数据采集异常: %s", exc)
+            await _log_runtime_failure(str(exc))
 
-        except Exception as e:
-            logger.exception(f"数据采集异常: {e}")
-            runtime_status, _ = await handle_runtime_failure(str(e))
-            if runtime_status["status"] != "connected":
-                logger.warning(
-                    "运行时重连未恢复，status=%s failures=%s",
-                    runtime_status["status"],
-                    runtime_status["reconnect_failures"],
-                )
 
-        await asyncio.sleep(interval)
+async def _log_runtime_failure(reason: str) -> None:
+    runtime_status, _ = await handle_runtime_failure(reason)
+    if runtime_status["status"] == "connected":
+        return
+    logger.warning(
+        "运行时当前不可用，status=%s failures=%s",
+        runtime_status["status"],
+        runtime_status["reconnect_failures"],
+    )
 
 
 @asynccontextmanager
@@ -334,7 +368,6 @@ async def lifespan(app: FastAPI):
         "LLM_CONFIG_PATH",
         os.path.join(runtime_dir, "llm.json"),
     )
-    graph_database = os.getenv("NEO4J_DATABASE", "neo4j")
     import_config_path = os.getenv(
         "IMPORT_CONTEXT_PATH",
         os.path.join(runtime_dir, "import-context.json"),
@@ -367,29 +400,33 @@ async def lifespan(app: FastAPI):
         )
     app_state.credentials = CredentialStore(credential_config_path, cipher)
     app_state.saved_hosts = SavedHostService(app_state.identity, app_state.credentials)
-    app_state.import_context = ImportContextService(
-        import_config_path,
-        app_state.connection.default_local_url,
+    app_state.workspaces = UserWorkspaceService(
+        runtime_root=runtime_dir,
+        default_local_url=app_state.connection.default_local_url,
+        default_target_reader=lambda: app_state.connection.normalize_payload(
+            build_runtime_target_payload(app_state.connection.load())
+        ),
+        default_secret_reader=lambda target: (
+            app_state.credentials.read(target.credential_id)
+            if target.credential_id
+            else {}
+        ),
+        provider_factory=build_runtime_provider,
     )
-    app_state.graph = GraphStore(
-        uri=os.getenv("NEO4J_URI", ""),
-        username=os.getenv("NEO4J_USER", ""),
-        password=os.getenv("NEO4J_PASSWORD", ""),
-        database=graph_database,
-    )
-    app_state.local_neo4j = LocalNeo4jService()
-    app_state.import_context.load()
-    app_state.runtime = RuntimeProviderManager(build_runtime_provider)
-    bootstrap_target = app_state.connection.normalize_payload(
-        build_runtime_target_payload(connection_settings)
-    )
-    bootstrap_secret = {}
-    if bootstrap_target.credential_id:
-        bootstrap_secret = app_state.credentials.read(bootstrap_target.credential_id)
-    bootstrap_provider = await app_state.runtime.switch(bootstrap_target, bootstrap_secret)
-    assign_active_provider(bootstrap_provider)
+    await app_state.workspaces.ensure_workspace(PUBLIC_WORKSPACE_KEY)
+    app_state.import_context = WorkspaceImportContextProxy(app_state.workspaces)
+    app_state.runtime = WorkspaceRuntimeProxy(app_state.workspaces)
+    app_state.agent = WorkspaceAgentProxy(app_state.workspaces)
     app_state.store = DataStore(db_path)
     await app_state.store.init()
+    await app_state.store.upsert_cluster_queue(
+        {
+            "queue_id": "default",
+            "name": "Default",
+            "state": "active",
+            "default_priority": 50,
+        }
+    )
     app_state.privacy = PrivacyService()
     removed_snapshots = await app_state.store.cleanup_untrusted_optimization_history()
     if removed_snapshots:
@@ -435,25 +472,33 @@ async def lifespan(app: FastAPI):
         app_state.privacy,
         app_state.governance,
     )
+    platform_registry = build_platform_capability_registry(app_state)
     app_state.goal_runtime = GoalRuntimeService(
         store=app_state.store,
-        registry=build_platform_capability_registry(app_state),
+        registry=platform_registry,
         import_context=app_state.import_context,
         runtime_status_reader=runtime_status_payload,
         llm_service_reader=lambda: app_state.llm,
     )
+    app_state.control_plane = ControlPlaneService(
+        app_state.store,
+        platform_registry,
+    )
+    app_state.cluster_scheduler = ClusterSchedulerCore()
+    app_state.cluster_orchestrator = ExecutionOrchestrator(
+        app_state.store,
+        {
+            "http_agent": HTTPAgentProcessBackend(),
+            "local_process": LocalProcessBackend(),
+            "ssh_process": SSHProcessBackend(),
+        },
+    )
+    app_state.cluster_control = ClusterControlPlaneService(
+        app_state.store,
+        app_state.cluster_scheduler,
+        app_state.cluster_orchestrator,
+    )
     bind_llm_service(app_state.llm)
-
-    graph_summary = await app_state.graph.summary()
-    if graph_summary["ready"]:
-        logger.info(
-            "Neo4j 图谱服务已连接，database=%s nodes=%s relations=%s",
-            graph_summary["database"],
-            graph_summary["node_count"],
-            graph_summary["relation_count"],
-        )
-    else:
-        logger.warning("Neo4j 图谱服务未就绪: %s", graph_summary["message"])
 
     # 启动采集循环
     app_state._collect_task = asyncio.create_task(collect_loop())
@@ -467,8 +512,7 @@ async def lifespan(app: FastAPI):
         app_state._collect_task.cancel()
     if app_state._cleanup_task:
         app_state._cleanup_task.cancel()
-    await app_state.agent.close()
-    await app_state.graph.close()
+    await app_state.workspaces.close_all()
     await app_state.store.close()
     await app_state.identity.close()
     logger.info("后端服务已关闭")
@@ -476,9 +520,9 @@ async def lifespan(app: FastAPI):
 
 # 创建FastAPI应用
 app = FastAPI(
-    title="智算中心优化代码生成系统",
-    description="面向智算中心场景的优化治理与代码生成系统",
-    version="1.1.2",
+    title="GPU 共享治理平台",
+    description="高校实验室 GPU 服务器智能运维与功率预算治理平台",
+    version="1.1.0",
     lifespan=lifespan,
 )
 
@@ -510,7 +554,9 @@ from app.api.auth import router as auth_router
 from app.api.admin_users import router as admin_users_router
 from app.api.hosts import router as hosts_router
 from app.api.agent_runtime import router as agent_runtime_router
-from app.api.graph import router as graph_router
+from app.api.cluster_jobs import router as cluster_jobs_router
+from app.api.cluster_queues import router as cluster_queues_router
+from app.api.control import router as control_router
 
 app.include_router(gpu_router)
 app.include_router(tasks_router)
@@ -528,20 +574,23 @@ app.include_router(auth_router)
 app.include_router(admin_users_router)
 app.include_router(hosts_router)
 app.include_router(agent_runtime_router)
-app.include_router(graph_router)
+app.include_router(cluster_jobs_router)
+app.include_router(cluster_queues_router)
+app.include_router(control_router)
 
 
 @app.get("/api/health")
 async def health():
     """健康检查"""
     runtime_status = await runtime_status_payload()
+    workspace_key = current_workspace_key()
     return await build_health_payload(
         runtime_status=runtime_status,
         snapshot=app_state.latest_runtime_snapshot,
-        connection_factory=app_state.connection.snapshot,
+        connection_factory=app_state.workspaces.current_connection_snapshot,
         llm_available=app_state.llm is not None,
         llm_snapshot=app_state.llm_settings.snapshot(app_state.llm is not None),
-        ws_connections=ws_manager.connection_count,
+        ws_connections=ws_manager.connection_count_for(workspace_key),
         fallback_loader=lambda: _load_health_runtime_state(runtime_status),
     )
 
@@ -557,7 +606,9 @@ async def websocket_endpoint(ws: WebSocket):
     if user["must_change_password"]:
         await ws.close(code=4403, reason="PASSWORD_CHANGE_REQUIRED")
         return
-    await ws_manager.connect(ws)
+    workspace_key = f"user:{int(user['id'])}"
+    await app_state.workspaces.ensure_workspace(workspace_key)
+    await ws_manager.connect(ws, workspace_key)
     try:
         while True:
             # 保持连接，接收客户端心跳
@@ -565,7 +616,7 @@ async def websocket_endpoint(ws: WebSocket):
             if data == "ping":
                 await ws.send_text("pong")
     except WebSocketDisconnect:
-        ws_manager.disconnect(ws)
+        ws_manager.disconnect(ws, workspace_key)
 
 
 # 尝试挂载前端静态文件

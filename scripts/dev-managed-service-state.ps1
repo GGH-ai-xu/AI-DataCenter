@@ -1,15 +1,31 @@
 $script:ManagedServiceStatePath = $null
 
 function Get-ManagedServiceStatePath {
-  param([string]$RepoRoot)
+  param(
+    [string]$RepoRoot,
+    [string]$StateFileName = "start-dev-managed-services.json"
+  )
 
-  return Join-Path $RepoRoot "runtime\start-dev-managed-services.json"
+  if ([string]::IsNullOrWhiteSpace($StateFileName) -or $StateFileName -eq "start-dev-managed-services.json") {
+    return Join-Path $RepoRoot "runtime\start-dev-managed-services.json"
+  }
+
+  return Join-Path $RepoRoot ("runtime\" + $StateFileName)
 }
 
 function Initialize-ManagedServiceState {
-  param([string]$RepoRoot)
+  param(
+    [string]$RepoRoot,
+    [string]$StatePath = $null,
+    [string]$StateFileName = "start-dev-managed-services.json"
+  )
 
-  $script:ManagedServiceStatePath = Get-ManagedServiceStatePath -RepoRoot $RepoRoot
+  if (-not [string]::IsNullOrWhiteSpace($StatePath)) {
+    $script:ManagedServiceStatePath = $StatePath
+    return
+  }
+
+  $script:ManagedServiceStatePath = Get-ManagedServiceStatePath -RepoRoot $RepoRoot -StateFileName $StateFileName
 }
 
 function Read-ManagedServiceState {
@@ -293,9 +309,13 @@ function Stop-StaleManagedService {
 }
 
 function Clear-StaleManagedServices {
-  param([string]$RepoRoot)
+  param(
+    [string]$RepoRoot,
+    [string]$StatePath = $null,
+    [string]$StateFileName = "start-dev-managed-services.json"
+  )
 
-  Initialize-ManagedServiceState -RepoRoot $RepoRoot
+  Initialize-ManagedServiceState -RepoRoot $RepoRoot -StatePath $StatePath -StateFileName $StateFileName
   $entries = @(Merge-ManagedServiceEntries `
     -SavedEntries @(Read-ManagedServiceState) `
     -LiveEntries @(Get-LiveManagedServiceEntries -RepoRoot $RepoRoot))

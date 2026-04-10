@@ -94,6 +94,31 @@ class FrontendUIStructureTests(unittest.TestCase):
         self.assertIn("WorkspaceSummary", ai_text)
         self.assertIn("WorkspaceSummary", alert_text)
 
+    def test_ai_workspace_uses_dual_page_layout_for_workbench_and_graph(self):
+        for rel in [
+            "frontend/src/views/AIWorkspaceLayout.vue",
+            "frontend/src/views/AIGraphWorkspace.vue",
+        ]:
+            self.assertTrue((ROOT / rel).exists(), rel)
+
+        main_text = (ROOT / "frontend/src/main.js").read_text(encoding="utf-8")
+        ai_layout_text = (ROOT / "frontend/src/views/AIWorkspaceLayout.vue").read_text(encoding="utf-8")
+        ai_page_text = (ROOT / "frontend/src/views/AIAssistant.vue").read_text(encoding="utf-8")
+        graph_page_text = (ROOT / "frontend/src/views/AIGraphWorkspace.vue").read_text(encoding="utf-8")
+        shell_text = (ROOT / "frontend/src/composables/useConsoleShell.js").read_text(encoding="utf-8")
+        api_text = (ROOT / "frontend/src/services/api.js").read_text(encoding="utf-8")
+
+        self.assertIn("path: 'ai'", main_text)
+        self.assertIn("path: 'workbench'", main_text)
+        self.assertIn("path: 'graph'", main_text)
+        self.assertIn("AIWorkspaceLayout", ai_layout_text)
+        self.assertIn("WorkspaceTabs", ai_layout_text)
+        self.assertIn("AgentWorkbench", ai_page_text)
+        self.assertNotIn("GraphStrategyGenerator", ai_page_text)
+        self.assertIn("GraphStrategyGenerator", graph_page_text)
+        self.assertIn("matchPrefix: '/ai'", shell_text)
+        self.assertIn("graphStrategy", api_text)
+
     def test_vite_build_still_available(self):
         package_json = (ROOT / "frontend/package.json").read_text(encoding="utf-8")
         self.assertIn('"build": "node ./scripts/ensure-rolldown-binding.mjs && vite build"', package_json)
@@ -258,6 +283,55 @@ class FrontendUIStructureTests(unittest.TestCase):
             "frontend/src/components/app/SidebarNavRail.vue",
         ]:
             self.assertTrue((ROOT / rel).exists(), rel)
+
+    def test_governance_pages_mount_shared_capability_drawer(self):
+        layout_text = (ROOT / "frontend/src/views/GovernanceLayout.vue").read_text(encoding="utf-8")
+        actions_text = (ROOT / "frontend/src/views/GovernanceActionsView.vue").read_text(encoding="utf-8")
+        policies_text = (ROOT / "frontend/src/views/GovernancePoliciesView.vue").read_text(encoding="utf-8")
+        cluster_text = (ROOT / "frontend/src/views/ClusterJobs.vue").read_text(encoding="utf-8")
+
+        self.assertTrue((ROOT / "frontend/src/components/governance/CapabilityCommandDrawer.vue").exists())
+        self.assertIn("CapabilityCommandDrawer", layout_text)
+        self.assertIn("useGovernanceControlPlane", layout_text)
+        self.assertIn("高级操作", actions_text)
+        self.assertIn("高级能力", policies_text)
+        self.assertIn("高级集群操作", cluster_text)
+
+    def test_governance_review_uses_control_command_ledger(self):
+        actions_text = (ROOT / "frontend/src/views/GovernanceActionsView.vue").read_text(encoding="utf-8")
+        policies_text = (ROOT / "frontend/src/views/GovernancePoliciesView.vue").read_text(encoding="utf-8")
+        cluster_text = (ROOT / "frontend/src/views/ClusterJobs.vue").read_text(encoding="utf-8")
+        review_text = (ROOT / "frontend/src/views/GovernanceReviewView.vue").read_text(encoding="utf-8")
+        model_text = (ROOT / "frontend/src/lib/governanceReviewModel.js").read_text(encoding="utf-8")
+
+        self.assertTrue((ROOT / "frontend/src/components/governance/ControlCommandLedger.vue").exists())
+        self.assertIn("submitBuiltinCommand", actions_text)
+        self.assertIn("submitBuiltinCommand", policies_text)
+        self.assertIn("submitBuiltinCommand", cluster_text)
+        self.assertIn("ControlCommandLedger", review_text)
+        self.assertIn("commandRecords", model_text)
+        self.assertNotIn(
+            "buildGovernanceReviewTimeline(props.governance.reviewState?.auditLogs",
+            review_text,
+        )
+
+    def test_cluster_console_route_and_components_exist(self):
+        main_text = (ROOT / "frontend/src/main.js").read_text(encoding="utf-8")
+        governance_models = (ROOT / "frontend/src/lib/governancePageModels.js").read_text(encoding="utf-8")
+        api_text = (ROOT / "frontend/src/services/api.js").read_text(encoding="utf-8")
+
+        self.assertIn("loadClusterJobsView", main_text)
+        self.assertIn("path: 'cluster'", main_text)
+        self.assertIn("/cluster/jobs", main_text)
+        self.assertIn("ClusterJobs", main_text)
+        self.assertIn("submitClusterJob", api_text)
+        self.assertIn("listClusterQueues", api_text)
+        self.assertIn("集群作业", governance_models)
+        self.assertTrue((ROOT / "frontend/src/views/ClusterJobs.vue").exists())
+        self.assertTrue((ROOT / "frontend/src/components/cluster/ClusterQueueBoard.vue").exists())
+        self.assertTrue((ROOT / "frontend/src/components/cluster/ClusterJobLedger.vue").exists())
+        self.assertTrue((ROOT / "frontend/src/components/cluster/ClusterAllocationPanel.vue").exists())
+        self.assertTrue((ROOT / "frontend/src/lib/clusterConsoleModels.js").exists())
         text = (ROOT / "frontend/src/components/app/AppPrimarySidebar.vue").read_text(encoding="utf-8")
         self.assertIn("SidebarBrandCard", text)
         self.assertIn("SidebarNavRail", text)

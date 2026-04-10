@@ -1,9 +1,8 @@
-"""WebSocket实时推送 - 向前端推送GPU实时数据和告警"""
+"""WebSocket实时推送 - 按 workspace 隔离广播实时数据。"""
 
 import asyncio
 import json
 import logging
-from typing import Set
 
 from fastapi import WebSocket
 
@@ -11,26 +10,40 @@ logger = logging.getLogger(__name__)
 
 
 class ConnectionManager:
-    """WebSocket连接管理器"""
+    """WebSocket 连接管理器。"""
 
     def __init__(self):
-        self._connections: Set[WebSocket] = set()
+        self._connections: dict[str, set[WebSocket]] = {}
 
-    async def connect(self, ws: WebSocket):
+    async def connect(self, ws: WebSocket, workspace_key: str):
         await ws.accept()
-        self._connections.add(ws)
-        logger.info(f"WebSocket连接建立，当前连接数: {len(self._connections)}")
+        sockets = self._connections.setdefault(workspace_key, set())
+        sockets.add(ws)
+        logger.info("WebSocket连接建立，workspace=%s 当前连接数=%s", workspace_key, len(sockets))
 
-    def disconnect(self, ws: WebSocket):
-        self._connections.discard(ws)
-        logger.info(f"WebSocket连接断开，当前连接数: {len(self._connections)}")
+    def disconnect(self, ws: WebSocket, workspace_key: str | None = None):
+        if workspace_key is not None:
+            self._discard(workspace_key, ws)
+            return
+        for key in list(self._connections):
+            self._discard(key, ws)
 
-    async def broadcast(self, data: dict):
-        """广播数据到所有连接的客户端"""
-        if not self._connections:
+    def _discard(self, workspace_key: str, ws: WebSocket) -> None:
+        sockets = self._connections.get(workspace_key)
+        if not sockets:
+            return
+        sockets.discard(ws)
+        if sockets:
+            logger.info("WebSocket连接断开，workspace=%s 当前连接数=%s", workspace_key, len(sockets))
+            return
+        self._connections.pop(workspace_key, None)
+        logger.info("WebSocket连接断开，workspace=%s 当前连接数=0", workspace_key)
+
+    async def broadcast(self, workspace_key: str, data: dict):
+        sockets = list(self._connections.get(workspace_key) or ())
+        if not sockets:
             return
         message = json.dumps(data, ensure_ascii=False)
-        sockets = list(self._connections)
         results = await asyncio.gather(
             *(ws.send_text(message) for ws in sockets),
             return_exceptions=True,
@@ -40,13 +53,15 @@ class ConnectionManager:
             for ws, result in zip(sockets, results)
             if isinstance(result, Exception)
         }
-        # 清理断开的连接
-        self._connections -= dead
+        for ws in dead:
+            self._discard(workspace_key, ws)
+
+    def connection_count_for(self, workspace_key: str) -> int:
+        return len(self._connections.get(workspace_key) or ())
 
     @property
     def connection_count(self) -> int:
-        return len(self._connections)
+        return sum(len(sockets) for sockets in self._connections.values())
 
 
-# 全局连接管理器
 ws_manager = ConnectionManager()

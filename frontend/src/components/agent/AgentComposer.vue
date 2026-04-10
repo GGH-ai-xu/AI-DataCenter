@@ -44,7 +44,7 @@ watch(
     <button
       type="button"
       class="btn-tech btn-tech--primary"
-      :disabled="disabled || !inputText.trim()"
+      :disabled="disabled"
       @click="emit('submit')"
     >
       发送

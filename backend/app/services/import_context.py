@@ -150,9 +150,9 @@ class ImportContextService:
 
     def validate_runtime(self, agent_health: dict | None, gpus: list[dict]) -> dict:
         selected = self.selected_gpu_indexes()
+        if not selected and not self._state.get("imported_at"):
+            return self.snapshot()
         if not agent_health:
-            if not selected and not self._state.get("imported_at"):
-                return self.snapshot()
             return self.mark_invalid("当前导入目标不可达，需要重新导入")
         if not selected:
             return self._mark_valid()

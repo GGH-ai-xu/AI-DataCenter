@@ -18,23 +18,24 @@ function stat(label, value, hint) {
 export const GOVERNANCE_TABS = Object.freeze([
   { key: 'actions', label: '即时处置', desc: '处理对象' },
   { key: 'policies', label: '策略治理', desc: '调整策略' },
+  { key: 'cluster', label: '集群作业', desc: '队列与分配' },
   { key: 'review', label: '治理复盘', desc: '查看结果' },
 ])
 
 export function buildGovernanceReviewModel(input = {}) {
-  const auditLogs = input.auditLogs || []
+  const commandRecords = input.commandRecords || []
   const evaluation = input.evaluation || {}
   return {
     summary: {
-      totalActions: auditLogs.length,
-      failedActions: auditLogs.filter((item) => item.result === 'failed').length,
+      totalActions: commandRecords.length,
+      failedActions: commandRecords.filter((item) => item.execution_state === 'failed').length,
       fairnessDelta: Number(evaluation.fairness_delta || 0),
     },
-    timeline: auditLogs.slice(0, 12).map((item) => ({
-      id: `${item.created_at || item.ts}-${item.action}`,
-      title: item.action || 'governance-action',
-      tone: item.risk_level || 'low',
-      createdAt: item.created_at || item.ts || 0,
+    timeline: commandRecords.slice(0, 12).map((item) => ({
+      id: item.command_id || `${item.created_at || 0}-${item.capability_name || 'control-command'}`,
+      title: item.capability_name || 'control-command',
+      tone: item.risk_level || 'observe',
+      createdAt: item.created_at || 0,
     })),
   }
 }
@@ -63,6 +64,18 @@ export function buildGovernanceHeaderModel(section, input = {}) {
         stat('治理动作', review.summary.totalActions, '最近 72 小时审计记录'),
         stat('失败动作', review.summary.failedActions, '需要优先回看失败项'),
         stat('公平变化', review.summary.fairnessDelta, '调度评估摘要'),
+      ],
+    }
+  }
+
+  if (section === 'cluster') {
+    return {
+      title: '集群作业',
+      description: '这一页只负责队列、作业提交与分配快照，不再混入 PID 级处置。',
+      quickStats: [
+        stat('默认队列', 'default', 'Phase 1 先以单默认队列打通闭环'),
+        stat('调度模式', '单节点放置', '后续再扩展抢占、迁移和多队列'),
+        stat('执行后端', 'Node Runtime', '通过 reservation + launch 落地作业'),
       ],
     }
   }

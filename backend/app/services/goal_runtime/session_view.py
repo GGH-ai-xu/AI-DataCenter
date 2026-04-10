@@ -38,7 +38,7 @@ def build_session_view(
     llm_call_count = 0
     for event in events:
         current_round = max(current_round, int(event.get("round_index") or 0))
-        if event.get("event_type") == "LLMResponseReceived":
+        if event.get("event_type") == "LLMRequestPrepared":
             llm_call_count += 1
 
     awaiting_approval = session.get("status") == "awaiting_approval"

@@ -6,7 +6,6 @@ import logging
 from typing import Optional
 
 from openai import AsyncOpenAI
-
 from app.services.optimization_ontology import (
     build_graph_extract_prompt,
     graph_source_default,
@@ -101,7 +100,7 @@ EVALUATE_PROMPT = """上次调度执行了以下操作：
 严格按JSON返回：
 {{"score": 0, "verdict": "一句话评价", "effective_actions": [], "ineffective_actions": [], "improvement": "改进建议"}}"""
 
-CONTROL_PROMPT = """你是智算中心优化代码生成系统里的 AI 执行控制台规划器。
+CONTROL_PROMPT = """你是 GPU 治理工作台里的 AI 执行控制台规划器。
 
 你的任务不是直接执行动作，而是把用户的自然语言要求翻译成“可审核、可执行”的结构化动作计划。
 
@@ -137,49 +136,93 @@ CONTROL_PROMPT = """你是智算中心优化代码生成系统里的 AI 执行�
   ]
 }}"""
 
+WORKBENCH_DISPATCH_PROMPT = """你是 AI 助手统一工作台的判路器。
+
+你的任务是判断用户当前这句话应该进入：
+1. chat
+2. runtime
+
+约束：
+- 只能输出 JSON
+- route_kind 只能是 chat 或 runtime
+- 如果信息不足，返回 chat，并用 reply_mode=inline 给出追问
+- 如果是明确问答，返回 chat，并用 reply_mode=stream
+- 如果是明确执行请求且信息足够，返回 runtime
+- 不允许输出第三种模式
+
+返回格式：
+{
+  "route_kind": "chat|runtime",
+  "reply_mode": "inline|stream",
+  "reply": "仅 chat+inline 时填写",
+  "message": "仅 runtime 时填写"
+}"""
+
 GRAPH_QA_PROMPT = """你是智算中心优化代码生成系统里的图谱问答助手。
 
-你只能依据给定的图谱证据回答，不允许引用图外知识，不允许把常识当成图谱事实。
+你的目标是基于给定图谱证据回答用户问题。
 
-回答规则：
-1. 如果证据足够，先给一句结论，再给 2-4 句解释。
-2. 如果证据不足，必须明确说“当前图库里没有足够证据”。
-3. 证据项要尽量引用图里的节点名、关系类型和论文名。
-4. 只返回 JSON，不要返回 Markdown。
+要求：
+- 回答必须引用证据里的真实实体、关系、指标
+- 不允许编造论文、参数、实验结论
+- 如果证据不足，要明确指出缺失点
+- 优先给出结构化结论，方便前端渲染
+- 只返回 JSON
 
 返回格式：
 {
   "summary": "一句话结论",
   "answer": "详细回答",
-  "confidence": "high|medium|low",
-  "evidence": ["证据1", "证据2"],
-  "follow_ups": ["后续问题1", "后续问题2"]
+  "confidence": "low|medium|high",
+  "evidence": [
+    {"label": "证据标题", "detail": "证据说明"}
+  ],
+  "follow_ups": ["后续建议1", "后续建议2"]
 }"""
 
 GRAPH_STRATEGY_PROMPT = """你是智算中心优化代码生成系统里的本体 GraphRAG 策略生成助手。
 
-你必须先阅读给定的“图谱证据”和“当前运行态”，再给出可解释的优化策略和代码模板。
-你不能编造图里没有出现过的约束、策略名、模板名或接口名。
-如果图谱证据不足，必须明确说明证据不足，并给出一版保守模板。
+你的目标是结合图谱证据和当前运行态，为用户生成可执行的优化策略与代码模板。
+
+要求：
+- 仅使用输入里提供的图谱证据与运行态信息
+- 不允许虚构节点、性能收益或上线结果
+- 先给出可落地策略，再给出代码模板
+- 只返回 JSON
 
 返回格式：
 {
-  "summary": "一句话总结",
-  "strategy_steps": ["步骤1", "步骤2", "步骤3"],
-  "control_prompt": "一条可以交给执行控制台的中文指令",
-  "code_title": "代码模板标题",
-  "code_language": "python",
-  "code_snippet": "代码片段",
-  "risk_notice": "风险提示",
-  "evidence": ["证据1", "证据2"],
-  "follow_ups": ["追问1", "追问2"]
-}
+  "summary": "一句话策略摘要",
+  "strategy": ["步骤1", "步骤2"],
+  "code_template": "伪代码或配置模板",
+  "risks": ["风险1", "风险2"],
+  "evidence": [
+    {"label": "图谱证据", "detail": "为何支持该策略"}
+  ]
+}"""
 
-要求：
-1. strategy_steps 保持 3-6 条，必须能落到运维动作。
-2. code_snippet 优先复用图谱里提到的模板名、接口名或动作名，例如 set_power_limit、set_task_priority、run_schedule_once。
-3. control_prompt 必须简短、克制、可直接给运维人员理解。
-4. 只返回 JSON，不要返回 Markdown。"""
+
+def _normalize_workbench_dispatch_result(parsed: dict, fallback_message: str) -> dict:
+    route_kind = str(parsed.get("route_kind") or "").strip()
+    reply_mode = str(parsed.get("reply_mode") or "").strip()
+    reply = str(parsed.get("reply") or "").strip()
+    message = str(parsed.get("message") or fallback_message).strip()
+
+    if route_kind not in {"chat", "runtime"}:
+        raise ValueError("AI 工作台判路结果缺少合法的 route_kind")
+    if route_kind == "chat" and reply_mode not in {"inline", "stream"}:
+        raise ValueError("AI 工作台判路结果缺少合法的 reply_mode")
+    if route_kind == "chat" and reply_mode == "inline" and not reply:
+        raise ValueError("AI 工作台判路结果缺少 inline reply")
+    if route_kind == "runtime" and not message:
+        raise ValueError("AI 工作台判路结果缺少 runtime message")
+
+    return {
+        "route_kind": route_kind,
+        "reply_mode": reply_mode or None,
+        "reply": reply,
+        "message": message if route_kind == "runtime" else "",
+    }
 
 
 class LLMService:
@@ -196,6 +239,56 @@ class LLMService:
             return ""
         delta = getattr(choices[0], "delta", None)
         return getattr(delta, "content", "") or ""
+
+    @staticmethod
+    def _strip_markdown_code_fence(content: str) -> str:
+        text = (content or "").strip()
+        fence_start = text.find("```")
+        if fence_start < 0:
+            return text
+        first_nl = text.find("\n", fence_start)
+        if first_nl == -1:
+            return ""
+        body = text[first_nl + 1:]
+        fence_end = body.rfind("```")
+        if fence_end >= 0:
+            body = body[:fence_end]
+        body = body.strip()
+        return body
+
+    @classmethod
+    def parse_structured_json(cls, content: str, *, label: str) -> dict:
+        text = cls._strip_markdown_code_fence(content)
+        if not text:
+            raise ValueError(f"{label}为空")
+
+        decoder = json.JSONDecoder()
+        start_indexes = [idx for idx in (text.find("{"), text.find("[")) if idx >= 0]
+        candidates = [text]
+        if start_indexes:
+            first_json_index = min(start_indexes)
+            if first_json_index > 0:
+                candidates.append(text[first_json_index:])
+
+        last_error = None
+        seen = set()
+        for candidate in candidates:
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            try:
+                parsed, end = decoder.raw_decode(candidate)
+            except json.JSONDecodeError as exc:
+                last_error = exc
+                continue
+            trailing = candidate[end:].strip()
+            if trailing:
+                raise ValueError(f"{label}在 JSON 之后仍包含额外文本")
+            if not isinstance(parsed, dict):
+                raise ValueError(f"{label}必须是 JSON 对象")
+            return parsed
+
+        raise ValueError(f"{label}不是合法 JSON") from last_error
 
     async def _call_with_retry(self, max_retries: int = 2, **kwargs) -> str:
         """带重试的LLM调用，区分暂时性和永久性错误"""
@@ -292,6 +385,28 @@ class LLMService:
         ):
             yield item
 
+    async def dispatch_workbench_message(
+        self,
+        user_message: str,
+        gpu_context: str = "",
+    ) -> dict:
+        messages = [{"role": "system", "content": WORKBENCH_DISPATCH_PROMPT}]
+        if gpu_context:
+            messages.append({
+                "role": "system",
+                "content": f"当前GPU集群实时状态：\n{gpu_context}",
+            })
+        messages.append({"role": "user", "content": user_message})
+
+        content = await self._call_with_retry(
+            model=self.model,
+            messages=messages,
+            temperature=0.1,
+            max_tokens=400,
+        )
+        parsed = self.parse_structured_json(content, label="AI 工作台判路结果")
+        return _normalize_workbench_dispatch_result(parsed, user_message)
+
     async def generate_schedule(
         self, gpu_data: list[dict], task_data: list[dict], time_period: str
     ) -> Optional[dict]:
@@ -362,16 +477,9 @@ class LLMService:
 
     def _parse_json_response(self, content: str) -> Optional[dict]:
         """解析LLM返回的JSON（兼容markdown代码块包裹）"""
-        content = content.strip()
-        if content.startswith("```"):
-            first_nl = content.find("\n")
-            if first_nl != -1:
-                content = content[first_nl + 1:]
-            if content.rstrip().endswith("```"):
-                content = content.rstrip()[:-3].rstrip()
         try:
-            return json.loads(content)
-        except json.JSONDecodeError as e:
+            return self.parse_structured_json(content, label="LLM 返回的 JSON")
+        except ValueError as e:
             logger.error(f"JSON解析失败: {e}")
             return None
 
@@ -452,20 +560,19 @@ class LLMService:
             f"当前工作台上下文：\n{control_context}\n\n"
             "请输出结构化动作计划 JSON。"
         )
-        try:
-            content = await self._call_with_retry(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": CONTROL_PROMPT},
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.2,
-                max_tokens=1500,
-            )
-            return self._parse_json_response(content)
-        except Exception as e:
-            logger.error(f"AI执行控制台计划生成失败: {e}")
-            return None
+        content = await self._call_with_retry(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": CONTROL_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.2,
+            max_tokens=1500,
+        )
+        return self.parse_structured_json(
+            content,
+            label="LLM 返回的控制计划",
+        )
 
     async def generate_control_plan_stream(
         self,
@@ -499,10 +606,12 @@ class LLMService:
         domain_tag: str = "",
         scenario: str = "",
     ) -> Optional[dict]:
-        """根据论文内容生成知识图谱草稿。"""
         normalized_mode = normalize_graph_mode(mode)
         normalized_source = str(source or "").strip() or graph_source_default(normalized_mode)
-        normalized_source_type = str(source_type or "").strip() or graph_source_type_default(normalized_mode)
+        normalized_source_type = (
+            str(source_type or "").strip()
+            or graph_source_type_default(normalized_mode)
+        )
         excerpt = (content or "").strip()
         if len(excerpt) > 12000:
             excerpt = excerpt[:12000].strip() + "\n...(已截断)"
@@ -537,7 +646,6 @@ class LLMService:
         question: str,
         context_text: str,
     ) -> Optional[dict]:
-        """基于图谱证据回答问题。"""
         prompt = (
             f"用户问题：{question.strip()}\n\n"
             f"图谱证据：\n{context_text.strip()}\n\n"
@@ -573,7 +681,6 @@ class LLMService:
         graph_context_text: str,
         runtime_context_text: str,
     ) -> Optional[dict]:
-        """基于图谱证据和运行态生成策略与代码模板。"""
         prompt = (
             f"优化目标：{goal.strip()}\n\n"
             f"图谱证据：\n{graph_context_text.strip()}\n\n"

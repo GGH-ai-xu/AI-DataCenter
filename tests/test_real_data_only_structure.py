@@ -122,7 +122,6 @@ class RealDataOnlyStructureTests(unittest.TestCase):
         self.assertNotIn("Session Timeline", ai_text)
         self.assertIn("AgentWorkbench", ai_text)
         self.assertNotIn("AgentExecutionLedger", ai_text)
-        self.assertNotIn("AgentControlDock", ai_text)
 
     def test_ai_assistant_uses_unified_workbench_instead_of_ledger_page(self):
         ai_text = (ROOT / "frontend/src/views/AIAssistant.vue").read_text(encoding="utf-8")

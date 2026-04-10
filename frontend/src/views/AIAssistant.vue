@@ -1,5 +1,6 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 
 import AgentModelConfigDialog from '../components/agent/AgentModelConfigDialog.vue'
 import AgentWorkbench from '../components/agent/AgentWorkbench.vue'
@@ -9,6 +10,8 @@ import { useAiAssistantWorkbench } from '../composables/useAiAssistantWorkbench.
 
 const showModelConfig = ref(false)
 const workbenchPage = ref('workbench')
+const route = useRoute()
+const router = useRouter()
 
 const llmState = useAiAssistantLlm()
 const {
@@ -54,10 +57,40 @@ const llmStatusLabel = computed(() => (
   llmReady.value ? 'LLM 已就绪' : '规则解析模式'
 ))
 
+async function consumeWorkbenchDraftFromRoute() {
+  const draft = String(route.query.draft || '').trim()
+  if (!draft) return
+
+  const autorun = String(route.query.autorun || '') === '1'
+  if (autorun) {
+    startNewSession()
+    await nextTick()
+  }
+
+  composerText.value = draft
+  await router.replace({
+    path: route.path,
+    query: {},
+  })
+
+  if (autorun) {
+    await submitWorkbenchInput(draft)
+  }
+}
+
 onMounted(async () => {
   await loadAssistantCapability()
   await loadSessionHistory()
+  await consumeWorkbenchDraftFromRoute()
 })
+
+watch(
+  () => [route.query.draft, route.query.autorun],
+  async ([draft]) => {
+    if (!String(draft || '').trim()) return
+    await consumeWorkbenchDraftFromRoute()
+  },
+)
 </script>
 
 <template>

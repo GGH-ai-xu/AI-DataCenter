@@ -22,9 +22,12 @@ const loadGpuDetailView = () => import('./views/GpuDetail.vue')
 const loadGovernanceLayoutView = () => import('./views/GovernanceLayout.vue')
 const loadGovernanceActionsView = () => import('./views/GovernanceActionsView.vue')
 const loadGovernancePoliciesView = () => import('./views/GovernancePoliciesView.vue')
+const loadClusterJobsView = () => import('./views/ClusterJobs.vue')
 const loadGovernanceReviewView = () => import('./views/GovernanceReviewView.vue')
 const loadEnergyOptimizationView = () => import('./views/EnergyOptimization.vue')
+const loadAIWorkspaceLayoutView = () => import('./views/AIWorkspaceLayout.vue')
 const loadAIAssistantView = () => import('./views/AIAssistant.vue')
+const loadAIGraphWorkspaceView = () => import('./views/AIGraphWorkspace.vue')
 const loadAlertCenterView = () => import('./views/AlertCenter.vue')
 const loadMonitorCenterView = () => import('./views/MonitorCenter.vue')
 
@@ -34,6 +37,10 @@ const heavyViewLoaders = [
   loadGpuDetailView,
   loadEnergyOptimizationView,
   loadMonitorCenterView,
+  loadClusterJobsView,
+  loadAIWorkspaceLayoutView,
+  loadAIAssistantView,
+  loadAIGraphWorkspaceView,
 ]
 
 const routes = [
@@ -54,13 +61,24 @@ const routes = [
           { path: '', redirect: '/governance/actions' },
           { path: 'actions', name: 'GovernanceActions', component: loadGovernanceActionsView },
           { path: 'policies', name: 'GovernancePolicies', component: loadGovernancePoliciesView },
+          { path: 'cluster', name: 'ClusterJobs', component: loadClusterJobsView },
           { path: 'review', name: 'GovernanceReview', component: loadGovernanceReviewView },
         ],
       },
+      { path: '/cluster/jobs', redirect: '/governance/cluster' },
       { path: 'tasks', redirect: '/governance/actions' },
       { path: 'scheduler', redirect: '/governance/policies' },
       { path: 'energy', name: 'EnergyOptimization', component: loadEnergyOptimizationView, meta: { hideShellHeader: true } },
-      { path: 'ai', name: 'AIAssistant', component: loadAIAssistantView, meta: { hideShellHeader: true } },
+      {
+        path: 'ai',
+        component: loadAIWorkspaceLayoutView,
+        meta: { hideShellHeader: true },
+        children: [
+          { path: '', redirect: '/ai/workbench' },
+          { path: 'workbench', name: 'AIAssistant', component: loadAIAssistantView },
+          { path: 'graph', name: 'AIGraphWorkspace', component: loadAIGraphWorkspaceView },
+        ],
+      },
       { path: 'alerts', name: 'AlertCenter', component: loadAlertCenterView, meta: { hideShellHeader: true } },
       { path: 'monitor', name: 'MonitorCenter', component: loadMonitorCenterView, meta: { hideShellHeader: true } },
     ],

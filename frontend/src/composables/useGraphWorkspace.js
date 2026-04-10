@@ -1,4 +1,4 @@
-import { computed, getCurrentInstance, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import {
   getGraphSummary as getGraphSummaryRequest,
@@ -194,6 +194,7 @@ export function useGraphWorkspace() {
     scenario: '',
   })
   const summary = ref(defaultSummary())
+  const summaryLoaded = ref(false)
   const feedback = ref(null)
   const refreshBusy = ref(false)
   const draftBusy = ref(false)
@@ -302,6 +303,7 @@ export function useGraphWorkspace() {
         ...defaultSummary(),
         ...(response?.data || {}),
       }
+      summaryLoaded.value = true
       if (!silent) {
         feedback.value = {
           type: 'success',
@@ -314,6 +316,7 @@ export function useGraphWorkspace() {
         ...defaultSummary(),
         message: error?.response?.data?.detail || error?.message || '读取图谱状态失败',
       }
+      summaryLoaded.value = true
       if (!silent) {
         feedback.value = {
           type: 'error',
@@ -330,9 +333,29 @@ export function useGraphWorkspace() {
     selectedGraphNodeId.value = String(nodeId || '')
   }
 
+  function buildOfflineGraphViewState() {
+    return normalizeGraphViewPayload({
+      query: String(graphFilters.value.query || '').trim(),
+      limit: Number(graphFilters.value.limit || 60),
+      message: summary.value.message || 'Neo4j 当前不可用。',
+    })
+  }
+
   async function refreshGraphView(options = {}) {
     const silent = Boolean(options.silent)
     if (viewBusy.value || reconnectBusy.value || expandBusy.value) {
+      return graphView.value
+    }
+    if (summaryLoaded.value && !summary.value.neo4j_connected) {
+      graphView.value = buildOfflineGraphViewState()
+      expandingNodeId.value = ''
+      selectedGraphNodeId.value = ''
+      if (!silent) {
+        feedback.value = {
+          type: 'error',
+          text: graphView.value.message,
+        }
+      }
       return graphView.value
     }
     viewBusy.value = true
@@ -488,6 +511,7 @@ export function useGraphWorkspace() {
           ...defaultSummary(),
           ...executionResult.value.graph_summary,
         }
+        summaryLoaded.value = true
       } else {
         await refreshSummary()
       }
@@ -525,6 +549,7 @@ export function useGraphWorkspace() {
           ...defaultSummary(),
           ...payload.graph_summary,
         }
+        summaryLoaded.value = true
       } else {
         await refreshSummary({ silent: true })
       }
@@ -562,6 +587,7 @@ export function useGraphWorkspace() {
           ...defaultSummary(),
           ...payload.graph_summary,
         }
+        summaryLoaded.value = true
       } else {
         await refreshSummary({ silent: true })
       }
@@ -626,13 +652,6 @@ export function useGraphWorkspace() {
       qaBusy.value = false
     }
   }
-
-  if (getCurrentInstance()) {
-    onMounted(() => {
-      void refreshSummary()
-    })
-  }
-
   return {
     form,
     summary,

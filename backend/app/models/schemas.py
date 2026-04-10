@@ -74,7 +74,6 @@ class PowerBudgetConfigRequest(BaseModel):
 class ScheduleRunRequest(BaseModel):
     acknowledge_risk: bool = False
 
-
 class ScheduleAction(BaseModel):
     """单条调度动作"""
     action: str  # set_power_limit / pause_task / resume_task
@@ -90,7 +89,6 @@ class ScheduleStrategy(BaseModel):
 
 
 # ========== 集群控制面 ==========
-
 class ClusterQueueResponse(BaseModel):
     queue_id: str
     name: str

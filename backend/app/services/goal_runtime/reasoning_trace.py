@@ -7,6 +7,7 @@ from typing import Any
 
 from app.services.goal_runtime.control_heuristics import build_control_heuristic
 from app.services.goal_runtime.executor import execute_capability
+from app.services.llm import LLMService
 
 TRACE_ROUND_INDEX = 1
 SNAPSHOT_FLUSH_INTERVAL_CHARS = 48
@@ -80,7 +81,10 @@ async def _collect_streamed_plan(
     )
     if not streamed_text.strip():
         return None
-    return json.loads(streamed_text)
+    return LLMService.parse_structured_json(
+        streamed_text,
+        label="LLM 返回的流式控制计划",
+    )
 
 
 async def _load_llm_plan(

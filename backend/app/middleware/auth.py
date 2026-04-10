@@ -77,7 +77,6 @@ def _resolve_role(token: Optional[str]) -> Optional[str]:
         return "observer"
     return None
 
-
 class TokenAuthMiddleware(BaseHTTPMiddleware):
     """平台会话优先的鉴权中间件"""
 

@@ -53,3 +53,13 @@ test('ready users can access console routes', () => {
 
   assert.deepEqual(result, { allow: true, redirectTo: null })
 })
+
+test('ready users can access ai graph route', () => {
+  const result = resolveRouteAccess({
+    path: '/ai/graph',
+    user: { id: 1, must_change_password: false },
+    workspaceReady: true,
+  })
+
+  assert.deepEqual(result, { allow: true, redirectTo: null })
+})

@@ -1,13 +1,13 @@
 import { computed } from 'vue'
 
 import {
-  getAuditLogs,
   getCarbonBudget,
   getFairnessGovernance,
   getGovernanceRules,
   getScheduleEvaluation,
   getSchedulerStatus,
   getTasks,
+  listControlCommands,
 } from '../services/api.js'
 import { createGovernanceLoaders } from '../lib/governanceLoaders.js'
 import { useAppStore } from '../stores/app.js'
@@ -32,8 +32,8 @@ const DEFAULT_POLICIES = {
 }
 
 const DEFAULT_REVIEW = {
-  auditLogs: [],
   evaluation: null,
+  commandRecords: [],
 }
 
 export function useGovernanceData(options = {}) {
@@ -46,8 +46,8 @@ export function useGovernanceData(options = {}) {
     getSchedulerStatus,
     getCarbonBudget,
     getGovernanceRules,
-    getAuditLogs,
     getScheduleEvaluation,
+    listControlCommands,
   })
 
   const actionsRefresh = useDomainRefresh({

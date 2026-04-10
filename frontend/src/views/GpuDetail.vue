@@ -7,6 +7,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '../stores/app'
 import { getGpuHistory } from '../services/api'
 import { buildGpuDetailSeries } from '../lib/historyTransforms.js'
+import { formatGpuMemoryGiB } from '../lib/importHardwareFormatting.js'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart } from 'echarts/charts'
@@ -82,8 +83,6 @@ const chartOption = computed(() => {
   }
 })
 
-const fmtMem = (bytes) => ((bytes || 0) / 1073741824).toFixed(1)
-
 onMounted(() => loadHistory(1))
 </script>
 
@@ -122,7 +121,7 @@ onMounted(() => loadHistory(1))
       </div>
       <div class="dstat tech-card">
         <div class="dstat__label">显存</div>
-        <div class="dstat__value stat-value" style="font-size: 2rem">{{ fmtMem(gpu.memory_used) }}<span style="font-size: 0.875rem; color: var(--text-muted)">/ {{ fmtMem(gpu.memory_total) }} GB</span></div>
+        <div class="dstat__value stat-value" style="font-size: 2rem">{{ formatGpuMemoryGiB(gpu.memory_used) }}<span style="font-size: 0.875rem; color: var(--text-muted)">/ {{ formatGpuMemoryGiB(gpu.memory_total) }} GB</span></div>
       </div>
       <div class="dstat tech-card">
         <div class="dstat__label">风扇</div>

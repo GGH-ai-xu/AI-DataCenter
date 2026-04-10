@@ -32,7 +32,7 @@ class ShellHeaderPruningStructureTests(unittest.TestCase):
         )
         self.assertRegex(
             text,
-            r"(?s)path:\s*'ai',\s*name:\s*'AIAssistant',\s*component:\s*loadAIAssistantView,\s*meta:\s*\{\s*hideShellHeader:\s*true\s*\}",
+            r"(?s)path:\s*'ai',\s*component:\s*loadAIWorkspaceLayoutView,\s*meta:\s*\{\s*hideShellHeader:\s*true\s*\}",
         )
 
     def test_console_shell_hides_shell_header_on_meta_flag(self):

@@ -32,13 +32,13 @@ export function createGovernanceLoaders(api) {
     },
 
     async loadReviewBundle() {
-      const [{ data: auditData }, { data: evaluationData }] = await Promise.all([
-        api.getAuditLogs(100, 72),
+      const [{ data: controlData }, { data: evaluationData }] = await Promise.all([
+        api.listControlCommands(100),
         api.getScheduleEvaluation(),
       ])
       return {
-        auditLogs: auditData?.logs || [],
         evaluation: evaluationData || null,
+        commandRecords: controlData?.commands || [],
       }
     },
   }

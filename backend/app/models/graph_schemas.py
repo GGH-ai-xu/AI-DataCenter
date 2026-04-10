@@ -63,6 +63,12 @@ class GraphQaRequest(BaseModel):
     max_relationships: int = Field(default=10, ge=2, le=20)
 
 
+class GraphStrategyRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=2000)
+    max_nodes: int = Field(default=10, ge=4, le=20)
+    max_relationships: int = Field(default=12, ge=4, le=24)
+
+
 class GraphSummaryResponse(BaseModel):
     ready: bool = False
     configured: bool = False

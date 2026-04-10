@@ -13,6 +13,10 @@ ACTION_CAPABILITY_MAP = {
     "set_task_priority": "tasks.priority.set",
     "configure_budget": "scheduler.budget.configure",
     "run_schedule_once": "scheduler.run_once",
+    "submit_job": "job.submit",
+    "pause_job": "job.pause",
+    "resume_job": "job.resume",
+    "cancel_job": "job.cancel",
 }
 FALLBACK_CAPABILITY_MAP = {
     "scheduler.power_limit.set": ("tasks.pause",),

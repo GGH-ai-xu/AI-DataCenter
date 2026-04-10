@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from fastapi import APIRouter, HTTPException, Request
 from app.models.schemas import ImportCommitRequest, ImportScanRequest
 from app.services.runtime_snapshot import refresh_runtime_snapshot_scope
@@ -189,7 +191,7 @@ def _resolve_active_credentials(target, credentials: dict, credential_id: str | 
 async def _activate_import_target(target, credentials: dict, credential_id: str | None):
     from app.main import app_state, assign_active_provider
 
-    saved_target = app_state.connection.update_target(target, credential_id)
+    saved_target = replace(target, credential_id=credential_id or target.credential_id)
     active_secret = app_state.credentials.read(credential_id) if credential_id else {}
     active_provider = await app_state.runtime.switch(saved_target, active_secret)
     assign_active_provider(active_provider)

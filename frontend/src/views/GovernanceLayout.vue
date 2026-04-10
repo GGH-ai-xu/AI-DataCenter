@@ -2,11 +2,13 @@
 import { computed, proxyRefs } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
+import CapabilityCommandDrawer from '../components/governance/CapabilityCommandDrawer.vue'
 import WorkspaceSummary from '../components/workspace/WorkspaceSummary.vue'
 import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
 import { buildGovernanceHeaderModel, buildGovernanceReviewModel, GOVERNANCE_TABS } from '../lib/governancePageModels.js'
 import { useActionFeedback } from '../composables/useActionFeedback.js'
 import { useExecutionMode } from '../composables/useExecutionMode.js'
+import { useGovernanceControlPlane } from '../composables/useGovernanceControlPlane.js'
 import { useGovernanceData } from '../composables/useGovernanceData.js'
 import { useAppStore } from '../stores/app.js'
 
@@ -18,11 +20,15 @@ const feedback = proxyRefs(useActionFeedback())
 
 const activeSection = computed(() => {
   if (route.name === 'GovernancePolicies') return 'policies'
+  if (route.name === 'ClusterJobs') return 'cluster'
   if (route.name === 'GovernanceReview') return 'review'
   return 'actions'
 })
 
 const governance = proxyRefs(useGovernanceData({
+  activeSection,
+}))
+const control = proxyRefs(useGovernanceControlPlane({
   activeSection,
 }))
 
@@ -31,13 +37,13 @@ const headerModel = computed(() => buildGovernanceHeaderModel(activeSection.valu
   fairnessOverview: governance.actionsState?.fairness?.overview,
   scheduler: governance.policiesState?.scheduler,
   carbon: governance.policiesState?.carbon,
-  auditLogs: governance.reviewState?.auditLogs,
+  commandRecords: governance.reviewState?.commandRecords,
   evaluation: governance.reviewState?.evaluation,
 }))
 const activeSummaryBadge = computed(() => headerModel.value.quickStats?.[0] || null)
 
 const reviewModel = computed(() => buildGovernanceReviewModel({
-  auditLogs: governance.reviewState?.auditLogs,
+  commandRecords: governance.reviewState?.commandRecords,
   evaluation: governance.reviewState?.evaluation,
 }))
 
@@ -82,10 +88,12 @@ function switchSection(next) {
             :feedback="feedback"
             :governance="governance"
             :review-model="reviewModel"
+            :control="control"
           />
         </router-view>
       </section>
     </div>
+    <CapabilityCommandDrawer :control="control" />
   </div>
 </template>
 

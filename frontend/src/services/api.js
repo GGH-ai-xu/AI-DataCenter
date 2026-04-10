@@ -163,6 +163,7 @@ export const getGraphNeighbors = (params = {}) => api.get('/graph/neighbors', { 
 export const reconnectGraph = () => api.post('/graph/reconnect')
 export const rebuildGraphDemo = (kind = 'optimization') => api.post('/graph/demo/rebuild', null, { params: { kind } })
 export const graphQa = (payload) => api.post('/graph/qa', payload)
+export const graphStrategy = (payload) => api.post('/graph/strategy', payload)
 
 // 集群控制台
 export const listClusterQueues = () => api.get('/cluster/queues')

@@ -175,6 +175,20 @@ async def get_agent_session(
     return _normalize_session(await cursor.fetchone())
 
 
+async def list_agent_sessions(
+    connection: aiosqlite.Connection,
+    limit: int = 20,
+) -> list[dict]:
+    cursor = await connection.execute(
+        """SELECT * FROM agent_runtime_sessions
+           ORDER BY updated_at DESC
+           LIMIT ?""",
+        (max(1, int(limit)),),
+    )
+    rows = await cursor.fetchall()
+    return [_normalize_session(row) for row in rows if row is not None]
+
+
 async def append_agent_event(
     connection: aiosqlite.Connection,
     session_id: str,
@@ -263,3 +277,22 @@ async def get_agent_events(
     )
     rows = await cursor.fetchall()
     return [_normalize_event(row) for row in rows]
+
+
+async def delete_agent_session(
+    connection: aiosqlite.Connection,
+    session_id: str,
+) -> None:
+    await connection.execute(
+        "DELETE FROM agent_runtime_events WHERE session_id = ?",
+        (session_id,),
+    )
+    await connection.execute(
+        "DELETE FROM agent_runtime_stream_state WHERE session_id = ?",
+        (session_id,),
+    )
+    await connection.execute(
+        "DELETE FROM agent_runtime_sessions WHERE session_id = ?",
+        (session_id,),
+    )
+    await connection.commit()

@@ -10,7 +10,6 @@ try:
 except ImportError:
     NVML_AVAILABLE = False
 
-
 class GPUMonitor:
     """GPU 状态采集器，只返回真实采集结果。"""
 

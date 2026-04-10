@@ -5,11 +5,8 @@ import GovernancePoliciesWorkspace from '../components/governance/GovernancePoli
 import UserRulesGrid from '../components/tasks/UserRulesGrid.vue'
 import {
   deleteGovernanceRule,
-  runScheduleOnce,
   saveGovernanceRule,
   setCarbonBudget,
-  setManualPowerLimit,
-  setPowerBudget,
   toggleAutoSchedule,
 } from '../services/api.js'
 import {
@@ -45,6 +42,10 @@ const props = defineProps({
     default: () => ({}),
   },
   reviewModel: {
+    type: Object,
+    default: () => ({}),
+  },
+  control: {
     type: Object,
     default: () => ({}),
   },
@@ -165,11 +166,22 @@ function updateRiskAcknowledged(value) {
 
 async function saveBudget() {
   const limit = Number(budgetDraft.value.total_power_budget)
-  const { data } = await setPowerBudget(Boolean(budgetDraft.value.enabled), limit)
-  budget.value = applyBudgetState(data.budget)
-  budgetDraft.value = createBudgetDraft(budget.value)
-  showNotice('ok', '预算已更新', `总功率预算已设置为 ${budget.value.total_power_budget}W。`)
-  await refreshPolicies()
+  try {
+    await props.control.submitBuiltinCommand?.(
+      'scheduler.budget.configure',
+      {
+        enabled: Boolean(budgetDraft.value.enabled),
+        total_power_budget: limit,
+      },
+      { section: 'policies' },
+    )
+    showNotice('ok', '预算已更新', `总功率预算已设置为 ${limit}W。`)
+    await refreshPolicies()
+    await refreshReview()
+  } catch (error) {
+    console.error(error)
+    showNotice('critical', '预算更新失败', error?.message || '请稍后重试。')
+  }
 }
 
 async function saveCarbon() {
@@ -195,7 +207,17 @@ async function setPower(gpuIndex) {
     return
   }
   try {
-    await setManualPowerLimit(gpuIndex, value, props.execution.buildExecutionParams?.())
+    await props.control.submitBuiltinCommand?.(
+      'scheduler.power_limit.set',
+      {
+        gpu_index: gpuIndex,
+        power_limit: value,
+      },
+      {
+        section: 'policies',
+        acknowledgeRisk: props.execution.riskAcknowledged,
+      },
+    )
   } catch (error) {
     console.error(error)
     showNotice('critical', '单卡功耗写入失败', error?.response?.data?.detail || error?.message || '请稍后重试。')
@@ -210,19 +232,20 @@ async function runOnce() {
   if (props.execution.isReal && !window.confirm('将执行真实调度动作，是否继续？')) {
     return
   }
-  let data = null
   try {
-    ({ data } = await runScheduleOnce(props.execution.buildExecutionParams?.()))
+    scheduleResult.value = await props.control.submitBuiltinCommand?.(
+      'scheduler.run_once',
+      {},
+      {
+        section: 'policies',
+        acknowledgeRisk: props.execution.riskAcknowledged,
+      },
+    )
   } catch (error) {
     console.error(error)
     showNotice('critical', '调度执行失败', error?.response?.data?.detail || error?.message || '请稍后重试。')
     return
   }
-  if (data?.error) {
-    showNotice('warning', '调度未执行', data.error)
-    return
-  }
-  scheduleResult.value = data
   showNotice('ok', '调度已执行', '本次调度已完成，详细结果请到治理复盘查看。')
   await refreshPolicies()
   await refreshReview()
@@ -239,32 +262,60 @@ async function resetRule(username) {
   showNotice('ok', '高级策略已重置', `用户 ${username} 的规则已恢复默认。`)
   await refreshPolicies()
 }
+
+function openAdvancedCapabilities() {
+  props.control.openDrawer?.('policies')
+}
 </script>
 
 <template>
-  <GovernancePoliciesWorkspace
-    :budget-title="BUDGET_TITLE"
-    :carbon-title="CARBON_TITLE"
-    :advanced-title="ADVANCED_TITLE"
-    :budget="budget"
-    :budget-draft="budgetDraft"
-    :budget-card-state="budgetCardState"
-    :carbon-budget="carbonBudget"
-    :carbon-draft="carbonDraft"
-    :carbon-card-state="carbonCardState"
-    :auto-enabled="autoEnabled"
-    :execution-banner="executionBanner"
-    :execution-ready="executionReady"
-    :risk-acknowledged="props.execution.riskAcknowledged"
-    :schedule-result="scheduleResult"
-    :show-advanced="showAdvanced"
-    :rules-users="rulesModel.users"
-    :gpu-targets="gpuTargets"
-    :power-inputs="powerInputs"
-    :user-rules-component="UserRulesGrid"
-    :format-action-label="formatActionLabel"
-    :format-action-target="formatActionTarget"
-    :handlers="handlers"
-    @toggle-advanced="showAdvanced = !showAdvanced"
-  />
+  <div class="governance-policies-view">
+    <div class="governance-policies-view__toolbar">
+      <button type="button" class="btn-tech" @click="showAdvanced = true">
+        新增策略
+      </button>
+      <button type="button" class="btn-tech" @click="openAdvancedCapabilities">
+        高级能力
+      </button>
+    </div>
+
+    <GovernancePoliciesWorkspace
+      :budget-title="BUDGET_TITLE"
+      :carbon-title="CARBON_TITLE"
+      :advanced-title="ADVANCED_TITLE"
+      :budget="budget"
+      :budget-draft="budgetDraft"
+      :budget-card-state="budgetCardState"
+      :carbon-budget="carbonBudget"
+      :carbon-draft="carbonDraft"
+      :carbon-card-state="carbonCardState"
+      :auto-enabled="autoEnabled"
+      :execution-banner="executionBanner"
+      :execution-ready="executionReady"
+      :risk-acknowledged="props.execution.riskAcknowledged"
+      :schedule-result="scheduleResult"
+      :show-advanced="showAdvanced"
+      :rules-users="rulesModel.users"
+      :gpu-targets="gpuTargets"
+      :power-inputs="powerInputs"
+      :user-rules-component="UserRulesGrid"
+      :format-action-label="formatActionLabel"
+      :format-action-target="formatActionTarget"
+      :handlers="handlers"
+      @toggle-advanced="showAdvanced = !showAdvanced"
+    />
+  </div>
 </template>
+
+<style scoped>
+.governance-policies-view {
+  display: grid;
+  gap: 12px;
+}
+
+.governance-policies-view__toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+</style>

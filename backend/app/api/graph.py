@@ -1,9 +1,16 @@
 """图谱导入与知识入图 API。"""
 
+import json
+
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from app.api.auth_access import require_authenticated_user
-from app.models.graph_schemas import GraphDraftRequest, GraphExecuteRequest, GraphQaRequest
+from app.models.graph_schemas import (
+    GraphDraftRequest,
+    GraphExecuteRequest,
+    GraphQaRequest,
+    GraphStrategyRequest,
+)
 from app.services.graph_cypher_builder import (
     build_graph_cypher,
     normalize_graph_draft,
@@ -11,6 +18,11 @@ from app.services.graph_cypher_builder import (
 )
 from app.services.graph_demo_library import get_graph_demo_payload, list_graph_demo_kinds
 from app.services.graph_qa import build_graph_answer_context, build_graph_answer_fallback
+from app.services.graph_strategy import (
+    build_graph_strategy_context,
+    build_graph_strategy_fallback,
+)
+from app.services.scheduler import get_time_period_label
 
 
 router = APIRouter(prefix="/api/graph", tags=["Graph"])
@@ -22,6 +34,87 @@ async def _graph_summary_payload() -> dict:
     summary = await app_state.graph.summary()
     summary.update(app_state.local_neo4j.capability(app_state.graph.uri))
     return summary
+
+
+def _resolve_strategy_time_period(goal: str) -> str:
+    text = str(goal or "").strip()
+    if "高峰期" in text:
+        return "高峰期"
+    if "低谷期" in text:
+        return "低谷期"
+    if "平峰期" in text:
+        return "平峰期"
+    return get_time_period_label()
+
+
+async def _build_strategy_runtime_context(app_state, goal: str = "") -> dict:
+    gpus = await app_state.agent.get_all_gpus() or []
+    gpus = app_state.import_context.filter_gpus(gpus)
+    processes = await app_state.agent.get_processes() or []
+    processes = app_state.import_context.filter_processes(processes)
+    priorities = await app_state.store.get_all_task_priorities()
+
+    enriched_processes: list[dict] = []
+    for process in processes:
+        cloned = dict(process)
+        cloned["priority"] = priorities.get(
+            cloned.get("pid"),
+            cloned.get("priority", "normal"),
+        )
+        enriched_processes.append(cloned)
+
+    manageable_processes = [
+        process for process in enriched_processes if process.get("manageable", True)
+    ]
+    manageable_processes.sort(
+        key=lambda item: (
+            -(item.get("gpu_memory_used", 0) or 0),
+            item.get("pid", 0),
+        )
+    )
+    visible_processes = manageable_processes[:12]
+    llm_processes = app_state.privacy.sanitize_processes(visible_processes)
+    llm_gpus = [
+        {
+            key: gpu.get(key)
+            for key in (
+                "index",
+                "name",
+                "temperature",
+                "power_usage",
+                "power_limit",
+                "gpu_utilization",
+                "memory_used",
+                "memory_total",
+            )
+        }
+        for gpu in gpus
+    ]
+    budget = app_state.scheduler.get_budget_status(gpus)
+    llm_context = {
+        "time_period": _resolve_strategy_time_period(goal),
+        "budget": budget,
+        "gpus": llm_gpus,
+        "manageable_processes": [
+            {
+                "pid": process.get("pid"),
+                "gpu_index": process.get("gpu_index"),
+                "name": process.get("name"),
+                "username": process.get("username"),
+                "priority": process.get("priority", "normal"),
+                "gpu_memory_used": process.get("gpu_memory_used", 0),
+                "manageable_reason": process.get("manageable_reason", ""),
+                "command": process.get("command", ""),
+            }
+            for process in llm_processes
+        ],
+    }
+    return {
+        "gpus": gpus,
+        "processes": enriched_processes,
+        "budget": budget,
+        "llm_context": json.dumps(llm_context, ensure_ascii=False, indent=2),
+    }
 
 
 @router.get("/summary")
@@ -192,6 +285,62 @@ async def answer_graph_question(request: Request, req: GraphQaRequest):
         "paper_titles": answer_context["paper_titles"],
         "evidence_nodes": answer_context["evidence_nodes"],
         "evidence_relationships": answer_context["evidence_relationships"],
+    }
+
+
+@router.post("/strategy")
+async def generate_graph_strategy(request: Request, req: GraphStrategyRequest):
+    require_authenticated_user(request)
+
+    from app.main import app_state
+
+    message = req.message.strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="请输入优化目标")
+
+    graph_view = await app_state.graph.view_graph(query="", limit=180)
+    if not graph_view["ok"]:
+        status_code = 503 if not graph_view["neo4j_connected"] or not graph_view["configured"] else 500
+        raise HTTPException(status_code=status_code, detail=graph_view["message"])
+
+    runtime_context = await _build_strategy_runtime_context(app_state, message)
+    strategy_context = build_graph_strategy_context(
+        message,
+        graph_view,
+        runtime_context,
+        max_nodes=req.max_nodes,
+        max_relationships=req.max_relationships,
+    )
+    fallback = build_graph_strategy_fallback(message, strategy_context)
+
+    llm_result = None
+    if app_state.llm:
+        llm_result = await app_state.llm.generate_graph_strategy_plan(
+            message,
+            strategy_context["context_text"],
+            strategy_context["runtime_summary"],
+        )
+
+    payload = llm_result or fallback
+    return {
+        "message": message,
+        "summary": payload.get("summary") or fallback["summary"],
+        "strategy_steps": payload.get("strategy_steps") or fallback["strategy_steps"],
+        "control_prompt": payload.get("control_prompt") or fallback["control_prompt"],
+        "code_title": payload.get("code_title") or fallback["code_title"],
+        "code_language": payload.get("code_language") or fallback["code_language"],
+        "code_snippet": payload.get("code_snippet") or fallback["code_snippet"],
+        "risk_notice": payload.get("risk_notice") or fallback["risk_notice"],
+        "evidence": payload.get("evidence") or fallback["evidence"],
+        "follow_ups": payload.get("follow_ups") or fallback["follow_ups"],
+        "used_llm": bool(llm_result),
+        "matched_node_count": strategy_context["matched_node_count"],
+        "matched_relationship_count": strategy_context["matched_relationship_count"],
+        "paper_titles": strategy_context["paper_titles"],
+        "evidence_nodes": strategy_context["evidence_nodes"],
+        "evidence_relationships": strategy_context["evidence_relationships"],
+        "focus": strategy_context["focus"],
+        "runtime_summary": strategy_context["runtime_summary"],
     }
 
 

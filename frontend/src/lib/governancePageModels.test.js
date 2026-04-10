@@ -8,10 +8,10 @@ import {
   buildGovernanceRulesModel,
 } from './governancePageModels.js'
 
-test('governance tabs keep the three-step workflow order', () => {
+test('governance tabs keep the four-section workflow order', () => {
   assert.deepEqual(
     GOVERNANCE_TABS.map((item) => item.key),
-    ['actions', 'policies', 'review'],
+    ['actions', 'policies', 'cluster', 'review'],
   )
 })
 
@@ -48,9 +48,9 @@ test('rules model merges fairness users with stored rules', () => {
 
 test('review model counts failed actions and builds timeline items', () => {
   const model = buildGovernanceReviewModel({
-    auditLogs: [
-      { action: 'run_schedule_once', risk_level: 'low', created_at: 1712560000, result: 'ok' },
-      { action: 'set_power_limit', risk_level: 'high', created_at: 1712560300, result: 'failed' },
+    commandRecords: [
+      { command_id: 'cmd-1', capability_name: 'scheduler.run_once', risk_level: 'observe', created_at: 1712560000, execution_state: 'succeeded' },
+      { command_id: 'cmd-2', capability_name: 'scheduler.power_limit.set', risk_level: 'dangerous', created_at: 1712560300, execution_state: 'failed' },
     ],
     evaluation: {
       fairness_delta: 6,
@@ -60,5 +60,5 @@ test('review model counts failed actions and builds timeline items', () => {
 
   assert.equal(model.summary.failedActions, 1)
   assert.equal(model.timeline.length, 2)
-  assert.equal(model.timeline[1].tone, 'high')
+  assert.equal(model.timeline[1].tone, 'dangerous')
 })

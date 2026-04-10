@@ -480,6 +480,49 @@ test('useGraphWorkspace loads graph view and keeps selected node in sync', async
 })
 
 
+test('useGraphWorkspace skips graph view request when neo4j is offline', async () => {
+  let viewCalls = 0
+
+  setGraphWorkspaceDependencies({
+    getGraphSummaryApi: async () => ({
+      data: {
+        ready: false,
+        configured: true,
+        dependency_installed: true,
+        neo4j_connected: false,
+        database: 'neo4j',
+        message: 'Neo4j 当前不可用。',
+      },
+    }),
+    getGraphViewApi: async () => {
+      viewCalls += 1
+      return {
+        data: {
+          nodes: [{ id: 'paper_1', label: 'Paper', name: 'Should not load' }],
+          relationships: [],
+        },
+      }
+    },
+    graphDraftApi: async () => ({ data: {} }),
+    graphExecuteApi: async () => ({ data: {} }),
+    reconnectGraphApi: async () => ({ data: {} }),
+  })
+
+  const workspace = useGraphWorkspace()
+  await workspace.refreshSummary({ silent: true })
+
+  const view = await workspace.refreshGraphView()
+
+  assert.equal(viewCalls, 0)
+  assert.equal(view.nodes.length, 0)
+  assert.equal(view.relationships.length, 0)
+  assert.match(view.message, /Neo4j 当前不可用/)
+  assert.match(workspace.feedback.value.text, /Neo4j 当前不可用/)
+
+  resetGraphWorkspaceDependencies()
+})
+
+
 test('useGraphWorkspace expands neighbors and merges graph payload without duplicates', async () => {
   let expandCalls = 0
 

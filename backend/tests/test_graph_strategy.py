@@ -1,5 +1,18 @@
 import json
+import os
+import sys
+import types
+import unittest
+from unittest import mock
 
+from fastapi import HTTPException
+
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+sys.path.insert(0, os.path.join(ROOT, "backend"))
+
+from app.api import graph as graph_api
+from app.models.graph_schemas import GraphStrategyRequest
 from app.services.graph_strategy import (
     build_graph_strategy_context,
     build_graph_strategy_fallback,
@@ -192,3 +205,193 @@ def test_build_graph_strategy_fallback_returns_code_and_control_prompt():
     assert "run_schedule_once" in fallback["code_snippet"]
     assert "保守优化" in fallback["control_prompt"]
     assert fallback["evidence"]
+
+
+class FakeGraphApiGraph:
+    async def view_graph(self, query="", limit=180):
+        return {
+            "ok": True,
+            "configured": True,
+            "neo4j_connected": True,
+            **_mixed_graph_view(),
+        }
+
+
+class FakeGraphApiAgent:
+    async def get_all_gpus(self):
+        return [
+            {
+                "index": 0,
+                "name": "RTX 3090",
+                "temperature": 72,
+                "power_usage": 280.0,
+                "power_limit": 320.0,
+                "gpu_utilization": 25,
+                "memory_used": 12000,
+                "memory_total": 24576,
+            },
+            {
+                "index": 1,
+                "name": "RTX 3090",
+                "temperature": 79,
+                "power_usage": 300.0,
+                "power_limit": 320.0,
+                "gpu_utilization": 84,
+                "memory_used": 18000,
+                "memory_total": 24576,
+            },
+        ]
+
+    async def get_processes(self):
+        return [
+            {
+                "pid": 1234,
+                "gpu_index": 0,
+                "name": "train-a",
+                "username": "alice",
+                "priority": "urgent",
+                "gpu_memory_used": 4000,
+                "manageable_reason": "",
+                "command": "python train_a.py",
+            },
+            {
+                "pid": 5678,
+                "gpu_index": 1,
+                "name": "train-b",
+                "username": "bob",
+                "priority": "deferrable",
+                "gpu_memory_used": 6000,
+                "manageable_reason": "",
+                "command": "python train_b.py",
+            },
+        ]
+
+
+class FakeGraphApiImportContext:
+    def filter_gpus(self, gpus):
+        return gpus
+
+    def filter_processes(self, processes):
+        return processes
+
+
+class FakeGraphApiPrivacy:
+    def sanitize_processes(self, processes):
+        return processes
+
+
+class FakeGraphApiStore:
+    async def get_all_task_priorities(self):
+        return {
+            1234: "urgent",
+            5678: "deferrable",
+        }
+
+
+class FakeGraphApiScheduler:
+    def get_budget_status(self, _gpus):
+        return {
+            "enabled": True,
+            "total_power_budget": 1200,
+        }
+
+
+class FakeGraphApiLLM:
+    def __init__(self, result=None):
+        self.result = result or {
+            "summary": "建议走高峰限功调度",
+            "strategy_steps": ["保护紧急任务", "限制低利用率 GPU 功耗", "执行一次综合调度"],
+            "control_prompt": "保护紧急任务后，对低利用率 GPU 小步限功到 220W 并执行综合调度。",
+            "code_title": "scheduler_power_guard",
+            "code_language": "python",
+            "code_snippet": "def scheduler_power_guard():\n    run_schedule_once()",
+            "risk_notice": "执行前需核对当前预算和任务优先级。",
+            "evidence": ["OptimizationStrategy: 高峰限功调度"],
+            "follow_ups": ["还有哪些约束需要满足？"],
+        }
+        self.calls = []
+
+    async def generate_graph_strategy_plan(
+        self,
+        goal,
+        graph_context_text,
+        runtime_context_text,
+    ):
+        self.calls.append((goal, graph_context_text, runtime_context_text))
+        return dict(self.result)
+
+
+class GraphStrategyRouteTests(unittest.IsolatedAsyncioTestCase):
+    def test_graph_api_exposes_strategy_route_handler(self):
+        self.assertTrue(hasattr(graph_api, "generate_graph_strategy"))
+
+    async def test_strategy_route_returns_llm_payload(self):
+        fake_llm = FakeGraphApiLLM()
+        fake_state = types.SimpleNamespace(
+            graph=FakeGraphApiGraph(),
+            llm=fake_llm,
+            agent=FakeGraphApiAgent(),
+            import_context=FakeGraphApiImportContext(),
+            privacy=FakeGraphApiPrivacy(),
+            store=FakeGraphApiStore(),
+            scheduler=FakeGraphApiScheduler(),
+        )
+        fake_main = types.SimpleNamespace(app_state=fake_state)
+        request = types.SimpleNamespace(state=types.SimpleNamespace(user={"role": "member"}))
+
+        with mock.patch.dict(sys.modules, {"app.main": fake_main}):
+            result = await graph_api.generate_graph_strategy(
+                request,
+                GraphStrategyRequest(message="高峰期降低总功耗，但不影响紧急任务"),
+            )
+
+        self.assertEqual(result["message"], "高峰期降低总功耗，但不影响紧急任务")
+        self.assertTrue(result["used_llm"])
+        self.assertEqual(result["code_title"], "scheduler_power_guard")
+        self.assertIn("高峰期", fake_llm.calls[0][2])
+        self.assertIn("OptimizationStrategy", fake_llm.calls[0][1])
+
+    async def test_strategy_route_falls_back_without_llm(self):
+        fake_state = types.SimpleNamespace(
+            graph=FakeGraphApiGraph(),
+            llm=None,
+            agent=FakeGraphApiAgent(),
+            import_context=FakeGraphApiImportContext(),
+            privacy=FakeGraphApiPrivacy(),
+            store=FakeGraphApiStore(),
+            scheduler=FakeGraphApiScheduler(),
+        )
+        fake_main = types.SimpleNamespace(app_state=fake_state)
+        request = types.SimpleNamespace(state=types.SimpleNamespace(user={"role": "member"}))
+
+        with mock.patch.dict(sys.modules, {"app.main": fake_main}):
+            result = await graph_api.generate_graph_strategy(
+                request,
+                GraphStrategyRequest(message="高峰期降低总功耗，但不影响紧急任务"),
+            )
+
+        self.assertFalse(result["used_llm"])
+        self.assertTrue(result["strategy_steps"])
+        self.assertIn("保守优化", result["control_prompt"])
+
+    async def test_strategy_route_rejects_blank_goal(self):
+        fake_state = types.SimpleNamespace(
+            graph=FakeGraphApiGraph(),
+            llm=None,
+            agent=FakeGraphApiAgent(),
+            import_context=FakeGraphApiImportContext(),
+            privacy=FakeGraphApiPrivacy(),
+            store=FakeGraphApiStore(),
+            scheduler=FakeGraphApiScheduler(),
+        )
+        fake_main = types.SimpleNamespace(app_state=fake_state)
+        request = types.SimpleNamespace(state=types.SimpleNamespace(user={"role": "member"}))
+
+        with mock.patch.dict(sys.modules, {"app.main": fake_main}):
+            with self.assertRaises(HTTPException) as ctx:
+                await graph_api.generate_graph_strategy(
+                    request,
+                    GraphStrategyRequest(message=" "),
+                )
+
+        self.assertEqual(ctx.exception.status_code, 400)

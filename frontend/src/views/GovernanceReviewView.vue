@@ -1,7 +1,8 @@
 <script setup>
 import { computed, ref } from 'vue'
 
-import { buildGovernanceReviewTimeline } from '../lib/governanceReviewModel.js'
+import ControlCommandLedger from '../components/governance/ControlCommandLedger.vue'
+import { buildControlCommandTimeline } from '../lib/controlCapabilityModels.js'
 import { exportTextFile } from '../services/desktopExport.js'
 import { exportFullGovernanceReport } from '../services/api.js'
 
@@ -25,15 +26,43 @@ const props = defineProps({
     type: Object,
     default: () => ({}),
   },
+  control: {
+    type: Object,
+    default: () => ({}),
+  },
 })
 
 const exporting = ref(false)
-const timeline = computed(() => buildGovernanceReviewTimeline(props.governance.reviewState?.auditLogs || []))
+const commandLedger = computed(() => buildControlCommandTimeline(
+  props.governance.reviewState?.commandRecords || [],
+))
 const summary = computed(() => props.reviewModel.summary || {
   fairnessDelta: 0,
   failedActions: 0,
   totalActions: 0,
 })
+
+async function handleApprove(commandId, approved) {
+  try {
+    await props.control.approveCommand?.(
+      commandId,
+      approved,
+      approved ? '治理复盘人工批准' : '治理复盘人工拒绝',
+    )
+    await props.governance.refreshReview?.({ force: true })
+    props.feedback.showNotice?.(
+      'ok',
+      approved ? '命令已批准' : '命令已拒绝',
+      `命令 ${commandId} 状态已更新。`,
+    )
+  } catch (error) {
+    props.feedback.showNotice?.(
+      'critical',
+      '审批失败',
+      error?.message || '请稍后重试',
+    )
+  }
+}
 
 async function exportReport() {
   exporting.value = true
@@ -54,12 +83,8 @@ async function exportReport() {
 
 <template>
   <div class="review-grid">
-    <section class="tech-card panel-card">
-      <div class="panel-card__title">最近治理结果</div>
-      <div v-for="item in timeline" :key="item.id" class="panel-card__item">
-        {{ item.createdAtLabel }} · {{ item.actionLabel }} · 风险 {{ item.riskLabel }}
-      </div>
-      <div v-if="!timeline.length" class="panel-card__item">最近没有新的治理动作。</div>
+    <section class="review-grid__ledger">
+      <ControlCommandLedger :items="commandLedger" @approve="handleApprove" />
     </section>
 
     <section class="tech-card panel-card">
@@ -82,8 +107,12 @@ async function exportReport() {
 <style scoped>
 .review-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1.6fr) repeat(2, minmax(260px, 0.7fr));
   gap: 14px;
+}
+
+.review-grid__ledger {
+  min-width: 0;
 }
 
 .panel-card {

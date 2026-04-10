@@ -6,7 +6,10 @@ from uuid import uuid4
 from app.services.goal_runtime.approval_runtime import GoalRuntimeApprovalRuntime
 from app.services.goal_runtime.goal_parser import parse_goal_message
 from app.services.goal_runtime.planner import build_initial_plan
-from app.services.goal_runtime.session_runtime import GoalRuntimeSessionRuntime
+from app.services.goal_runtime.session_runtime import (
+    GoalRuntimeSessionRuntime,
+    TERMINAL_SESSION_STATUSES,
+)
 from app.services.goal_runtime.session_stream import GoalRuntimeSessionStreamBroker
 
 
@@ -94,7 +97,7 @@ class GoalRuntimeService:
         session_id = uuid4().hex
         await self.store.create_agent_session(
             session_id,
-            {"message": message},
+            {"message": message, "raw_message": message},
             permission_mode,
             "running",
             message,
@@ -120,9 +123,21 @@ class GoalRuntimeService:
     async def get_session(self, session_id: str) -> dict | None:
         return await self.session_runtime.get_session(session_id)
 
+    async def list_sessions(self, limit: int = 20) -> list[dict]:
+        return await self.store.list_agent_sessions(limit=limit)
+
     async def get_events(self, session_id: str) -> list[dict]:
         return await self.session_runtime.get_events(session_id)
 
     async def stream_session(self, session_id: str):
         async for item in self.session_runtime.stream_session(session_id):
             yield item
+
+    async def delete_session(self, session_id: str) -> dict:
+        session = await self.store.get_agent_session(session_id)
+        if session is None:
+            raise ValueError(f"session not found: {session_id}")
+        if session.get("status") not in TERMINAL_SESSION_STATUSES:
+            raise RuntimeError("running session cannot be deleted")
+        await self.store.delete_agent_session(session_id)
+        return {"session_id": session_id, "deleted": True}

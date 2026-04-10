@@ -47,9 +47,11 @@ class PagePrimaryContentLayoutStructureTests(unittest.TestCase):
 
     def test_ai_page_uses_shared_workspace_summary(self):
         page_text = (ROOT / 'frontend/src/views/AIAssistant.vue').read_text(encoding='utf-8')
+        layout_text = (ROOT / 'frontend/src/views/AIWorkspaceLayout.vue').read_text(encoding='utf-8')
 
         self.assertIn('WorkspaceSummary', page_text)
-        self.assertIn('WorkspaceTabs', page_text)
+        self.assertNotIn('WorkspaceTabs', page_text)
+        self.assertIn('WorkspaceTabs', layout_text)
 
 
 if __name__ == '__main__':

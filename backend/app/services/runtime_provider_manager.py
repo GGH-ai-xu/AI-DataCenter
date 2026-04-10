@@ -119,6 +119,17 @@ class RuntimeProviderManager:
                 self._status = "reconnecting"
         return await self.status()
 
+    async def close(self) -> None:
+        async with self._lock:
+            provider = self._provider
+            self._provider = None
+            self._status = "idle"
+        if provider:
+            await provider.close()
+
+    def target_snapshot(self) -> dict | None:
+        return self._public_target(self._target)
+
     def _public_target(self, target) -> dict | None:
         if target is None:
             return None

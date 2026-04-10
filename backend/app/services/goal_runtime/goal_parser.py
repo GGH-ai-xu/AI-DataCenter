@@ -3,6 +3,8 @@ from __future__ import annotations
 from app.services.goal_runtime.control_heuristics import build_control_heuristic
 from app.services.goal_runtime.goal_spec import GoalSpec
 
+JOB_ACTIONS = {"submit_job", "pause_job", "resume_job", "cancel_job"}
+
 
 def _extract_constraints(message: str) -> tuple[str, ...]:
     lowered = (message or "").lower()
@@ -25,7 +27,11 @@ async def parse_goal_message(
     planner_result = planning_result or build_control_heuristic(normalized)
     actions = planner_result.get("actions") or []
     goal_type = "runtime_control" if actions else "analysis"
-    done_when = "goal_constraints_satisfied" if actions else "analysis_generated"
+    has_job_action = any(action.get("action") in JOB_ACTIONS for action in actions)
+    if has_job_action:
+        done_when = "job_state_updated"
+    else:
+        done_when = "goal_constraints_satisfied" if actions else "analysis_generated"
     planner_source = "llm" if planning_result else "rule"
     return GoalSpec(
         session_id=session_id,

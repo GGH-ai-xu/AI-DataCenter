@@ -122,6 +122,82 @@ class GoalRuntimeDataStoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(stream_state["latest_text"], "第二版计划")
         self.assertEqual(stream_state["revision"], 2)
 
+    async def test_list_agent_sessions_returns_latest_first(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = DataStore(os.path.join(tmpdir, "runtime.db"))
+            await store.init()
+            try:
+                await store.create_agent_session(
+                    "sess-older",
+                    {"message": "先前会话"},
+                    "low",
+                    "completed",
+                    "先前会话",
+                )
+                await store.create_agent_session(
+                    "sess-latest",
+                    {"message": "最新会话"},
+                    "high",
+                    "running",
+                    "最新会话",
+                )
+                await store.update_agent_session_status(
+                    "sess-latest",
+                    "awaiting_approval",
+                    "最新会话",
+                    live_phase="awaiting_approval",
+                )
+
+                sessions = await store.list_agent_sessions(limit=10)
+            finally:
+                await store.close()
+
+        self.assertEqual(sessions[0]["session_id"], "sess-latest")
+        self.assertEqual(sessions[0]["status"], "awaiting_approval")
+        self.assertEqual(sessions[1]["session_id"], "sess-older")
+
+    async def test_delete_agent_session_removes_session_events_and_stream_state(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = DataStore(os.path.join(tmpdir, "runtime.db"))
+            await store.init()
+            try:
+                await store.create_agent_session(
+                    "sess-delete",
+                    {"message": "删除这个会话"},
+                    "low",
+                    "completed",
+                    "删除这个会话",
+                )
+                await store.append_agent_event(
+                    "sess-delete",
+                    "SessionCompleted",
+                    {"summary": "已完成"},
+                )
+                await store.upsert_agent_stream_state(
+                    "sess-delete",
+                    "planner",
+                    latest_text="最终计划",
+                    latest_char_count=4,
+                    revision=1,
+                )
+
+                await store.delete_agent_session("sess-delete")
+
+                session = await store.get_agent_session("sess-delete")
+                events = await store.get_agent_events("sess-delete")
+                stream_state = await store.get_agent_stream_state(
+                    "sess-delete",
+                    "planner",
+                )
+                sessions = await store.list_agent_sessions(limit=10)
+            finally:
+                await store.close()
+
+        self.assertIsNone(session)
+        self.assertEqual(events, [])
+        self.assertIsNone(stream_state)
+        self.assertEqual(sessions, [])
+
 
 if __name__ == "__main__":
     unittest.main()

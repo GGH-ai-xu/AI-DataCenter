@@ -3,6 +3,7 @@ param()
 $ErrorActionPreference = "Stop"
 . "$PSScriptRoot\dev-launch-helpers.ps1"
 . "$PSScriptRoot\dev-managed-service-state.ps1"
+. "$PSScriptRoot\local-neo4j-bootstrap.ps1"
 . "$PSScriptRoot\runtime-master-key.ps1"
 Initialize-ConsoleEncoding
 
@@ -55,12 +56,13 @@ Register-ManagedServiceShutdown
 
 if (Test-Path $neo4jBootstrapScript) {
   Write-ServiceLog -ServiceName "Launcher" -Message "Ensuring local Neo4j availability for knowledge graph workspace"
-  & powershell -ExecutionPolicy Bypass -File $neo4jBootstrapScript 2>&1 | ForEach-Object {
-    Write-ServiceLog -ServiceName "Neo4j" -Message "$_"
-  }
-  if ($LASTEXITCODE -ne 0) {
-    Write-ServiceLog -ServiceName "Neo4j" -Message "Local Neo4j bootstrap failed; graph workspace may remain offline."
-  }
+  Invoke-OptionalLocalNeo4jBootstrap `
+    -BootstrapScript $neo4jBootstrapScript `
+    -ServiceName "Neo4j" `
+    -WriteLog {
+      param($serviceName, $message)
+      Write-ServiceLog -ServiceName $serviceName -Message $message
+    } | Out-Null
 }
 
 Write-ServiceLog -ServiceName "Launcher" -Message "Starting Agent on $agentUrl"

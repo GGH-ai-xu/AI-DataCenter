@@ -1,3 +1,7 @@
+import shutil
+import subprocess
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -6,6 +10,27 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class StartDevScriptTests(unittest.TestCase):
+    def _resolve_powershell_path(self, path: Path) -> str:
+        if sys.platform == "win32":
+            return str(path).replace("'", "''")
+
+        wslpath = shutil.which("wslpath")
+        if not wslpath:
+            self.skipTest(
+                "wslpath is required to invoke powershell.exe from a non-Windows Python runtime"
+            )
+
+        return (
+            subprocess.run(
+                [wslpath, "-w", str(path)],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            .stdout.strip()
+            .replace("'", "''")
+        )
+
     def test_install_deps_batch_calls_all_setup_scripts(self):
         script = (ROOT / "install-deps.bat").read_text(encoding="utf-8")
 
@@ -17,6 +42,16 @@ class StartDevScriptTests(unittest.TestCase):
         script = (ROOT / "start-dev.bat").read_text(encoding="utf-8")
 
         self.assertIn(r"scripts\start-dev.ps1", script)
+
+    def test_worktree_start_dev_batch_calls_dedicated_powershell_launcher(self):
+        script = (
+            ROOT / "start-dev-worktree-merge-origin-main-20260410.bat"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn(
+            r"scripts\start-dev-worktree-merge-origin-main-20260410.ps1",
+            script,
+        )
 
     def test_start_electron_dev_batch_calls_powershell_launcher(self):
         script = (ROOT / "start-electron-dev.bat").read_text(encoding="utf-8")
@@ -43,6 +78,59 @@ class StartDevScriptTests(unittest.TestCase):
         self.assertIn('-FilePath $nodeCmd', script)
         self.assertIn('$npmCliPath, "run", "dev"', script)
 
+    def test_worktree_start_dev_ps1_reuses_main_python_and_frontend_dependencies(self):
+        script = (
+            ROOT / "scripts" / "start-dev-worktree-merge-origin-main-20260410.ps1"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('$mainRoot = Split-Path -Parent $PSScriptRoot', script)
+        self.assertIn(
+            '$worktreeRoot = Join-Path $mainRoot ".worktrees\\merge-origin-main-20260410"',
+            script,
+        )
+        self.assertIn(
+            '$pythonExe = Join-Path $mainRoot ".venv\\Scripts\\python.exe"',
+            script,
+        )
+        self.assertIn(
+            '$sharedFrontendNodeModules = Join-Path $mainRoot "frontend\\node_modules"',
+            script,
+        )
+        self.assertIn(
+            '$worktreeFrontendNodeModules = Join-Path $frontendDir "node_modules"',
+            script,
+        )
+        self.assertIn("Ensure-SharedFrontendNodeModulesLink", script)
+        self.assertIn("$agentDir = Join-Path $worktreeRoot \"server-agent\"", script)
+        self.assertIn("$backendDir = Join-Path $worktreeRoot \"backend\"", script)
+        self.assertIn("$frontendDir = Join-Path $worktreeRoot \"frontend\"", script)
+
+    def test_worktree_start_dev_ps1_uses_isolated_managed_service_state_file(self):
+        script = (
+            ROOT / "scripts" / "start-dev-worktree-merge-origin-main-20260410.ps1"
+        ).read_text(encoding="utf-8")
+        helper = (ROOT / "scripts" / "dev-managed-service-state.ps1").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn(
+            '$managedStatePath = Join-Path $mainRoot "runtime\\start-dev-worktree-merge-origin-main-20260410-managed-services.json"',
+            script,
+        )
+        self.assertIn(
+            "Clear-StaleManagedServices -RepoRoot $mainRoot -StatePath $managedStatePath",
+            script,
+        )
+        self.assertIn(
+            "Initialize-ManagedServiceState -RepoRoot $mainRoot -StatePath $managedStatePath",
+            script,
+        )
+        self.assertIn("[string]$StatePath = $null", helper)
+        self.assertIn(
+            "Initialize-ManagedServiceState -RepoRoot $RepoRoot -StatePath $StatePath",
+            helper,
+        )
+
     def test_start_dev_ps1_uses_shared_single_terminal_helpers(self):
         script = (ROOT / "scripts" / "start-dev.ps1").read_text(encoding="utf-8")
 
@@ -62,6 +150,16 @@ class StartDevScriptTests(unittest.TestCase):
         self.assertLess(
             script.index("Clear-StaleManagedServices -RepoRoot $root"),
             script.index('Write-ServiceLog -ServiceName "Launcher" -Message "Starting Agent on $agentUrl"'),
+        )
+
+    def test_start_dev_uses_optional_local_neo4j_bootstrap_helper(self):
+        script = (ROOT / "scripts" / "start-dev.ps1").read_text(encoding="utf-8")
+
+        self.assertIn('. "$PSScriptRoot\\local-neo4j-bootstrap.ps1"', script)
+        self.assertIn("Invoke-OptionalLocalNeo4jBootstrap", script)
+        self.assertNotIn(
+            '& powershell -ExecutionPolicy Bypass -File $neo4jBootstrapScript 2>&1',
+            script,
         )
 
     def test_start_dev_persists_managed_service_state_for_agent_backend_and_frontend(self):
@@ -120,6 +218,18 @@ class StartDevScriptTests(unittest.TestCase):
         self.assertIn("Register-ProcessLogPump", script)
         self.assertIn("Register-ManagedServiceShutdown", script)
 
+    def test_start_electron_dev_uses_optional_local_neo4j_bootstrap_helper(self):
+        script = (ROOT / "scripts" / "start-electron-dev.ps1").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('. "$PSScriptRoot\\local-neo4j-bootstrap.ps1"', script)
+        self.assertIn("Invoke-OptionalLocalNeo4jBootstrap", script)
+        self.assertNotIn(
+            '& powershell -ExecutionPolicy Bypass -File $neo4jBootstrapScript 2>&1',
+            script,
+        )
+
     def test_start_electron_dev_ps1_uses_shared_single_terminal_helpers(self):
         script = (ROOT / "scripts" / "start-electron-dev.ps1").read_text(encoding="utf-8")
 
@@ -145,6 +255,47 @@ class StartDevScriptTests(unittest.TestCase):
         self.assertIn("$desktopProcess.WaitForExit()", script)
         self.assertIn("Desktop shell exited with code", script)
         self.assertNotIn('Start-WindowProcess -Title "GPU Desktop Shell"', script)
+
+    def test_optional_local_neo4j_bootstrap_failure_is_non_fatal(self):
+        powershell = shutil.which("powershell.exe")
+        if not powershell:
+            self.skipTest("powershell.exe not available")
+
+        helper = ROOT / "scripts" / "local-neo4j-bootstrap.ps1"
+        helper_windows = self._resolve_powershell_path(helper)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            failing_script = Path(tmpdir) / "fail-bootstrap.ps1"
+            failing_script.write_text(
+                "Write-Error 'bootstrap boom'\nexit 1\n",
+                encoding="utf-8",
+            )
+            failing_script_windows = self._resolve_powershell_path(failing_script)
+            command = (
+                "$ErrorActionPreference='Stop'; "
+                f". '{helper_windows}'; "
+                "$logs = New-Object System.Collections.Generic.List[string]; "
+                "$result = Invoke-OptionalLocalNeo4jBootstrap "
+                f"-BootstrapScript '{failing_script_windows}' "
+                "-WriteLog { param($service, $message) $logs.Add(\"${service}:${message}\") | Out-Null }; "
+                "Write-Output ('RESULT=' + $result); "
+                "$logs | ForEach-Object { Write-Output ('LOG=' + $_) }"
+            )
+            result = subprocess.run(
+                [powershell, "-NoProfile", "-Command", command],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="ignore",
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("RESULT=False", result.stdout)
+        self.assertIn("bootstrap boom", result.stdout)
+        self.assertIn(
+            "LOG=Neo4j:Local Neo4j bootstrap failed; graph workspace may remain offline.",
+            result.stdout,
+        )
 
     def test_start_electron_dev_ps1_replaces_running_desktop_shell_session_before_starting_new_one(self):
         script = (ROOT / "scripts" / "electron-dev-session.ps1").read_text(encoding="utf-8")

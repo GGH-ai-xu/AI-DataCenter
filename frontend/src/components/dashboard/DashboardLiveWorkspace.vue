@@ -3,6 +3,10 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import PowerTrendChart from '../charts/PowerTrendChart.vue'
 import UtilizationChart from '../charts/UtilizationChart.vue'
+import {
+  formatGpuMemoryGiB,
+  gpuMemoryUsagePercent,
+} from '../../lib/importHardwareFormatting.js'
 
 const props = defineProps({
   store: { type: Object, required: true },
@@ -16,16 +20,8 @@ const pulseCards = computed(() => [
   { label: '严重告警', value: `${props.summary.criticalAlertCount || 0}`, hint: `紧急 ${props.summary.urgentTasks || 0} / 可延迟 ${props.summary.deferrableTasks || 0}`, tone: props.summary.criticalAlertCount > 0 ? 'critical' : 'neutral' },
 ])
 
-function fmtMem(bytes) {
-  return (Number(bytes || 0) / 1073741824).toFixed(1)
-}
-
 function powerPct(usage, limit) {
   return limit > 0 ? Math.round((usage / limit) * 100) : 0
-}
-
-function memPct(used, total) {
-  return total > 0 ? Math.round((used / total) * 100) : 0
 }
 
 function tempColor(temperature) {
@@ -99,8 +95,8 @@ function utilColor(utilization) {
             </div>
             <div class="live-workspace__metric">
               <span>显存</span>
-              <strong class="stat-value">{{ fmtMem(gpu.memory_used) }}/{{ fmtMem(gpu.memory_total) }}G</strong>
-              <div class="live-workspace__bar"><div class="live-workspace__bar-fill" :style="{ width: memPct(gpu.memory_used, gpu.memory_total) + '%', background: '#6f79d8' }"></div></div>
+              <strong class="stat-value">{{ formatGpuMemoryGiB(gpu.memory_used) }}/{{ formatGpuMemoryGiB(gpu.memory_total) }}G</strong>
+              <div class="live-workspace__bar"><div class="live-workspace__bar-fill" :style="{ width: gpuMemoryUsagePercent(gpu.memory_used, gpu.memory_total) + '%', background: '#6f79d8' }"></div></div>
             </div>
           </div>
         </button>

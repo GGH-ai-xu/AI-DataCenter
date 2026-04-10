@@ -17,10 +17,6 @@ import {
 } from '../lib/realtimeSummaries.js'
 import {
   exportGovernanceReport,
-  pauseTask,
-  resumeTask,
-  setTaskPriority,
-  terminateTask,
 } from '../services/api.js'
 import { exportTextFile } from '../services/desktopExport.js'
 
@@ -56,6 +52,10 @@ const props = defineProps({
     default: () => ({}),
   },
   reviewModel: {
+    type: Object,
+    default: () => ({}),
+  },
+  control: {
     type: Object,
     default: () => ({}),
   },
@@ -153,19 +153,18 @@ function shouldConfirmTerminate(proc, action) {
   return window.confirm(`将终止真实进程 PID ${proc.pid}，是否继续？`)
 }
 
-async function requestTaskAction(proc, action) {
-  const options = props.execution.buildExecutionParams?.() || {}
-  if (action === 'pause') return pauseTask(proc.pid, options)
-  if (action === 'resume') return resumeTask(proc.pid, options)
-  return terminateTask(proc.pid, options)
+function capabilityForAction(action) {
+  if (action === 'pause') return 'tasks.pause'
+  if (action === 'resume') return 'tasks.resume'
+  return 'tasks.terminate'
 }
 
-function handleActionResponse(proc, action, data) {
-  const detail = data.message || `${actionLabel(action)}指令已发送到 PID ${proc.pid}`
-  const suffix = action === 'terminate' && data.forced
-    ? '，进程对普通终止无响应，已执行强制结束。'
-    : '。'
-  showNotice('ok', '真实动作已执行', `${detail}${suffix}`)
+function handleActionResponse(proc, action, command) {
+  if (command.execution_state === 'awaiting_approval') {
+    showNotice('warning', '命令待审批', `${actionLabel(action)} PID ${proc.pid} 的命令已进入待审批队列。`)
+    return
+  }
+  showNotice('ok', '真实动作已执行', `${actionLabel(action)}指令已发送到 PID ${proc.pid}。`)
 }
 
 async function doAction(proc, action) {
@@ -187,8 +186,15 @@ async function doAction(proc, action) {
 
   setActionLoading(proc, action, true)
   try {
-    const response = await requestTaskAction(proc, action)
-    handleActionResponse(proc, action, response?.data || {})
+    const command = await props.control.submitBuiltinCommand?.(
+      capabilityForAction(action),
+      { pid: proc.pid },
+      {
+        section: 'actions',
+        acknowledgeRisk: props.execution.riskAcknowledged,
+      },
+    )
+    handleActionResponse(proc, action, command || {})
   } catch (error) {
     console.error(error)
     showNotice(
@@ -208,7 +214,12 @@ async function changePriority(proc, priority) {
     return
   }
   try {
-    await setTaskPriority(proc.pid, priority)
+    await props.control.submitBuiltinCommand?.(
+      'tasks.priority.set',
+      { pid: proc.pid, priority },
+      { section: 'actions' },
+    )
+    showNotice('ok', '优先级已更新', `PID ${proc.pid} 已更新为 ${priority}。`)
     await refreshActions(true)
   } catch (error) {
     console.error(error)
@@ -236,43 +247,67 @@ async function doExportGovernance() {
     exporting.value = false
   }
 }
+
+function openAdvancedControl() {
+  props.control.openDrawer?.('actions')
+}
 </script>
 
 <template>
-  <WorkspacePaneLayout>
-    <template #main>
-      <GovernanceActionsMainPane
-        :keyword="keyword"
-        :selected-priority="selectedPriority"
-        :show-all-processes="showAllProcesses"
-        :exporting="exporting"
-        :filtered-processes="filteredProcesses"
-        :visible-count="visibleProcesses.length"
-        :priority-colors="PRIORITY_COLORS"
-        :ledger-component="TaskProcessLedger"
-        :ledger-helpers="ledgerHelpers"
-        :ledger-handlers="ledgerHandlers"
-        @update:keyword="keyword = $event"
-        @update:selected-priority="selectedPriority = $event"
-        @update:show-all-processes="showAllProcesses = $event"
-        @export="doExportGovernance"
-      />
-    </template>
+  <div class="governance-actions-view">
+    <div class="governance-actions-view__toolbar">
+      <button type="button" class="btn-tech" @click="openAdvancedControl">
+        高级操作
+      </button>
+    </div>
 
-    <template #side>
-      <GovernanceActionsSidePane
-        :execution="execution"
-        :execution-summary="executionSummary"
-        :fairness-title="FAIRNESS_SECTION_TITLE"
-        :yield-title="YIELD_SECTION_TITLE"
-        :fairness-overview="fairnessOverview"
-        :fairness-users="fairnessUsers"
-        :yield-candidates="yieldCandidates"
-        :fairness-recommendations="fairnessRecommendations"
-        :priority-colors="PRIORITY_COLORS"
-        :yield-limit="YIELD_CANDIDATE_LIMIT"
-        @update:risk-acknowledged="updateRiskAcknowledged"
-      />
-    </template>
-  </WorkspacePaneLayout>
+    <WorkspacePaneLayout>
+      <template #main>
+        <GovernanceActionsMainPane
+          :keyword="keyword"
+          :selected-priority="selectedPriority"
+          :show-all-processes="showAllProcesses"
+          :exporting="exporting"
+          :filtered-processes="filteredProcesses"
+          :visible-count="visibleProcesses.length"
+          :priority-colors="PRIORITY_COLORS"
+          :ledger-component="TaskProcessLedger"
+          :ledger-helpers="ledgerHelpers"
+          :ledger-handlers="ledgerHandlers"
+          @update:keyword="keyword = $event"
+          @update:selected-priority="selectedPriority = $event"
+          @update:show-all-processes="showAllProcesses = $event"
+          @export="doExportGovernance"
+        />
+      </template>
+
+      <template #side>
+        <GovernanceActionsSidePane
+          :execution="execution"
+          :execution-summary="executionSummary"
+          :fairness-title="FAIRNESS_SECTION_TITLE"
+          :yield-title="YIELD_SECTION_TITLE"
+          :fairness-overview="fairnessOverview"
+          :fairness-users="fairnessUsers"
+          :yield-candidates="yieldCandidates"
+          :fairness-recommendations="fairnessRecommendations"
+          :priority-colors="PRIORITY_COLORS"
+          :yield-limit="YIELD_CANDIDATE_LIMIT"
+          @update:risk-acknowledged="updateRiskAcknowledged"
+        />
+      </template>
+    </WorkspacePaneLayout>
+  </div>
 </template>
+
+<style scoped>
+.governance-actions-view {
+  display: grid;
+  gap: 12px;
+}
+
+.governance-actions-view__toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+</style>

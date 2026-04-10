@@ -7,15 +7,37 @@ import time
 from typing import Optional
 
 import aiosqlite
+from app.services.cluster_control.sqlite_support import (
+    CLUSTER_CONTROL_INIT_SQL,
+    create_allocation as create_cluster_allocation_record,
+    create_job as create_cluster_job_record,
+    get_job as load_cluster_job,
+    list_allocations as load_cluster_allocations,
+    list_jobs as load_cluster_jobs,
+    list_queues as load_cluster_queues,
+    require_cluster_db,
+    update_job_state as update_cluster_job_state_record,
+    upsert_queue as upsert_cluster_queue_record,
+)
+from app.services.control_plane.sqlite_support import (
+    CONTROL_PLANE_INIT_SQL,
+    create_command as create_control_command_record,
+    get_command as load_control_command,
+    list_commands as load_control_commands,
+    require_control_plane_db,
+    update_command as update_control_command_record,
+)
 from app.services.goal_runtime.data_store_support import (
     GOAL_RUNTIME_INIT_SQL,
     append_agent_event as append_runtime_event,
     create_agent_session as create_runtime_session,
+    delete_agent_session as remove_runtime_session,
     ensure_runtime_session_columns,
     ensure_runtime_event_columns,
     get_agent_events as load_runtime_events,
     get_agent_session as load_runtime_session,
     get_agent_stream_state as load_runtime_stream_state,
+    list_agent_sessions as load_runtime_sessions,
     require_runtime_db,
     upsert_agent_stream_state as upsert_runtime_stream_state,
     update_agent_session_status as update_runtime_session_status,
@@ -168,7 +190,12 @@ class DataStore:
         )
         self._db.row_factory = aiosqlite.Row
         await self._configure_sqlite()
-        await self._db.executescript(_INIT_SQL + GOAL_RUNTIME_INIT_SQL)
+        await self._db.executescript(
+            _INIT_SQL
+            + GOAL_RUNTIME_INIT_SQL
+            + CLUSTER_CONTROL_INIT_SQL
+            + CONTROL_PLANE_INIT_SQL
+        )
         await self._ensure_scope_columns()
         await ensure_runtime_session_columns(self._db)
         await ensure_runtime_event_columns(self._db)
@@ -270,6 +297,12 @@ class DataStore:
     async def get_agent_session(self, session_id: str) -> dict | None:
         return await load_runtime_session(require_runtime_db(self._db), session_id)
 
+    async def list_agent_sessions(self, limit: int = 20) -> list[dict]:
+        return await load_runtime_sessions(
+            require_runtime_db(self._db),
+            limit=limit,
+        )
+
     async def append_agent_event(
         self,
         session_id: str,
@@ -323,6 +356,83 @@ class DataStore:
 
     async def get_agent_events(self, session_id: str) -> list[dict]:
         return await load_runtime_events(require_runtime_db(self._db), session_id)
+
+    async def delete_agent_session(self, session_id: str) -> None:
+        await remove_runtime_session(require_runtime_db(self._db), session_id)
+
+    # ========== Cluster Control ==========
+
+    async def upsert_cluster_queue(self, payload: dict) -> None:
+        await upsert_cluster_queue_record(require_cluster_db(self._db), payload)
+
+    async def list_cluster_queues(self) -> list[dict]:
+        return await load_cluster_queues(require_cluster_db(self._db))
+
+    async def create_cluster_job(self, record) -> None:
+        await create_cluster_job_record(require_cluster_db(self._db), record)
+
+    async def get_cluster_job(self, job_id: str) -> dict | None:
+        return await load_cluster_job(require_cluster_db(self._db), job_id)
+
+    async def list_cluster_jobs(self) -> list[dict]:
+        return await load_cluster_jobs(require_cluster_db(self._db))
+
+    async def update_cluster_job_state(
+        self,
+        job_id: str,
+        status: str,
+        *,
+        execution_backend: str = "",
+    ) -> None:
+        await update_cluster_job_state_record(
+            require_cluster_db(self._db),
+            job_id,
+            status,
+            execution_backend=execution_backend,
+        )
+
+    async def create_cluster_allocation(self, payload: dict) -> None:
+        await create_cluster_allocation_record(
+            require_cluster_db(self._db),
+            payload,
+        )
+
+    async def list_cluster_allocations(self) -> list[dict]:
+        return await load_cluster_allocations(require_cluster_db(self._db))
+
+    # ========== Control Plane ==========
+
+    async def create_control_command(self, record) -> None:
+        await create_control_command_record(require_control_plane_db(self._db), record)
+
+    async def get_control_command(self, command_id: str) -> dict | None:
+        return await load_control_command(
+            require_control_plane_db(self._db),
+            command_id,
+        )
+
+    async def list_control_commands(
+        self,
+        *,
+        workspace_key: str | None = None,
+        limit: int = 20,
+    ) -> list[dict]:
+        return await load_control_commands(
+            require_control_plane_db(self._db),
+            workspace_key=workspace_key,
+            limit=limit,
+        )
+
+    async def update_control_command(
+        self,
+        command_id: str,
+        changes: dict,
+    ) -> None:
+        await update_control_command_record(
+            require_control_plane_db(self._db),
+            command_id,
+            changes,
+        )
 
     # ========== GPU历史数据 ==========
 
