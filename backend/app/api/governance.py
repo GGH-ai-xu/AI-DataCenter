@@ -239,7 +239,7 @@ async def export_full_governance_report(
             _logger.warning("综合报告-AI分析生成失败: %s", e)
             sections.append("## 五、AI 分析报告\n\n数据暂不可用。\n")
 
-    sections.append("---\n\n*由 GPU 共享治理平台自动生成*")
+    sections.append("---\n\n*由智算中心优化代码生成系统自动生成*")
 
     content = "\n".join(sections)
     content = app_state.privacy.mask_text(

@@ -3,9 +3,13 @@ import sys
 import tempfile
 import unittest
 
+from repo_test_bootstrap import prepare_backend_test_env
+
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-sys.path.insert(0, os.path.join(ROOT, "backend"))
+missing_deps = prepare_backend_test_env("cryptography")
+if missing_deps:
+    raise unittest.SkipTest(f"missing backend test dependencies: {', '.join(missing_deps)}; run install-deps.bat")
 
 from app.services.credential_cipher import CredentialCipher  # noqa: E402
 from app.services.credential_store import CredentialStore  # noqa: E402

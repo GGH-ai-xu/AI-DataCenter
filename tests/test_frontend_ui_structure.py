@@ -25,7 +25,6 @@ class FrontendUIStructureTests(unittest.TestCase):
         for rel in [
             "frontend/src/views/Dashboard.vue",
             "frontend/src/views/EnergyOptimization.vue",
-            "frontend/src/views/AIAssistant.vue",
         ]:
             text = (ROOT / rel).read_text(encoding="utf-8")
             self.assertIn("activeTab", text, rel)
@@ -46,7 +45,6 @@ class FrontendUIStructureTests(unittest.TestCase):
             "frontend/src/views/GovernanceLayout.vue",
             "frontend/src/views/MonitorCenter.vue",
             "frontend/src/views/EnergyOptimization.vue",
-            "frontend/src/views/AIAssistant.vue",
         ]:
             text = (ROOT / rel).read_text(encoding="utf-8")
             self.assertIn("workspace-nav-layout", text, rel)
@@ -170,6 +168,19 @@ class FrontendUIStructureTests(unittest.TestCase):
         self.assertIn("theme-mode-switch__group--inline", text)
         self.assertIn("grid-template-columns: repeat(3, minmax(0, 1fr));", text)
         self.assertIn("theme-mode-switch__option-label", text)
+
+    def test_ai_assistant_thread_uses_interaction_card_components(self):
+        for rel in [
+            "frontend/src/components/agent/AgentInteractionList.vue",
+            "frontend/src/components/agent/AgentInteractionCard.vue",
+            "frontend/src/components/agent/AgentInteractionSteps.vue",
+            "frontend/src/components/agent/AgentInteractionDetail.vue",
+        ]:
+            self.assertTrue((ROOT / rel).exists(), rel)
+
+        thread_text = (ROOT / "frontend/src/components/agent/AgentThread.vue").read_text(encoding="utf-8")
+        self.assertIn("AgentInteractionList", thread_text)
+        self.assertNotIn("AgentThreadItem", thread_text)
 
     def test_shell_and_import_workspaces_map_local_theme_tokens_to_semantic_tokens(self):
         console_text = (ROOT / "frontend/src/views/ConsoleShell.vue").read_text(encoding="utf-8")
@@ -399,7 +410,8 @@ class FrontendUIStructureTests(unittest.TestCase):
 
     def test_ai_assistant_executes_real_actions_without_rehearsal_copy(self):
         text = (ROOT / "frontend/src/views/AIAssistant.vue").read_text(encoding="utf-8")
-        self.assertIn("执行控制台", text)
+        self.assertIn("高权限", text)
+        self.assertIn("低权限", text)
         self.assertNotIn("执行演练", text)
         self.assertNotIn("先演练后执行", text)
         self.assertNotIn("dry_run: true", text)
@@ -529,29 +541,42 @@ class FrontendUIStructureTests(unittest.TestCase):
 
     def test_ai_assistant_uses_runtime_session_api(self):
         text = (ROOT / "frontend/src/views/AIAssistant.vue").read_text(encoding="utf-8")
+        workbench_text = (
+            ROOT / "frontend/src/composables/useAiAssistantWorkbench.js"
+        ).read_text(encoding="utf-8")
+        runtime_text = (
+            ROOT / "frontend/src/composables/useAiAssistantRuntimeSession.js"
+        ).read_text(encoding="utf-8")
         api_text = (ROOT / "frontend/src/services/api.js").read_text(encoding="utf-8")
 
         self.assertIn("startAgentRuntimeSession", api_text)
         self.assertIn("approveAgentRuntimeSession", api_text)
+        self.assertIn("deleteAgentRuntimeSession", api_text)
+        self.assertIn("getAgentRuntimeSessions", api_text)
         self.assertNotIn("aiControlPlan", api_text)
         self.assertNotIn("aiControlExecute", api_text)
-        self.assertIn("AgentControlDock", text)
-        self.assertIn("AgentExecutionLedger", text)
+        self.assertIn("AgentWorkbench", text)
+        self.assertIn("useAiAssistantWorkbench", text)
+        self.assertIn("startAgentRuntimeSession", runtime_text)
+        self.assertIn("approveAgentRuntimeSession", runtime_text)
+        self.assertIn("getAgentRuntimeSessions", runtime_text)
+        self.assertIn("buildAgentSessionHistory", runtime_text)
+        self.assertIn("startRuntimeRequest", workbench_text)
         self.assertNotIn("aiControlPlan(", text)
 
     def test_ai_assistant_uses_execution_ledger_components(self):
         text = (ROOT / "frontend/src/views/AIAssistant.vue").read_text(encoding="utf-8")
 
-        self.assertIn("AgentControlDock", text)
-        self.assertIn("AgentExecutionLedger", text)
+        self.assertIn("AgentWorkbench", text)
+        self.assertNotIn("AgentControlDock", text)
+        self.assertNotIn("AgentExecutionLedger", text)
         self.assertNotIn("AgentSessionTimeline", text)
 
         for rel in [
-            "frontend/src/components/agent/AgentControlDock.vue",
-            "frontend/src/components/agent/AgentExecutionLedger.vue",
-            "frontend/src/components/agent/AgentRunOverviewBar.vue",
-            "frontend/src/components/agent/AgentLedgerRound.vue",
-            "frontend/src/components/agent/AgentLedgerEventCard.vue",
+            "frontend/src/components/agent/AgentWorkbench.vue",
+            "frontend/src/components/agent/AgentSessionRail.vue",
+            "frontend/src/components/agent/AgentThread.vue",
+            "frontend/src/components/agent/AgentComposer.vue",
         ]:
             self.assertTrue((ROOT / rel).exists(), rel)
 
@@ -561,18 +586,134 @@ class FrontendUIStructureTests(unittest.TestCase):
             "frontend/src/components/agent/AgentSessionRail.vue",
             "frontend/src/components/agent/AgentWorkbenchTopbar.vue",
             "frontend/src/components/agent/AgentThread.vue",
-            "frontend/src/components/agent/AgentThreadRouteConfirmCard.vue",
             "frontend/src/components/agent/AgentComposer.vue",
         ]:
             self.assertTrue((ROOT / rel).exists(), rel)
 
     def test_ai_assistant_uses_streaming_live_panel_and_stream_apis(self):
-        text = (ROOT / "frontend/src/views/AIAssistant.vue").read_text(encoding="utf-8")
+        workbench_text = (
+            ROOT / "frontend/src/composables/useAiAssistantWorkbench.js"
+        ).read_text(encoding="utf-8")
+        runtime_text = (
+            ROOT / "frontend/src/composables/useAiAssistantRuntimeSession.js"
+        ).read_text(encoding="utf-8")
         api_text = (ROOT / "frontend/src/services/api.js").read_text(encoding="utf-8")
 
-        self.assertIn("PlannerLivePanel", text)
+        self.assertIn("plannerLiveText", runtime_text)
+        self.assertIn("openAiChatStream", workbench_text)
+        self.assertIn("openAgentRuntimeSessionStream", runtime_text)
         self.assertIn("openAiChatStream", api_text)
         self.assertIn("openAgentRuntimeSessionStream", api_text)
+
+    def test_ai_assistant_legacy_execution_ledger_components_are_removed(self):
+        for rel in [
+            "frontend/src/components/agent/AgentControlDock.vue",
+            "frontend/src/components/agent/AgentControlSessionCard.vue",
+            "frontend/src/components/agent/AgentExecutionLedger.vue",
+            "frontend/src/components/agent/AgentRunOverviewBar.vue",
+            "frontend/src/components/agent/PlannerLivePanel.vue",
+            "frontend/src/components/agent/AgentSessionTimeline.vue",
+            "frontend/src/components/agent/AgentLedgerEventCard.vue",
+            "frontend/src/components/agent/AgentLedgerRound.vue",
+        ]:
+            self.assertFalse((ROOT / rel).exists(), rel)
+
+    def test_ai_assistant_uses_modal_workbench_layout(self):
+        text = (ROOT / "frontend/src/views/AIAssistant.vue").read_text(encoding="utf-8")
+        dialog_text = (
+            ROOT / "frontend/src/components/agent/AgentModelConfigDialog.vue"
+        ).read_text(encoding="utf-8")
+
+        self.assertNotIn("WorkspaceTabs", text)
+        self.assertNotIn("activeTab", text)
+        self.assertIn("AgentWorkbench", text)
+        self.assertIn("AgentModelConfigDialog", text)
+        self.assertIn("showModelConfig", text)
+        self.assertIn("模型配置", text)
+        self.assertNotIn("AgentChatPane", text)
+        self.assertNotIn("AgentControlDock", text)
+        self.assertNotIn("AgentExecutionLedger", text)
+        self.assertIn("AgentModelConfigPane", dialog_text)
+        self.assertIn("keydown", dialog_text)
+
+    def test_ai_assistant_destructures_composable_refs_before_passing_props(self):
+        text = (ROOT / "frontend/src/views/AIAssistant.vue").read_text(encoding="utf-8")
+
+        self.assertIn(':active-session-id="activeSessionId"', text)
+        self.assertIn(':topbar="workbenchView.topbar"', text)
+        self.assertIn(':composer-text="composerText"', text)
+        self.assertIn(':llm-ready="llmReady"', text)
+        self.assertIn('@create-session="startNewSession"', text)
+        self.assertNotIn(':quick-prompts="', text)
+        self.assertNotIn('@use-prompt=', text)
+        self.assertNotIn(':active-session-id="workbench.activeSessionId"', text)
+        self.assertNotIn(':topbar="workbench.workbenchView.topbar"', text)
+        self.assertNotIn(':llm-ready="llm.llmReady"', text)
+
+    def test_ai_session_rail_has_explicit_heading_and_empty_state_copy(self):
+        text = (ROOT / "frontend/src/components/agent/AgentSessionRail.vue").read_text(encoding="utf-8")
+
+        self.assertIn("会话栏", text)
+        self.assertIn("最近会话", text)
+        self.assertIn("暂无历史会话", text)
+        self.assertIn("新建会话", text)
+        self.assertIn("删除会话", text)
+        self.assertIn("agent-session-rail__delete", text)
+
+    def test_ai_composer_uses_autosize_textarea_without_quick_prompt_row(self):
+        text = (ROOT / "frontend/src/components/agent/AgentComposer.vue").read_text(encoding="utf-8")
+
+        self.assertIn("scrollHeight", text)
+        self.assertIn("style.height = 'auto'", text)
+        self.assertIn("watch(", text)
+        self.assertIn('<footer class="agent-composer">', text)
+        self.assertIn("grid-template-columns: minmax(0, 1fr) auto;", text)
+        self.assertIn("align-items: end;", text)
+        self.assertNotIn("agent-composer tech-card", text)
+        self.assertNotIn("agent-composer__chips", text)
+        self.assertNotIn("quickPrompts", text)
+
+    def test_ai_workbench_separates_thread_scroll_region_from_bottom_composer(self):
+        text = (ROOT / "frontend/src/components/agent/AgentWorkbench.vue").read_text(encoding="utf-8")
+
+        self.assertIn("agent-workbench__thread-shell", text)
+        self.assertIn("agent-workbench__composer-shell", text)
+        self.assertIn("grid-template-rows: auto minmax(0, 1fr) auto;", text)
+        self.assertIn("grid-row: 2;", text)
+        self.assertIn("grid-row: 3;", text)
+        self.assertIn("overflow-y: auto;", text)
+        self.assertIn("padding-bottom: 18px;", text)
+
+    def test_ai_workbench_topbar_removes_mode_status_badges(self):
+        text = (ROOT / "frontend/src/components/agent/AgentWorkbenchTopbar.vue").read_text(encoding="utf-8")
+
+        self.assertNotIn("agent-workbench-topbar__badges", text)
+        self.assertNotIn("status-badge", text)
+        self.assertNotIn("modeLabel", text)
+        self.assertNotIn("statusLabel", text)
+        self.assertNotIn("approvalLabel", text)
+        self.assertIn('v-if="model.liveText"', text)
+
+    def test_ai_assistant_uses_backend_dispatch_instead_of_local_intent_rules(self):
+        workbench_text = (
+            ROOT / "frontend/src/composables/useAiAssistantWorkbench.js"
+        ).read_text(encoding="utf-8")
+        view_text = (ROOT / "frontend/src/views/AIAssistant.vue").read_text(encoding="utf-8")
+
+        self.assertIn("dispatchAiWorkbenchMessage", workbench_text)
+        self.assertFalse((ROOT / "frontend/src/lib/agentWorkbenchIntent.js").exists())
+        self.assertNotIn("resolveWorkbenchIntent", workbench_text)
+        self.assertNotIn("pendingRouteConfirm", workbench_text)
+        self.assertNotIn("resolveRouteConfirm", workbench_text)
+        self.assertNotIn("@choose-route", view_text)
+
+    def test_ai_workbench_thread_no_longer_builds_route_confirm_cards(self):
+        thread_text = (
+            ROOT / "frontend/src/lib/agentWorkbenchThread.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertNotIn("route_confirm_card", thread_text)
+        self.assertNotIn("pendingRouteConfirm", thread_text)
 
     def test_ai_chat_pane_uses_dedicated_markdown_message_body(self):
         pane_text = (

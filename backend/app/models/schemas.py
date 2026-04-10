@@ -74,6 +74,7 @@ class PowerBudgetConfigRequest(BaseModel):
 class ScheduleRunRequest(BaseModel):
     acknowledge_risk: bool = False
 
+
 class ScheduleAction(BaseModel):
     """单条调度动作"""
     action: str  # set_power_limit / pause_task / resume_task
@@ -86,6 +87,77 @@ class ScheduleStrategy(BaseModel):
     actions: list[ScheduleAction]
     summary: str
     estimated_power_saving: Optional[float] = None
+
+
+# ========== 集群控制面 ==========
+
+class ClusterQueueResponse(BaseModel):
+    queue_id: str
+    name: str
+    state: str
+    default_priority: int
+
+
+class ClusterJobResponse(BaseModel):
+    job_id: str
+    queue_id: str
+    tenant_id: str
+    project_id: str
+    submitter_id: str
+    job_type: str
+    entrypoint: str
+    status: str
+    priority: int
+
+
+class ClusterAllocationResponse(BaseModel):
+    allocation_id: str
+    job_id: str
+    node_id: str
+    status: str
+    execution_backend: str
+
+
+class ClusterJobSubmitRequest(BaseModel):
+    job_id: str = Field(min_length=1, max_length=120)
+    tenant_id: str = Field(min_length=1, max_length=120)
+    project_id: str = Field(min_length=1, max_length=120)
+    queue_id: str = Field(min_length=1, max_length=120)
+    submitter_id: str = Field(min_length=1, max_length=120)
+    job_type: str = Field(min_length=1, max_length=80)
+    entrypoint: str = Field(min_length=1, max_length=500)
+    args: list[str] = Field(default_factory=list)
+    env: dict[str, str] = Field(default_factory=dict)
+    resource_request: dict = Field(default_factory=dict)
+    placement_constraints: dict = Field(default_factory=dict)
+    priority: int = 50
+    preemptible: bool = True
+    max_retries: int = Field(default=0, ge=0, le=20)
+    timeout_seconds: int = Field(default=0, ge=0)
+
+
+class ClusterJobSubmitResponse(BaseModel):
+    job_id: str
+    state: str
+    plan_type: str
+
+
+# ========== 统一控制面 ==========
+
+class ControlCommandCreateRequest(BaseModel):
+    capability_name: str = Field(min_length=1, max_length=120)
+    arguments: dict = Field(default_factory=dict)
+    acknowledge_risk: bool = False
+    dry_run: bool = False
+    reason: str = Field(default="", max_length=500)
+    permission_mode: str = Field(default="", max_length=40)
+    source_page: str = Field(default="", max_length=120)
+    related_session_id: str = Field(default="", max_length=120)
+
+
+class ControlCommandApprovalRequest(BaseModel):
+    approved: bool
+    comment: str = Field(default="", max_length=500)
 
 
 # ========== 告警相关 ==========
@@ -113,22 +185,15 @@ class ChatResponse(BaseModel):
     suggestions: list[str] = []
 
 
-class AIControlPlanRequest(BaseModel):
+class AiWorkbenchDispatchRequest(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
 
 
-class AIControlAction(BaseModel):
-    action: str = Field(
-        pattern=r"^(set_power_limit|pause_task|resume_task|terminate_task|set_task_priority|configure_budget|run_schedule_once)$"
-    )
-    target: dict = Field(default_factory=dict)
-    reason: str = Field(default="", max_length=500)
-
-
-class AIControlExecuteRequest(BaseModel):
-    message: str = Field(default="", max_length=2000)
-    actions: list[AIControlAction] = Field(default_factory=list)
-    acknowledge_risk: bool = False
+class AiWorkbenchDispatchResponse(BaseModel):
+    route_kind: str = Field(pattern=r"^(chat|runtime)$")
+    reply_mode: Optional[str] = Field(default=None, pattern=r"^(inline|stream)$")
+    reply: str = ""
+    message: str = ""
 
 
 # ========== 任务优先级 ==========
@@ -236,3 +301,20 @@ class LLMConfigRequest(BaseModel):
     model: str = Field(default="", max_length=200)
     api_key: Optional[str] = Field(default="", max_length=500)
     keep_existing_key: bool = True
+
+
+class AgentRuntimeStartRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=2000)
+    permission_mode: str = Field(default="low", pattern=r"^(high|low)$")
+
+
+class AgentRuntimeApprovalRequest(BaseModel):
+    approved: bool
+
+
+class AgentRuntimeSessionResponse(BaseModel):
+    session_id: str
+    status: str
+    permission_mode: str = Field(pattern=r"^(high|low)$")
+    summary: str = ""
+    requires_approval: bool = False

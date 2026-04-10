@@ -14,7 +14,7 @@ const RISK_LABELS = Object.freeze({
 
 const SOURCE_LABELS = Object.freeze({
   manual: '手动操作',
-  ai_control: 'AI 控制台',
+  ai_control: 'AI 助手工作台',
   auto_schedule: '自动调度',
 })
 

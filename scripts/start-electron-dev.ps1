@@ -75,8 +75,19 @@ $agentUrl = "http://127.0.0.1:$agentPort"
 $backendUrl = "http://127.0.0.1:$backendPort"
 $frontendUrl = "http://127.0.0.1:$frontendPort/"
 $runtimeMasterKey = Ensure-RepoRuntimeMasterKey -RepoRoot $root
+$neo4jBootstrapScript = Join-Path $root "scripts\start-local-neo4j.ps1"
 
 Register-ManagedServiceShutdown
+
+if (Test-Path $neo4jBootstrapScript) {
+  Write-ServiceLog -ServiceName "Launcher" -Message "Ensuring local Neo4j availability for knowledge graph workspace"
+  & powershell -ExecutionPolicy Bypass -File $neo4jBootstrapScript 2>&1 | ForEach-Object {
+    Write-ServiceLog -ServiceName "Neo4j" -Message "$_"
+  }
+  if ($LASTEXITCODE -ne 0) {
+    Write-ServiceLog -ServiceName "Neo4j" -Message "Local Neo4j bootstrap failed; graph workspace may remain offline."
+  }
+}
 
 Write-ServiceLog -ServiceName "Launcher" -Message "Starting Agent on $agentUrl"
 $agentProcess = Start-ManagedServiceProcess `

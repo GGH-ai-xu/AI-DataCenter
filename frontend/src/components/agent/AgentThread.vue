@@ -1,30 +1,19 @@
 <script setup>
-import AgentThreadItem from './AgentThreadItem.vue'
+import AgentInteractionList from './AgentInteractionList.vue'
 
 defineProps({
-  items: { type: Array, default: () => [] },
+  leadMessage: { type: Object, default: null },
+  interactions: { type: Array, default: () => [] },
 })
 
-const emit = defineEmits(['approve', 'reject', 'chooseRoute'])
+const emit = defineEmits(['approve', 'reject'])
 </script>
 
 <template>
-  <section class="agent-thread">
-    <AgentThreadItem
-      v-for="item in items"
-      :key="item.id"
-      :item="item"
-      @approve="emit('approve', $event)"
-      @reject="emit('reject', $event)"
-      @choose-route="emit('chooseRoute', $event)"
-    />
-  </section>
+  <AgentInteractionList
+    :lead-message="leadMessage"
+    :interactions="interactions"
+    @approve="emit('approve', $event)"
+    @reject="emit('reject', $event)"
+  />
 </template>
-
-<style scoped>
-.agent-thread {
-  display: grid;
-  gap: 12px;
-  align-content: start;
-}
-</style>

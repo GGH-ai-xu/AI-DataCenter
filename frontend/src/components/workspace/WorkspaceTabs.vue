@@ -10,6 +10,10 @@ const props = defineProps({
     type: String,
     required: true,
   },
+  compact: {
+    type: Boolean,
+    default: false,
+  },
   orientation: {
     type: String,
     default: 'horizontal',
@@ -19,6 +23,7 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue'])
 const rootClass = computed(() => ({
   'workspace-tabs--vertical': props.orientation === 'vertical',
+  'workspace-tabs--compact': props.compact,
 }))
 </script>
 

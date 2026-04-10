@@ -196,7 +196,7 @@ Restructure `Dashboard.vue` around the shared primitives:
 
 ```vue
 <WorkspaceSummary
-  eyebrow="治理工作台"
+  eyebrow="智算中心优化代码生成系统"
   title="先看判断，再进入具体治理动作"
   :description="governanceTip"
 >

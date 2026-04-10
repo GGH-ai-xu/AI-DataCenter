@@ -120,14 +120,29 @@ class RealDataOnlyStructureTests(unittest.TestCase):
         ai_text = (ROOT / "frontend/src/views/AIAssistant.vue").read_text(encoding="utf-8")
 
         self.assertNotIn("Session Timeline", ai_text)
-        self.assertIn("AgentExecutionLedger", ai_text)
+        self.assertIn("AgentWorkbench", ai_text)
+        self.assertNotIn("AgentExecutionLedger", ai_text)
+        self.assertNotIn("AgentControlDock", ai_text)
 
-    def test_ai_assistant_streaming_ui_uses_runtime_session_stream(self):
+    def test_ai_assistant_uses_unified_workbench_instead_of_ledger_page(self):
         ai_text = (ROOT / "frontend/src/views/AIAssistant.vue").read_text(encoding="utf-8")
 
-        self.assertIn("plannerLiveText", ai_text)
-        self.assertIn("openAgentRuntimeSessionStream", ai_text)
-        self.assertNotIn("EventSource(", ai_text)
+        self.assertIn("AgentWorkbench", ai_text)
+        self.assertNotIn("AgentExecutionLedger", ai_text)
+        self.assertNotIn("AgentControlDock", ai_text)
+
+    def test_ai_assistant_streaming_ui_uses_runtime_session_stream(self):
+        workbench_text = (
+            ROOT / "frontend/src/composables/useAiAssistantWorkbench.js"
+        ).read_text(encoding="utf-8")
+        runtime_text = (
+            ROOT / "frontend/src/composables/useAiAssistantRuntimeSession.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("plannerLiveText", runtime_text)
+        self.assertIn("openAgentRuntimeSessionStream", runtime_text)
+        self.assertIn("openAiChatStream", workbench_text)
+        self.assertNotIn("EventSource(", runtime_text)
 
     def test_ai_chat_markdown_rendering_is_scoped_to_assistant_messages(self):
         body_text = (

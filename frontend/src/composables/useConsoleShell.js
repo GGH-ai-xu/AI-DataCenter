@@ -40,7 +40,7 @@ const GROUP_META = Object.freeze({
 function baseAppInfo() {
   const webDev = Boolean(import.meta.env.DEV)
   return {
-    name: 'GPU 共享治理平台',
+    name: '智算中心优化代码生成系统',
     version: '',
     updateSupported: false,
     releasesUrl: '',

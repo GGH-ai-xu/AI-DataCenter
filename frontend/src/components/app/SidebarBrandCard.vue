@@ -35,7 +35,7 @@ const emit = defineEmits(['switch-server'])
         :class="{ 'app-sidebar-brand-card__copy--collapsed': props.collapsed }"
         :aria-hidden="props.collapsed ? 'true' : 'false'"
       >
-        <h1 class="app-sidebar-brand-card__title">{{ props.appInfo.name || 'GPU 共享治理平台' }}</h1>
+        <h1 class="app-sidebar-brand-card__title">{{ props.appInfo.name || '智算中心优化代码生成系统' }}</h1>
         <p class="app-sidebar-brand-card__summary">{{ props.summary || '导入范围待确认' }}</p>
       </div>
       <div class="app-sidebar-brand-card__actions">

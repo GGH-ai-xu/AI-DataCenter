@@ -112,8 +112,73 @@ export const getScheduleEvaluation = () => api.get('/scheduler/evaluation')
 
 // AI对话
 export const aiChat = (message) => api.post('/ai/chat', { message })
-export const aiControlPlan = (message) => api.post('/ai/control/plan', { message })
-export const aiControlExecute = (payload) => api.post('/ai/control/execute', payload)
+async function openAuthorizedEventStream(url, payload = null, options = {}) {
+  const token = readSessionToken()
+  const response = await fetch(url, {
+    method: payload ? 'POST' : 'GET',
+    headers: {
+      Accept: 'text/event-stream',
+      ...(payload ? { 'Content-Type': 'application/json' } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: payload ? JSON.stringify(payload) : undefined,
+    signal: options.signal,
+  })
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(text || `stream request failed: ${response.status}`)
+  }
+  return response
+}
+
+export const dispatchAiWorkbenchMessage = (message) =>
+  api.post('/ai/workbench/dispatch', { message })
+export const openAiChatStream = (message, options = {}) =>
+  openAuthorizedEventStream('/api/ai/chat/stream', { message }, options)
+export const startAgentRuntimeSession = (message, permission_mode = 'low') =>
+  api.post('/agent-runtime/sessions', { message, permission_mode })
+export const approveAgentRuntimeSession = (sessionId, approved) =>
+  api.post(`/agent-runtime/sessions/${sessionId}/approve`, { approved })
+export const deleteAgentRuntimeSession = (sessionId) =>
+  api.delete(`/agent-runtime/sessions/${sessionId}`)
+export const getAgentRuntimeSessions = (limit = 20) =>
+  api.get('/agent-runtime/sessions', { params: { limit } })
+export const getAgentRuntimeSession = (sessionId) =>
+  api.get(`/agent-runtime/sessions/${sessionId}`)
+export const getAgentRuntimeSessionEvents = (sessionId) =>
+  api.get(`/agent-runtime/sessions/${sessionId}/events`)
+export const openAgentRuntimeSessionStream = (sessionId, options = {}) =>
+  openAuthorizedEventStream(
+    `/api/agent-runtime/sessions/${sessionId}/stream`,
+    null,
+    options,
+  )
+
+// 图谱
+export const graphDraft = (payload) => api.post('/graph/draft', payload)
+export const graphExecute = (payload) => api.post('/graph/execute', payload)
+export const getGraphSummary = () => api.get('/graph/summary')
+export const getGraphView = (params = {}) => api.get('/graph/view', { params })
+export const getGraphNeighbors = (params = {}) => api.get('/graph/neighbors', { params })
+export const reconnectGraph = () => api.post('/graph/reconnect')
+export const rebuildGraphDemo = (kind = 'optimization') => api.post('/graph/demo/rebuild', null, { params: { kind } })
+export const graphQa = (payload) => api.post('/graph/qa', payload)
+
+// 集群控制台
+export const listClusterQueues = () => api.get('/cluster/queues')
+export const listClusterJobs = () => api.get('/cluster/jobs')
+export const listClusterAllocations = () => api.get('/cluster/allocations')
+export const submitClusterJob = (payload) => api.post('/cluster/jobs', payload)
+export const getClusterJob = (jobId) => api.get(`/cluster/jobs/${jobId}`)
+export const getControlCapabilities = () => api.get('/control/capabilities')
+export const getControlCatalog = () => api.get('/control/catalog')
+export const createControlCommand = (payload) => api.post('/control/commands', payload)
+export const listControlCommands = (limit = 50) =>
+  api.get('/control/commands', { params: { limit } })
+export const getControlCommand = (commandId) =>
+  api.get(`/control/commands/${commandId}`)
+export const approveControlCommand = (commandId, approved, comment = '') =>
+  api.post(`/control/commands/${commandId}/approve`, { approved, comment })
 
 // 告警
 export const getAlerts = (limit = 50, unack_only = false) => api.get('/alerts/', { params: { limit, unack_only } })

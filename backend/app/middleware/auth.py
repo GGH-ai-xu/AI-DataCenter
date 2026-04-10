@@ -13,6 +13,11 @@ from typing import Optional
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
+from app.services.workspace_context import (
+    build_workspace_key,
+    reset_workspace_key,
+    set_workspace_key,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +50,7 @@ ADMIN_ONLY_PREFIXES = (
     "/api/scheduler/carbon-budget",
     "/api/scheduler/power-limit",
     "/api/scheduler/run-once",
-    "/api/ai/control/execute",
+    "/api/agent-runtime",
     "/api/governance/rules",
     "/api/system/connection",
     "/api/system/import-context",
@@ -72,57 +77,82 @@ def _resolve_role(token: Optional[str]) -> Optional[str]:
         return "observer"
     return None
 
+
 class TokenAuthMiddleware(BaseHTTPMiddleware):
     """平台会话优先的鉴权中间件"""
 
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
         method = request.method.upper()
-
-        # 公开路径放行
-        if any(path.startswith(prefix) for prefix in SESSION_PUBLIC_PREFIXES):
-            return await call_next(request)
-
-        # 静态文件和非 API 路径放行
-        if not path.startswith("/api"):
-            return await call_next(request)
-
         token = _extract_token(request)
-        session_user = None
-        if token:
-            try:
-                from app.main import app_state
-                session_user = await app_state.platform_auth.resolve_session(token)
-            except Exception as exc:
-                logger.debug("session resolve failed: %s", exc)
+        session_user = await self._resolve_session_user(token)
+        role = self._apply_identity(request, token, session_user)
+        workspace_key = build_workspace_key(session_user, role)
+        await self._ensure_workspace(workspace_key)
+        workspace_token = set_workspace_key(workspace_key)
 
+        try:
+            if any(path.startswith(prefix) for prefix in SESSION_PUBLIC_PREFIXES):
+                return await call_next(request)
+            if not path.startswith("/api"):
+                return await call_next(request)
+            if session_user is not None:
+                return await self._handle_session_user(request, call_next, path)
+            if role is None:
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "请先登录平台", "code": "UNAUTHORIZED"},
+                )
+            if method in ("POST", "PUT", "DELETE", "PATCH"):
+                is_admin_path = any(path.startswith(prefix) for prefix in ADMIN_ONLY_PREFIXES)
+                if is_admin_path and role != "admin":
+                    return JSONResponse(
+                        status_code=403,
+                        content={"detail": "此操作需要管理员权限", "code": "FORBIDDEN"},
+                    )
+            return await call_next(request)
+        finally:
+            reset_workspace_key(workspace_token)
+
+    async def _resolve_session_user(self, token: Optional[str]) -> Optional[dict]:
+        if not token:
+            return None
+        from app.main import app_state
+
+        return await app_state.platform_auth.resolve_session(token)
+
+    def _apply_identity(
+        self,
+        request: Request,
+        token: Optional[str],
+        session_user: Optional[dict],
+    ) -> Optional[str]:
         if session_user is not None:
             request.state.user = session_user
             request.state.role = session_user["role"]
             request.state.auth_token = token
-            if session_user["must_change_password"]:
-                allowed = any(path.startswith(prefix) for prefix in PASSWORD_CHANGE_ALLOWED_PREFIXES)
-                if not allowed:
-                    return JSONResponse(
-                        status_code=403,
-                        content={"detail": "首次登录后必须先修改密码", "code": "PASSWORD_CHANGE_REQUIRED"},
-                    )
-            return await call_next(request)
-
+            return session_user["role"]
         role = _resolve_role(token)
-        if role is None:
-            return JSONResponse(
-                status_code=401,
-                content={"detail": "请先登录平台", "code": "UNAUTHORIZED"},
-            )
+        if role is not None:
+            request.state.role = role
+            request.state.auth_token = token
+        return role
 
-        request.state.role = role
-        if method in ("POST", "PUT", "DELETE", "PATCH"):
-            is_admin_path = any(path.startswith(prefix) for prefix in ADMIN_ONLY_PREFIXES)
-            if is_admin_path and role != "admin":
-                return JSONResponse(
-                    status_code=403,
-                    content={"detail": "此操作需要管理员权限", "code": "FORBIDDEN"},
-                )
+    async def _handle_session_user(self, request: Request, call_next, path: str):
+        user = request.state.user
+        if not user["must_change_password"]:
+            return await call_next(request)
+        allowed = any(path.startswith(prefix) for prefix in PASSWORD_CHANGE_ALLOWED_PREFIXES)
+        if allowed:
+            return await call_next(request)
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "首次登录后必须先修改密码", "code": "PASSWORD_CHANGE_REQUIRED"},
+        )
 
-        return await call_next(request)
+    async def _ensure_workspace(self, workspace_key: str) -> None:
+        from app.main import app_state
+
+        workspaces = getattr(app_state, "workspaces", None)
+        if workspaces is not None:
+            await workspaces.ensure_workspace(workspace_key)

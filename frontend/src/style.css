@@ -543,7 +543,7 @@ canvas {
   align-self: start;
   z-index: 6;
   padding: 8px 0 10px;
-  background: linear-gradient(180deg, rgba(11, 16, 32, 0.9), rgba(11, 16, 32, 0.68) 72%, transparent);
+  background: linear-gradient(180deg, var(--bg-primary), transparent 78%);
   backdrop-filter: blur(16px);
 }
 
@@ -613,6 +613,20 @@ canvas {
 .workspace-tabs--vertical .workspace-tab {
   width: 100%;
   min-width: 0;
+}
+
+.workspace-tabs--compact .workspace-tab {
+  min-width: 132px;
+  gap: 2px;
+  padding: 12px 14px;
+}
+
+.workspace-tabs--compact .workspace-tab__label {
+  font-size: 0.84rem;
+}
+
+.workspace-tabs--compact .workspace-tab__desc {
+  display: none;
 }
 
 .workspace-tabs--vertical .workspace-tab__label,

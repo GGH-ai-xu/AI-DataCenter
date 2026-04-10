@@ -7,6 +7,13 @@ from typing import Optional
 
 from openai import AsyncOpenAI
 
+from app.services.optimization_ontology import (
+    build_graph_extract_prompt,
+    graph_source_default,
+    graph_source_type_default,
+    normalize_graph_mode,
+)
+
 logger = logging.getLogger(__name__)
 
 # 系统提示词 - 能耗优化专家
@@ -94,7 +101,7 @@ EVALUATE_PROMPT = """上次调度执行了以下操作：
 严格按JSON返回：
 {{"score": 0, "verdict": "一句话评价", "effective_actions": [], "ineffective_actions": [], "improvement": "改进建议"}}"""
 
-CONTROL_PROMPT = """你是 GPU 治理工作台里的 AI 执行控制台规划器。
+CONTROL_PROMPT = """你是智算中心优化代码生成系统里的 AI 执行控制台规划器。
 
 你的任务不是直接执行动作，而是把用户的自然语言要求翻译成“可审核、可执行”的结构化动作计划。
 
@@ -129,6 +136,50 @@ CONTROL_PROMPT = """你是 GPU 治理工作台里的 AI 执行控制台规划器
     }}
   ]
 }}"""
+
+GRAPH_QA_PROMPT = """你是智算中心优化代码生成系统里的图谱问答助手。
+
+你只能依据给定的图谱证据回答，不允许引用图外知识，不允许把常识当成图谱事实。
+
+回答规则：
+1. 如果证据足够，先给一句结论，再给 2-4 句解释。
+2. 如果证据不足，必须明确说“当前图库里没有足够证据”。
+3. 证据项要尽量引用图里的节点名、关系类型和论文名。
+4. 只返回 JSON，不要返回 Markdown。
+
+返回格式：
+{
+  "summary": "一句话结论",
+  "answer": "详细回答",
+  "confidence": "high|medium|low",
+  "evidence": ["证据1", "证据2"],
+  "follow_ups": ["后续问题1", "后续问题2"]
+}"""
+
+GRAPH_STRATEGY_PROMPT = """你是智算中心优化代码生成系统里的本体 GraphRAG 策略生成助手。
+
+你必须先阅读给定的“图谱证据”和“当前运行态”，再给出可解释的优化策略和代码模板。
+你不能编造图里没有出现过的约束、策略名、模板名或接口名。
+如果图谱证据不足，必须明确说明证据不足，并给出一版保守模板。
+
+返回格式：
+{
+  "summary": "一句话总结",
+  "strategy_steps": ["步骤1", "步骤2", "步骤3"],
+  "control_prompt": "一条可以交给执行控制台的中文指令",
+  "code_title": "代码模板标题",
+  "code_language": "python",
+  "code_snippet": "代码片段",
+  "risk_notice": "风险提示",
+  "evidence": ["证据1", "证据2"],
+  "follow_ups": ["追问1", "追问2"]
+}
+
+要求：
+1. strategy_steps 保持 3-6 条，必须能落到运维动作。
+2. code_snippet 优先复用图谱里提到的模板名、接口名或动作名，例如 set_power_limit、set_task_priority、run_schedule_once。
+3. control_prompt 必须简短、克制、可直接给运维人员理解。
+4. 只返回 JSON，不要返回 Markdown。"""
 
 
 class LLMService:
@@ -436,6 +487,113 @@ class LLMService:
             max_tokens=1500,
         ):
             yield item
+
+    async def generate_graph_draft(
+        self,
+        title: str,
+        abstract: str = "",
+        content: str = "",
+        mode: str = "paper",
+        source: str = "paper",
+        source_type: str = "",
+        domain_tag: str = "",
+        scenario: str = "",
+    ) -> Optional[dict]:
+        """根据论文内容生成知识图谱草稿。"""
+        normalized_mode = normalize_graph_mode(mode)
+        normalized_source = str(source or "").strip() or graph_source_default(normalized_mode)
+        normalized_source_type = str(source_type or "").strip() or graph_source_type_default(normalized_mode)
+        excerpt = (content or "").strip()
+        if len(excerpt) > 12000:
+            excerpt = excerpt[:12000].strip() + "\n...(已截断)"
+        prompt = (
+            f"模式：{normalized_mode}\n"
+            f"来源：{normalized_source}\n"
+            f"来源类型：{normalized_source_type}\n"
+            f"领域标签：{(domain_tag or '').strip()}\n"
+            f"适用场景：{(scenario or '').strip()}\n"
+            f"标题：{title.strip()}\n\n"
+            f"摘要：\n{(abstract or '').strip()}\n\n"
+            f"正文片段：\n{excerpt}\n\n"
+            "请严格输出固定 JSON。"
+        )
+        try:
+            content = await self._call_with_retry(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": build_graph_extract_prompt(normalized_mode)},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.2,
+                max_tokens=2000,
+            )
+            return self._parse_json_response(content)
+        except Exception as e:
+            logger.error(f"知识图谱草稿生成失败: {e}")
+            return None
+
+    async def answer_graph_question(
+        self,
+        question: str,
+        context_text: str,
+    ) -> Optional[dict]:
+        """基于图谱证据回答问题。"""
+        prompt = (
+            f"用户问题：{question.strip()}\n\n"
+            f"图谱证据：\n{context_text.strip()}\n\n"
+            "请严格输出 JSON。"
+        )
+        try:
+            content = await self._call_with_retry(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": GRAPH_QA_PROMPT},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.2,
+                max_tokens=1500,
+            )
+            parsed = self._parse_json_response(content)
+            if parsed is not None:
+                return parsed
+            return {
+                "summary": "图谱问答已生成",
+                "answer": content.strip(),
+                "confidence": "medium",
+                "evidence": [],
+                "follow_ups": [],
+            }
+        except Exception as e:
+            logger.error(f"图谱问答生成失败: {e}")
+            return None
+
+    async def generate_graph_strategy_plan(
+        self,
+        goal: str,
+        graph_context_text: str,
+        runtime_context_text: str,
+    ) -> Optional[dict]:
+        """基于图谱证据和运行态生成策略与代码模板。"""
+        prompt = (
+            f"优化目标：{goal.strip()}\n\n"
+            f"图谱证据：\n{graph_context_text.strip()}\n\n"
+            f"当前运行态：\n{runtime_context_text.strip()}\n\n"
+            "请严格输出 JSON。"
+        )
+        try:
+            content = await self._call_with_retry(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": GRAPH_STRATEGY_PROMPT},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.2,
+                max_tokens=2000,
+            )
+            return self._parse_json_response(content)
+        except Exception as e:
+            logger.error(f"图谱策略生成失败: {e}")
+            return None
 
     @staticmethod
     def _extract_suggestions(text: str) -> list[str]:
