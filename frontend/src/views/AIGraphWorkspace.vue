@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, proxyRefs, ref, watch } from 'vue'
+import { computed, inject, onBeforeUnmount, onMounted, proxyRefs, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 import GraphCatalogViewer from '../components/ai/GraphCatalogViewer.vue'
@@ -8,9 +8,8 @@ import GraphExecuteResult from '../components/ai/GraphExecuteResult.vue'
 import GraphImportPanel from '../components/ai/GraphImportPanel.vue'
 import GraphQAPanel from '../components/ai/GraphQAPanel.vue'
 import GraphStrategyGenerator from '../components/ai/GraphStrategyGenerator.vue'
-import WorkspaceSummary from '../components/workspace/WorkspaceSummary.vue'
 import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
-import { useAiAssistantLlm } from '../composables/useAiAssistantLlm.js'
+import { AI_WORKSPACE_SHELL_CONTEXT_KEY } from '../composables/aiWorkspaceShellContext.js'
 import { useGraphWorkspace } from '../composables/useGraphWorkspace.js'
 import { graphStrategy } from '../services/api.js'
 
@@ -19,7 +18,14 @@ defineOptions({ name: 'AIGraphWorkspace' })
 const router = useRouter()
 const knowledgeTab = ref('import')
 const graphWorkspace = proxyRefs(useGraphWorkspace())
-const { llmReady, loadAssistantCapability } = useAiAssistantLlm()
+const shellContext = inject(AI_WORKSPACE_SHELL_CONTEXT_KEY, null)
+
+if (!shellContext) {
+  throw new Error('AI workspace shell context is unavailable.')
+}
+
+const { llmState, setGraphToolbarStatus, resetGraphToolbarStatus } = shellContext
+const { llmReady } = llmState
 
 const knowledgeTabs = Object.freeze([
   { key: 'import', label: '知识入图', desc: '工作台' },
@@ -33,10 +39,7 @@ const graphStrategyForm = ref({
 })
 const graphStrategyBusy = ref(false)
 const graphStrategyResult = ref(null)
-
-const graphStatusLabel = computed(() => (
-  graphWorkspace.summary.neo4j_connected ? '图库在线' : '图库离线'
-))
+const graphToolbarReady = ref(false)
 const canGenerateGraphStrategy = computed(() => (
   Boolean(graphStrategyForm.value.message.trim())
   && Boolean(graphWorkspace.summary.neo4j_connected)
@@ -102,9 +105,15 @@ watch(knowledgeTab, (tab) => {
   }
 })
 
+watch(() => graphWorkspace.summary.neo4j_connected, () => {
+  if (!graphToolbarReady.value) return
+  setGraphToolbarStatus(graphWorkspace.summary)
+})
+
 async function initializeGraphWorkspace() {
-  await loadAssistantCapability()
   const nextSummary = await graphWorkspace.refreshSummary({ silent: true })
+  setGraphToolbarStatus(nextSummary)
+  graphToolbarReady.value = true
   if (nextSummary?.neo4j_connected) {
     await graphWorkspace.refreshGraphView({ silent: true })
   }
@@ -113,23 +122,15 @@ async function initializeGraphWorkspace() {
 onMounted(() => {
   void initializeGraphWorkspace()
 })
+
+onBeforeUnmount(() => {
+  graphToolbarReady.value = false
+  resetGraphToolbarStatus()
+})
 </script>
 
 <template>
   <div class="ai-page ink-page-shell">
-    <WorkspaceSummary title="图谱工作台" description="把入图、检索、问答和策略生成放到独立图谱域中处理。">
-      <template #meta>
-        <div class="ink-inline-meta">
-          <span class="status-badge" :class="graphWorkspace.summary.neo4j_connected ? 'status-badge--ok' : 'status-badge--warning'">
-            {{ graphStatusLabel }}
-          </span>
-          <span class="status-badge" :class="llmReady ? 'status-badge--ok' : 'status-badge--warning'">
-            {{ llmReady ? 'LLM 已就绪' : 'LLM 未就绪' }}
-          </span>
-        </div>
-      </template>
-    </WorkspaceSummary>
-
     <div class="graph-workspace-shell">
       <div class="graph-workspace-shell__nav">
         <WorkspaceTabs
@@ -223,10 +224,6 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 16px;
-}
-
-.graph-workspace-shell__nav {
-  padding-bottom: 4px;
 }
 
 .graph-workspace {

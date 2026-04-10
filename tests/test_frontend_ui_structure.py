@@ -85,14 +85,16 @@ class FrontendUIStructureTests(unittest.TestCase):
             self.assertNotIn("description=", text, rel)
             self.assertNotIn(":description=", text, rel)
 
-    def test_energy_ai_and_alert_pages_use_shared_workspace_summary(self):
+    def test_energy_and_alert_pages_use_workspace_summary_while_ai_uses_compact_toolbar(self):
         energy_text = (ROOT / "frontend/src/views/EnergyOptimization.vue").read_text(encoding="utf-8")
+        ai_layout_text = (ROOT / "frontend/src/views/AIWorkspaceLayout.vue").read_text(encoding="utf-8")
         ai_text = (ROOT / "frontend/src/views/AIAssistant.vue").read_text(encoding="utf-8")
         alert_text = (ROOT / "frontend/src/views/AlertCenter.vue").read_text(encoding="utf-8")
 
         self.assertIn("WorkspaceSummary", energy_text)
-        self.assertIn("WorkspaceSummary", ai_text)
         self.assertIn("WorkspaceSummary", alert_text)
+        self.assertNotIn("WorkspaceSummary", ai_text)
+        self.assertIn("workspace-action-rail", ai_layout_text)
 
     def test_ai_workspace_uses_dual_page_layout_for_workbench_and_graph(self):
         for rel in [
@@ -118,6 +120,27 @@ class FrontendUIStructureTests(unittest.TestCase):
         self.assertIn("GraphStrategyGenerator", graph_page_text)
         self.assertIn("matchPrefix: '/ai'", shell_text)
         self.assertIn("graphStrategy", api_text)
+
+    def test_ai_workspace_pages_use_compact_action_rails_instead_of_summary_cards(self):
+        ai_layout_text = (ROOT / "frontend/src/views/AIWorkspaceLayout.vue").read_text(
+            encoding="utf-8"
+        )
+        ai_page_text = (ROOT / "frontend/src/views/AIAssistant.vue").read_text(
+            encoding="utf-8"
+        )
+        graph_page_text = (ROOT / "frontend/src/views/AIGraphWorkspace.vue").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("ai-workspace-layout__toolbar", ai_layout_text)
+        self.assertIn("workspace-action-rail__meta", ai_layout_text)
+        self.assertIn("AgentModelConfigDialog", ai_layout_text)
+        self.assertNotIn("WorkspaceSummary", ai_page_text)
+        self.assertNotIn("WorkspaceSummary", graph_page_text)
+        self.assertNotIn("Teleport", ai_page_text)
+        self.assertNotIn("Teleport", graph_page_text)
+        self.assertIn("AI_WORKSPACE_SHELL_CONTEXT_KEY", ai_page_text)
+        self.assertIn("AI_WORKSPACE_SHELL_CONTEXT_KEY", graph_page_text)
 
     def test_vite_build_still_available(self):
         package_json = (ROOT / "frontend/package.json").read_text(encoding="utf-8")
@@ -483,12 +506,13 @@ class FrontendUIStructureTests(unittest.TestCase):
         self.assertNotIn("activeTab === 'replay'", text)
 
     def test_ai_assistant_executes_real_actions_without_rehearsal_copy(self):
-        text = (ROOT / "frontend/src/views/AIAssistant.vue").read_text(encoding="utf-8")
-        self.assertIn("高权限", text)
-        self.assertIn("低权限", text)
-        self.assertNotIn("执行演练", text)
-        self.assertNotIn("先演练后执行", text)
-        self.assertNotIn("dry_run: true", text)
+        ai_text = (ROOT / "frontend/src/views/AIAssistant.vue").read_text(encoding="utf-8")
+        layout_text = (ROOT / "frontend/src/views/AIWorkspaceLayout.vue").read_text(encoding="utf-8")
+        self.assertIn("高权限", layout_text)
+        self.assertIn("低权限", layout_text)
+        self.assertNotIn("执行演练", ai_text)
+        self.assertNotIn("先演练后执行", ai_text)
+        self.assertNotIn("dry_run: true", ai_text)
 
     def test_monitor_center_cards_define_own_padding(self):
         text = (ROOT / "frontend/src/views/MonitorCenter.vue").read_text(encoding="utf-8")
@@ -694,6 +718,7 @@ class FrontendUIStructureTests(unittest.TestCase):
 
     def test_ai_assistant_uses_modal_workbench_layout(self):
         text = (ROOT / "frontend/src/views/AIAssistant.vue").read_text(encoding="utf-8")
+        layout_text = (ROOT / "frontend/src/views/AIWorkspaceLayout.vue").read_text(encoding="utf-8")
         dialog_text = (
             ROOT / "frontend/src/components/agent/AgentModelConfigDialog.vue"
         ).read_text(encoding="utf-8")
@@ -701,9 +726,9 @@ class FrontendUIStructureTests(unittest.TestCase):
         self.assertNotIn("WorkspaceTabs", text)
         self.assertNotIn("activeTab", text)
         self.assertIn("AgentWorkbench", text)
-        self.assertIn("AgentModelConfigDialog", text)
-        self.assertIn("showModelConfig", text)
-        self.assertIn("模型配置", text)
+        self.assertIn("AgentModelConfigDialog", layout_text)
+        self.assertIn("showModelConfig", layout_text)
+        self.assertIn("模型配置", layout_text)
         self.assertNotIn("AgentChatPane", text)
         self.assertNotIn("AgentControlDock", text)
         self.assertNotIn("AgentExecutionLedger", text)
@@ -712,11 +737,13 @@ class FrontendUIStructureTests(unittest.TestCase):
 
     def test_ai_assistant_destructures_composable_refs_before_passing_props(self):
         text = (ROOT / "frontend/src/views/AIAssistant.vue").read_text(encoding="utf-8")
+        layout_text = (ROOT / "frontend/src/views/AIWorkspaceLayout.vue").read_text(encoding="utf-8")
 
         self.assertIn(':active-session-id="activeSessionId"', text)
         self.assertIn(':topbar="workbenchView.topbar"', text)
         self.assertIn(':composer-text="composerText"', text)
-        self.assertIn(':llm-ready="llmReady"', text)
+        self.assertIn("controlPermissionMode,", text)
+        self.assertIn(':llm-ready="llmReady"', layout_text)
         self.assertIn('@create-session="startNewSession"', text)
         self.assertNotIn(':quick-prompts="', text)
         self.assertNotIn('@use-prompt=', text)

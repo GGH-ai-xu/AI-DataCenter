@@ -29,11 +29,16 @@ function buildPendingAssistantMessage(id) {
   return { id, role: 'assistant', content: '正在生成回复...' }
 }
 
-export function useAiAssistantWorkbench({ pageState, llmReady, llmNotice }) {
+export function useAiAssistantWorkbench({
+  pageState,
+  llmReady,
+  llmNotice,
+  controlPermissionMode: externalControlPermissionMode,
+}) {
   const messages = ref([])
   const composerText = ref('')
   const loading = ref(false)
-  const controlPermissionMode = ref('low')
+  const controlPermissionMode = externalControlPermissionMode || ref('low')
   let messageSequence = 0
 
   function nextMessageId(prefix = 'msg') {

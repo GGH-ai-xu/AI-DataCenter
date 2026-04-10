@@ -551,6 +551,21 @@ canvas {
   min-width: 0;
 }
 
+.workspace-action-rail {
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.workspace-action-rail__meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
 .workspace-tab {
   position: relative;
   overflow: hidden;
