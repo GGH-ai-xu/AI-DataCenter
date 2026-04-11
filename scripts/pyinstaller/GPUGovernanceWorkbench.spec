@@ -2,6 +2,7 @@
 from pathlib import Path
 
 ROOT = Path.cwd()
+ICON = ROOT / "desktop-shell" / "build" / "icon.ico"
 
 
 a = Analysis(
@@ -35,6 +36,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=str(ICON),
 )
 coll = COLLECT(
     exe,

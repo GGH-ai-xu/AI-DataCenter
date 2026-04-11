@@ -403,6 +403,14 @@ class StartDevScriptTests(unittest.TestCase):
         ):
             self.assertTrue((ROOT / relative).exists(), relative)
 
+    def test_launcher_pyinstaller_spec_embeds_desktop_icon(self):
+        spec = (ROOT / "scripts" / "pyinstaller" / "GPUGovernanceWorkbench.spec").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('ICON = ROOT / "desktop-shell" / "build" / "icon.ico"', spec)
+        self.assertIn("icon=str(ICON)", spec)
+
     def test_vite_config_reads_dynamic_proxy_targets(self):
         config = (ROOT / "frontend" / "vite.config.js").read_text(encoding="utf-8")
 
