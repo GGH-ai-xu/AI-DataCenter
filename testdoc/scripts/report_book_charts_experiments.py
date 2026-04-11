@@ -176,11 +176,11 @@ def _decision_detail(item: dict) -> str:
 
 def _coverage_lines(item: dict) -> list[str]:
     actions = _wrap_actions(item["actions"])
-    return [
-        f'能力 {item["action_count"]} 项：{actions[0]}',
-        f'入口：{item["surface"]}',
-        f'证据：{item["evidence"]}',
-    ]
+    lines = [f'能力 {item["action_count"]} 项：{actions[0]}']
+    lines.extend(f"动作续：{group}" for group in actions[1:])
+    lines.append(f'入口：{item["surface"]}')
+    lines.append(f'证据：{item["evidence"]}')
+    return lines
 
 
 def _wrap_actions(actions: list[str]) -> list[str]:
