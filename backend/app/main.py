@@ -47,6 +47,8 @@ from app.services.runtime_snapshot import (
     build_runtime_snapshot,
     empty_runtime_snapshot,
 )
+from app.services.graph_store import GraphStore
+from app.services.local_neo4j import LocalNeo4jService
 from app.services.goal_runtime.platform_capabilities import (
     build_platform_capability_registry,
 )
@@ -116,6 +118,8 @@ class AppState:
     llm_settings: LLMSettingsService
     runtime: RuntimeProviderManager
     workspaces: UserWorkspaceService
+    graph: GraphStore
+    local_neo4j: LocalNeo4jService
     goal_runtime: GoalRuntimeService
     control_plane: ControlPlaneService
     cluster_scheduler: ClusterSchedulerCore
@@ -368,6 +372,10 @@ async def lifespan(app: FastAPI):
         "LLM_CONFIG_PATH",
         os.path.join(runtime_dir, "llm.json"),
     )
+    graph_uri = os.getenv("NEO4J_URI", "bolt://127.0.0.1:7687")
+    graph_username = os.getenv("NEO4J_USER", "neo4j")
+    graph_password = os.getenv("NEO4J_PASSWORD", "")
+    graph_database = os.getenv("NEO4J_DATABASE", "neo4j")
     import_config_path = os.getenv(
         "IMPORT_CONTEXT_PATH",
         os.path.join(runtime_dir, "import-context.json"),
@@ -417,6 +425,13 @@ async def lifespan(app: FastAPI):
     app_state.import_context = WorkspaceImportContextProxy(app_state.workspaces)
     app_state.runtime = WorkspaceRuntimeProxy(app_state.workspaces)
     app_state.agent = WorkspaceAgentProxy(app_state.workspaces)
+    app_state.graph = GraphStore(
+        uri=graph_uri,
+        username=graph_username,
+        password=graph_password,
+        database=graph_database,
+    )
+    app_state.local_neo4j = LocalNeo4jService()
     app_state.store = DataStore(db_path)
     await app_state.store.init()
     await app_state.store.upsert_cluster_queue(
@@ -499,6 +514,16 @@ async def lifespan(app: FastAPI):
         app_state.cluster_orchestrator,
     )
     bind_llm_service(app_state.llm)
+    graph_summary = await app_state.graph.summary()
+    if graph_summary["ready"]:
+        logger.info(
+            "Neo4j 图谱服务已连接，database=%s nodes=%s relations=%s",
+            graph_summary["database"],
+            graph_summary["node_count"],
+            graph_summary["relation_count"],
+        )
+    else:
+        logger.warning("Neo4j 图谱服务未就绪: %s", graph_summary["message"])
 
     # 启动采集循环
     app_state._collect_task = asyncio.create_task(collect_loop())
@@ -512,6 +537,7 @@ async def lifespan(app: FastAPI):
         app_state._collect_task.cancel()
     if app_state._cleanup_task:
         app_state._cleanup_task.cancel()
+    await app_state.graph.close()
     await app_state.workspaces.close_all()
     await app_state.store.close()
     await app_state.identity.close()
@@ -522,7 +548,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="智算中心优化代码生成系统",
     description="面向智算中心的优化治理、知识图谱分析与代码生成系统",
-    version="1.1.4",
+    version="1.1.5",
     lifespan=lifespan,
 )
 
@@ -557,6 +583,7 @@ from app.api.agent_runtime import router as agent_runtime_router
 from app.api.cluster_jobs import router as cluster_jobs_router
 from app.api.cluster_queues import router as cluster_queues_router
 from app.api.control import router as control_router
+from app.api.graph import router as graph_router
 
 app.include_router(gpu_router)
 app.include_router(tasks_router)
@@ -577,6 +604,7 @@ app.include_router(agent_runtime_router)
 app.include_router(cluster_jobs_router)
 app.include_router(cluster_queues_router)
 app.include_router(control_router)
+app.include_router(graph_router)
 
 
 @app.get("/api/health")

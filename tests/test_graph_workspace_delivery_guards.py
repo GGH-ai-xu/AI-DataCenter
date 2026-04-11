@@ -12,7 +12,7 @@ class GraphWorkspaceDeliveryGuardTests(unittest.TestCase):
         )
 
         self.assertIn('title="智算中心优化代码生成系统"', backend_text)
-        self.assertIn('version="1.1.4"', backend_text)
+        self.assertIn('version="1.1.5"', backend_text)
         self.assertNotIn('title="GPU 共享治理平台"', backend_text)
 
     def test_backend_runtime_bundles_local_neo4j_scripts(self):
@@ -46,6 +46,30 @@ class GraphWorkspaceDeliveryGuardTests(unittest.TestCase):
         self.assertIn("requestTimeoutMs: 65000", workspace_text)
         self.assertIn("function resolveGraphStrategyErrorSummary(error)", view_text)
         self.assertIn("图谱策略生成超时", view_text)
+
+    def test_backend_registers_graph_router_and_bootstraps_graph_services(self):
+        backend_text = (ROOT / "backend" / "app" / "main.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("from app.services.graph_store import GraphStore", backend_text)
+        self.assertIn("from app.services.local_neo4j import LocalNeo4jService", backend_text)
+        self.assertIn('graph_uri = os.getenv("NEO4J_URI", "bolt://127.0.0.1:7687")', backend_text)
+        self.assertIn('graph_username = os.getenv("NEO4J_USER", "neo4j")', backend_text)
+        self.assertIn("app_state.graph = GraphStore(", backend_text)
+        self.assertIn("app_state.local_neo4j = LocalNeo4jService()", backend_text)
+        self.assertIn("from app.api.graph import router as graph_router", backend_text)
+        self.assertIn("app.include_router(graph_router)", backend_text)
+
+    def test_packaged_backend_entry_provides_default_local_neo4j_env(self):
+        entry_text = (ROOT / "desktop" / "backend_entry.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('os.environ.setdefault("NEO4J_URI", "bolt://127.0.0.1:7687")', entry_text)
+        self.assertIn('os.environ.setdefault("NEO4J_USER", "neo4j")', entry_text)
+        self.assertIn('os.environ.setdefault("NEO4J_PASSWORD", "GpuGovNeo4j!2026")', entry_text)
+        self.assertIn('os.environ.setdefault("NEO4J_DATABASE", "neo4j")', entry_text)
 
 
 if __name__ == "__main__":
