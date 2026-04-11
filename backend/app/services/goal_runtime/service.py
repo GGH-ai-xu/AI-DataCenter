@@ -6,6 +6,7 @@ from uuid import uuid4
 from app.services.goal_runtime.approval_runtime import GoalRuntimeApprovalRuntime
 from app.services.goal_runtime.goal_parser import parse_goal_message
 from app.services.goal_runtime.planner import build_initial_plan
+from app.services.goal_runtime.session_context import load_session_context_payload
 from app.services.goal_runtime.session_runtime import (
     GoalRuntimeSessionRuntime,
     TERMINAL_SESSION_STATUSES,
@@ -40,6 +41,7 @@ class GoalRuntimeService:
             import_context,
             self.llm_service_reader,
             broker,
+            session_context_reader=self.build_session_context_payload,
         )
         self.approval_runtime = GoalRuntimeApprovalRuntime(
             registry,
@@ -137,6 +139,17 @@ class GoalRuntimeService:
             round_index=round_index,
             sequence=1,
             source="chat",
+        )
+
+    async def build_session_context_payload(
+        self,
+        session_id: str,
+        current_message: str,
+    ) -> dict:
+        return await load_session_context_payload(
+            self.store,
+            session_id,
+            current_message,
         )
 
     async def append_event(

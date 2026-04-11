@@ -145,6 +145,8 @@ async def build_reasoning_trace(
     registry,
     llm_service,
     round_index: int = DEFAULT_TRACE_ROUND_INDEX,
+    session_context: dict | None = None,
+    session_context_text: str = "",
     on_llm_delta: PlanDeltaCallback | None = None,
     on_llm_snapshot: PlanSnapshotCallback | None = None,
 ) -> tuple[dict, list[dict]]:
@@ -196,6 +198,10 @@ async def build_reasoning_trace(
         "permission_mode": permission_mode,
         "snapshot": snapshot,
     }
+    if session_context is not None:
+        request_payload["session_context"] = session_context
+    if session_context_text:
+        request_payload["session_context_text"] = session_context_text
     events.append(
         {
             "event_type": "LLMRequestPrepared",

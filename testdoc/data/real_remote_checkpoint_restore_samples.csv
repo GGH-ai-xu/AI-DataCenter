@@ -1,0 +1,11 @@
+timestamp,elapsed_s,phase,source_gpu_index,target_gpu_index,source_power_w,target_power_w,source_util,target_util,source_process_count,target_process_count
+1775895188.133,5.44,source_running,1,2,249.27,32.06,100,0,1,0
+1775895192.75,10.05,paused_window,1,2,134.27,31.3,0,0,1,0
+1775895195.328,12.63,paused_window,1,2,134.46,31.94,0,0,1,0
+1775895197.834,15.14,paused_window,1,2,136.04,31.21,0,0,1,0
+1775895201.62,18.92,source_resumed,1,2,248.37,37.64,100,0,1,0
+1775895203.338,20.64,checkpoint_ready,1,2,178.88,32.43,0,0,1,0
+1775895208.222,25.52,restored_window,1,2,64.98,298.28,0,100,0,1
+1775895210.86,28.16,restored_window,1,2,34.08,299.1,0,100,0,1
+1775895213.472,30.77,restored_window,1,2,35.64,299.19,0,100,0,1
+1775895216.187,33.49,restored_window,1,2,33.03,299.83,0,100,0,1

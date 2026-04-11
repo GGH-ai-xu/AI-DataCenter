@@ -3,6 +3,7 @@ from __future__ import annotations
 from app.services.goal_runtime.goal_parser import parse_goal_message
 from app.services.goal_runtime.planner import build_initial_plan
 from app.services.goal_runtime.reasoning_trace import build_reasoning_trace
+from app.services.goal_runtime.session_context import format_session_context_for_prompt
 from app.services.goal_runtime.session_events import build_goal_parsed_event
 from app.services.goal_runtime.session_view import build_session_view
 from app.services.goal_runtime.supervisor import execute_plan_session
@@ -35,12 +36,14 @@ class GoalRuntimeSessionRuntime:
         import_context,
         llm_service_reader,
         stream_broker,
+        session_context_reader=None,
     ) -> None:
         self.store = store
         self.registry = registry
         self.import_context = import_context
         self.llm_service_reader = llm_service_reader
         self.stream_broker = stream_broker
+        self.session_context_reader = session_context_reader
 
     async def append_event(
         self,
@@ -202,12 +205,19 @@ class GoalRuntimeSessionRuntime:
                 {"session_id": session_id},
             )
             await self.publish_session_status(session_id, "running", "planning")
+            session_context = None
+            session_context_text = ""
+            if self.session_context_reader is not None:
+                session_context = await self.session_context_reader(session_id, message)
+                session_context_text = format_session_context_for_prompt(session_context)
             planning_result, trace_events = await build_reasoning_trace(
                 message=message,
                 permission_mode=permission_mode,
                 registry=self.registry,
                 llm_service=self.llm_service_reader(),
                 round_index=round_index,
+                session_context=session_context,
+                session_context_text=session_context_text,
                 on_llm_snapshot=lambda text, revision: self.publish_planner_snapshot(
                     session_id,
                     text,

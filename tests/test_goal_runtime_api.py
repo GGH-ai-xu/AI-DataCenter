@@ -536,6 +536,52 @@ class GoalRuntimeServiceTests(unittest.IsolatedAsyncioTestCase):
             [1, 2],
         )
 
+    async def test_start_session_reuse_injects_session_context_into_llm_trace(self):
+        store = FakeStore()
+        llm = FakeLLM(
+            {
+                "summary": "继续处理上一轮任务",
+                "risk_level": "low",
+                "requires_confirmation": False,
+                "warnings": [],
+                "actions": [],
+            }
+        )
+        runtime = GoalRuntimeService(
+            store=store,
+            registry=build_registry(),
+            import_context=FakeImportContext(),
+            runtime_status_reader=None,
+            llm_service_reader=lambda: llm,
+            task_spawner=lambda coro: asyncio.create_task(coro),
+        )
+
+        created = await runtime.append_chat_turn(
+            "第一轮问题",
+            "第一轮回答",
+            "low",
+        )
+        result = await runtime.start_session(
+            "继续刚才那个任务",
+            "low",
+            session_id=created["session"]["session_id"],
+        )
+        await runtime.wait_for_idle()
+
+        events = await runtime.get_events(result["session_id"])
+        prepared = next(
+            item
+            for item in events
+            if item["event_type"] == "LLMRequestPrepared" and item["round_index"] == 2
+        )
+
+        self.assertIn("session_context", prepared["payload"]["prompt_full"])
+        self.assertIn("第一轮问题", llm.calls[0][1])
+        self.assertEqual(
+            prepared["payload"]["prompt_full"]["session_context"]["session_id"],
+            result["session_id"],
+        )
+
     async def test_start_session_rejects_reusing_non_terminal_session(self):
         class SlowStreamingLLM:
             def supports_control_plan_stream(self):

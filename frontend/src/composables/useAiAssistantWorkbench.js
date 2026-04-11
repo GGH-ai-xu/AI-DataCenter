@@ -192,13 +192,13 @@ export function useAiAssistantWorkbench({
     persistTranscript()
   }
 
-  async function streamChatReply(text) {
+  async function streamChatReply(text, sessionId = '') {
     const assistantIndex = messages.value.length
     messages.value.push(buildPendingAssistantMessage(nextMessageId('assistant')))
     persistTranscript()
     let chatState = { text: '', suggestions: [], error: '' }
     try {
-      const response = await openAiChatStream(text)
+      const response = await openAiChatStream(text, { sessionId })
       for await (const frame of parseSseFrames(readResponseTextChunks(response))) {
         chatState = reduceChatStreamEvent(chatState, frame)
         replaceAssistantMessage(assistantIndex, chatState)
@@ -238,7 +238,7 @@ export function useAiAssistantWorkbench({
     const previousSessionId = runtime.activeSessionId.value
 
     try {
-      const { data } = await dispatchAiWorkbenchMessage(text)
+      const { data } = await dispatchAiWorkbenchMessage(text, previousSessionId)
       const action = resolveWorkbenchDispatchResult(data)
       if (action.kind === 'chat_inline') {
         pushAssistantMessage(action.reply)
@@ -246,7 +246,7 @@ export function useAiAssistantWorkbench({
         return
       }
       if (action.kind === 'chat_stream') {
-        const chatState = await streamChatReply(text)
+        const chatState = await streamChatReply(text, previousSessionId)
         const reply = chatState.error || chatState.text || 'AI 服务暂时不可用，请检查 LLM 配置。'
         await persistChatReply(text, reply, previousSessionId, {
           replyMode: 'stream',

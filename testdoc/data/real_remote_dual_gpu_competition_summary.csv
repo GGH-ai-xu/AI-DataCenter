@@ -1,0 +1,7 @@
+role,phase,sample_count,avg_power,peak_power,avg_temperature,above_alert_samples,clean_ratio_pct
+governance,baseline,4,35.95,44.91,58.25,0,100.0
+governance,ramp,6,126.38,348.37,63.67,1,83.3
+governance,post_action,18,268.44,279.13,81.44,0,100.0
+control,baseline,4,23.78,29.42,41.5,0,100.0
+control,ramp,6,110.19,325.77,47.17,1,83.3
+control,post_action,18,328.26,331.77,72.39,18,0.0

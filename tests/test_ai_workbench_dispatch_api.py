@@ -44,11 +44,37 @@ class FakeLLM:
         self.error = error
         self.calls = []
 
-    async def dispatch_workbench_message(self, message, gpu_context=""):
-        self.calls.append((message, gpu_context))
+    async def dispatch_workbench_message(self, message, gpu_context="", session_context=None):
+        self.calls.append((message, gpu_context, session_context))
         if self.error:
             raise self.error
         return dict(self.result)
+
+
+class FakeGoalRuntime:
+    def __init__(self):
+        self.calls = []
+
+    async def build_session_context_payload(self, session_id, current_message):
+        self.calls.append((session_id, current_message))
+        return {
+            "session_id": session_id,
+            "current_request": {"message": current_message},
+            "recent_messages": [
+                {
+                    "round_index": 1,
+                    "messages": [{"role": "user", "content": "上一轮问题"}],
+                }
+            ],
+            "historical_summary": {"round_count": 0, "summary_lines": [], "entities": {}, "constraints": []},
+            "runtime_summary": {
+                "latest_plan": "",
+                "approval_status": "",
+                "latest_execution": "",
+                "latest_failure": "",
+                "live_phase": "completed",
+            },
+        }
 
 
 class AIWorkbenchDispatchRouteTests(unittest.IsolatedAsyncioTestCase):
@@ -62,6 +88,7 @@ class AIWorkbenchDispatchRouteTests(unittest.IsolatedAsyncioTestCase):
             agent=FakeAgent(),
             import_context=FakeImportContext(),
             privacy=FakePrivacy(),
+            goal_runtime=FakeGoalRuntime(),
         )
         fake_main = types.SimpleNamespace(app_state=fake_state)
 
@@ -83,6 +110,7 @@ class AIWorkbenchDispatchRouteTests(unittest.IsolatedAsyncioTestCase):
             agent=FakeAgent(),
             import_context=FakeImportContext(),
             privacy=FakePrivacy(),
+            goal_runtime=FakeGoalRuntime(),
         )
         fake_main = types.SimpleNamespace(app_state=fake_state)
 
@@ -100,6 +128,7 @@ class AIWorkbenchDispatchRouteTests(unittest.IsolatedAsyncioTestCase):
             agent=FakeAgent(),
             import_context=FakeImportContext(),
             privacy=FakePrivacy(),
+            goal_runtime=FakeGoalRuntime(),
         )
         fake_main = types.SimpleNamespace(app_state=fake_state)
 
@@ -118,6 +147,7 @@ class AIWorkbenchDispatchRouteTests(unittest.IsolatedAsyncioTestCase):
             agent=FakeAgent(),
             import_context=FakeImportContext(),
             privacy=FakePrivacy(),
+            goal_runtime=FakeGoalRuntime(),
         )
         fake_main = types.SimpleNamespace(app_state=fake_state)
 
@@ -128,6 +158,35 @@ class AIWorkbenchDispatchRouteTests(unittest.IsolatedAsyncioTestCase):
                 )
 
         self.assertEqual(ctx.exception.status_code, 502)
+
+    async def test_dispatch_passes_session_context_when_session_id_present(self):
+        fake_llm = FakeLLM({"route_kind": "chat", "reply_mode": "stream"})
+        fake_runtime = FakeGoalRuntime()
+        fake_state = types.SimpleNamespace(
+            llm=fake_llm,
+            agent=FakeAgent(),
+            import_context=FakeImportContext(),
+            privacy=FakePrivacy(),
+            goal_runtime=fake_runtime,
+        )
+        fake_main = types.SimpleNamespace(app_state=fake_state)
+
+        with mock.patch.dict(sys.modules, {"app.main": fake_main}):
+            await dispatch_workbench_message(
+                AiWorkbenchDispatchRequest(
+                    message="继续刚才那个任务",
+                    session_id="sess-workbench",
+                )
+            )
+
+        self.assertEqual(
+            fake_runtime.calls,
+            [("sess-workbench", "继续刚才那个任务")],
+        )
+        self.assertEqual(
+            fake_llm.calls[0][2]["session_id"],
+            "sess-workbench",
+        )
 
 
 if __name__ == "__main__":

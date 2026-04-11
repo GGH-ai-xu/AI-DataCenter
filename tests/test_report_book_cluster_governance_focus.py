@@ -42,9 +42,11 @@ def test_cluster_governance_dataset_exists():
 
 def test_chapter5_has_only_cluster_governance_sections():
     text = (ROOT / "testdoc" / "作品报告_网页叙事版.html").read_text(encoding="utf-8")
-    assert "实验五：真实远端功耗告警治理闭环" in text
+    assert "实验 A：真实远端功耗告警治理闭环" in text
     assert "集群调度决策矩阵" in text
     assert "调和执行与状态回写" in text
     assert "治理对象覆盖与审计证据" in text
+    assert "实验 F：跨 GPU 检查点恢复时间线" in text
+    assert "进度连续性与控制效果" in text
     for removed in REMOVED_SECTIONS:
         assert removed not in text

@@ -72,6 +72,70 @@ def ensure_safe_gpu(gpus: list[dict], gpu_index: int) -> dict:
     return target
 
 
+def find_idle_gpu_candidates(gpus: list[dict], minimum_count: int = 2) -> list[dict]:
+    candidates = [
+        gpu
+        for gpu in gpus
+        if float(gpu.get("power_usage", 0) or 0) <= SAFE_IDLE_POWER_WATTS
+        and int(gpu.get("gpu_utilization", 0) or 0) <= 10
+    ]
+    return sorted(candidates, key=lambda item: int(item.get("index", -1)))[:minimum_count]
+
+
+def choose_governance_pair(gpus: list[dict]) -> tuple[dict, dict]:
+    candidates = find_idle_gpu_candidates(gpus, minimum_count=2)
+    if len(candidates) < 2:
+        raise RuntimeError("空闲 GPU 少于 2 张，无法执行双 GPU 实验")
+    return candidates[0], candidates[1]
+
+
+def summarize_role_window(samples: list[dict], role: str, phase: str) -> dict:
+    role_samples = [
+        item
+        for item in samples
+        if str(item.get("gpu_role") or "") == role
+        and str(item.get("phase") or "") == phase
+    ]
+    if not role_samples:
+        raise RuntimeError(f"未找到 role={role}, phase={phase} 的样本")
+    return summarize_window(role_samples)
+
+
+def compute_transition_latency(samples: list[dict], role: str, threshold: float) -> dict:
+    role_samples = [
+        item
+        for item in samples
+        if str(item.get("gpu_role") or "") == role
+    ]
+    first_alert = next(
+        (item for item in role_samples if bool(item.get("above_power_alert", False))),
+        None,
+    )
+    first_action = next(
+        (item for item in role_samples if str(item.get("phase") or "") == "post_action"),
+        None,
+    )
+    first_safe = next(
+        (
+            item
+            for item in role_samples
+            if str(item.get("phase") or "") == "post_action"
+            and float(item.get("power_usage", 0) or 0) < threshold
+        ),
+        None,
+    )
+    return {
+        "first_alert_elapsed_s": first_alert["elapsed_s"] if first_alert else None,
+        "action_elapsed_s": first_action["elapsed_s"] if first_action else None,
+        "first_safe_elapsed_s": first_safe["elapsed_s"] if first_safe else None,
+        "recovery_latency_s": (
+            round(first_safe["elapsed_s"] - first_action["elapsed_s"], 2)
+            if first_safe and first_action
+            else None
+        ),
+    }
+
+
 def write_csv(path: Path, samples: list[dict]) -> None:
     import csv
 

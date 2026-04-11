@@ -81,6 +81,19 @@ def _require_llm(app_state):
     return app_state.llm
 
 
+async def _build_session_context(app_state, session_id: str, message: str) -> dict | None:
+    session_key = str(session_id or "").strip()
+    if not session_key:
+        return None
+    try:
+        return await app_state.goal_runtime.build_session_context_payload(
+            session_key,
+            message,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @router.post("/chat")
 async def chat(req: ChatRequest):
     """AI对话 - 基于实时GPU数据回答能耗相关问题"""
@@ -88,7 +101,8 @@ async def chat(req: ChatRequest):
 
     llm = _require_llm(app_state)
     gpu_context = await _build_gpu_context(app_state)
-    return await llm.chat(req.message, gpu_context)
+    session_context = await _build_session_context(app_state, req.session_id, req.message)
+    return await llm.chat(req.message, gpu_context, session_context=session_context)
 
 
 @router.post("/workbench/dispatch")
@@ -97,8 +111,13 @@ async def dispatch_workbench_message(req: AiWorkbenchDispatchRequest):
 
     llm = _require_llm(app_state)
     gpu_context = await _build_gpu_context(app_state)
+    session_context = await _build_session_context(app_state, req.session_id, req.message)
     try:
-        return await llm.dispatch_workbench_message(req.message, gpu_context)
+        return await llm.dispatch_workbench_message(
+            req.message,
+            gpu_context,
+            session_context=session_context,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:
@@ -113,12 +132,17 @@ async def chat_stream(req: ChatRequest):
     if not llm.supports_chat_stream():
         raise HTTPException(status_code=409, detail="当前模型不支持流式输出")
     gpu_context = await _build_gpu_context(app_state)
+    session_context = await _build_session_context(app_state, req.session_id, req.message)
 
     async def iterator():
         full_text = ""
         yield encode_sse_event("start", {"message": req.message})
         try:
-            async for delta in llm.chat_stream(req.message, gpu_context):
+            async for delta in llm.chat_stream(
+                req.message,
+                gpu_context,
+                session_context=session_context,
+            ):
                 full_text += delta
                 yield encode_sse_event("delta", {"text": delta})
                 yield encode_sse_event("snapshot", {"text": full_text})

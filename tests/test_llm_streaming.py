@@ -51,6 +51,45 @@ class LLMStreamingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(chunks, ["你好", "，世界"])
         self.assertTrue(service.supports_chat_stream())
 
+    async def test_chat_stream_includes_session_context_as_system_message(self):
+        service = LLMService("sk-demo", "https://api.example.com/v1", "demo-model")
+        service.client = FakeAsyncOpenAI(["你好"])
+        session_context = {
+            "session_id": "sess-1",
+            "current_request": {"message": "继续刚才那个任务"},
+            "recent_messages": [
+                {
+                    "round_index": 1,
+                    "messages": [{"role": "user", "content": "第一轮问题"}],
+                }
+            ],
+            "historical_summary": {
+                "round_count": 0,
+                "summary_lines": [],
+                "entities": {},
+                "constraints": [],
+            },
+            "runtime_summary": {
+                "latest_plan": "",
+                "approval_status": "",
+                "latest_execution": "",
+                "latest_failure": "",
+                "live_phase": "completed",
+            },
+        }
+
+        async for _ in service.chat_stream(
+            "继续刚才那个任务",
+            "GPU状态: []",
+            session_context,
+        ):
+            pass
+
+        messages = service.client.chat.completions.calls[0]["messages"]
+        self.assertTrue(
+            any("会话历史摘要：" in item["content"] for item in messages),
+        )
+
     async def test_generate_control_plan_stream_yields_json_fragments(self):
         fragments = [
             '{"summary":"执行一次调度",',

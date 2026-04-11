@@ -114,7 +114,8 @@ export const getScheduleReport = () => api.get('/scheduler/report')
 export const getScheduleEvaluation = () => api.get('/scheduler/evaluation')
 
 // AI对话
-export const aiChat = (message) => api.post('/ai/chat', { message })
+export const aiChat = (message, sessionId = '') =>
+  api.post('/ai/chat', { message, session_id: sessionId })
 async function openAuthorizedEventStream(url, payload = null, options = {}) {
   const token = readSessionToken()
   const response = await fetch(url, {
@@ -134,10 +135,17 @@ async function openAuthorizedEventStream(url, payload = null, options = {}) {
   return response
 }
 
-export const dispatchAiWorkbenchMessage = (message) =>
-  api.post('/ai/workbench/dispatch', { message })
+export const dispatchAiWorkbenchMessage = (message, sessionId = '') =>
+  api.post('/ai/workbench/dispatch', { message, session_id: sessionId })
 export const openAiChatStream = (message, options = {}) =>
-  openAuthorizedEventStream('/api/ai/chat/stream', { message }, options)
+  openAuthorizedEventStream(
+    '/api/ai/chat/stream',
+    {
+      message,
+      session_id: String(options.sessionId || '').trim(),
+    },
+    options,
+  )
 export const startAgentRuntimeSession = (message, permission_mode = 'low', session_id = '') =>
   api.post('/agent-runtime/sessions', { message, permission_mode, session_id })
 export const appendAgentRuntimeChatTurn = (

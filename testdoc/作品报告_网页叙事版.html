@@ -157,43 +157,44 @@
         <div><div class="section-eyebrow">Chapter 5</div><h2>第5章 测试分析</h2></div>
         <div class="tag">模板要求：数据来源、规模、测试过程、分析与结论</div>
       </div>
-      <p class="chapter__lead">本章不再把“代码里有这个模块”当作能力证明，而是把第 5 章改写为“真实跑数 + 受控实验”双证据结构。真实跑数又分成两层：一层是仓库级验证，回答系统主链路是否可运行；另一层是远端 3090 闭环实测，回答调度是否真的能在真实设备上发现高功耗风险、下发治理动作并让告警条件回落。其余受控实验继续回答导入边界、历史 scope、Agent 消费链和控制平面的可观测现象是否成立。</p>
+      <p class="chapter__lead">本章只回答一个问题：<strong>系统的集群治理动作，是否真的能改变集群状态</strong>。为此，我们把证据分成六组：实验 A 用真实远端 3090 闭环证明“功耗告警能被治理”；实验 B 用真实调度器输出的 5 类计划证明“调度决策不是单一路径”；实验 C 用调和控制器的执行/跳过两类结果证明“治理结果会回写而不是停留在按钮层”；实验 D 用当前集群控制台暴露出的对象级命令面证明“治理对象已经真正进入平台”；实验 E 把治理能力放到同机双 GPU 并发竞争场景下，验证系统能否只改变目标 GPU；实验 F 则继续验证任务治理是否能跨越单次动作，真正完成“暂停、保存进度、换卡继续执行”的检查点恢复链路。</p>
       <div class="panel-grid">
         <article class="panel">
-          <h2>5.1 验证数据来源与规模</h2>
+          <h2>5.1 数据来源与实验规模</h2>
           <ul class="point-list">
-            <li>真实验证命令一：导入边界、治理工作台和控制平面主链路，共 <strong>26 passed in 1.69s</strong>。</li>
-            <li>真实验证命令二：Agent / Monitor / Cluster / Graph 相关能力，共 <strong>21 passed in 0.73s</strong>。</li>
-            <li>真实验证命令三：Agent Runtime API 路由层，共 <strong>3 passed in 0.38s</strong>。</li>
-            <li>真实闭环实验：远端 <strong>10.151.225.108</strong> 单机 4×RTX 3090，选取空闲 GPU3，完成基线 4 点、负载爬升 3 点、治理后连续观测 18 点，共 <strong>25 个真实采样点</strong>。</li>
-            <li>静态规模统计：前端命名视图 14 个，后端端点 111 个，控制能力 29 个，持久化表 22 张，相关测试资产 260 项。</li>
+            <li>真实实测数据：远端 <strong>10.151.225.108</strong>，4×RTX 3090，选择 GPU3 做人工触发闭环，得到 <strong>25 个真实采样点</strong>，包含基线 4 点、负载爬升 3 点、治理后观测 18 点。</li>
+            <li>真实对照数据：同一台远端主机上选择 <strong>GPU1</strong> 作为治理对象、<strong>GPU3</strong> 作为对照对象，同时拉高两张卡，得到 <strong>56 个真实采样点</strong>，包含双卡基线 8 点、双卡爬升 12 点、双卡治理后观测 36 点。</li>
+            <li>真实恢复数据：同一台远端主机上选择 <strong>GPU1</strong> 作为源卡、<strong>GPU2</strong> 作为目标卡，通过当前 <code>ssh_linux</code> 管理链路执行暂停、检查点写出与恢复，得到 <strong>10 个真实采样点</strong>，覆盖源卡运行、暂停窗口、检查点就绪与目标卡恢复四个阶段。</li>
+            <li>受控决策数据：直接调用当前代码中的 <code>ClusterSchedulerCore.plan_job()</code>，构造 <strong>5 类典型治理场景</strong>，分别输出 place、wait、reject、hold、preempt_then_place。</li>
+            <li>受控调和数据：直接调用 <code>ClusterReconcileController.run_once()</code>，构造 <strong>2 类调和结果</strong>，分别是 manual_run 和 skip_run。</li>
+            <li>控制台覆盖数据：从当前 <code>ClusterJobs.vue</code> 与 <code>clusterConsoleActions.js</code> 提取前端已暴露的治理对象，共 <strong>4 类对象、12 项能力</strong>。</li>
           </ul>
+          <div class="callout">本章刻意把“真实实测”和“受控实验”分开写。实验 A、实验 E、实验 F 都是真实设备数据，其中实验 A 证明单卡闭环，实验 E 证明同机双卡对照，实验 F 证明任务可在暂停和保存进度后跨卡接续；实验 B/C/D 则是围绕真实调度器、调和控制器与当前前端命令面的受控治理实验。两种口径不混写。</div>
         </article>
         <article class="panel">
-          <h2>5.2 实验设计</h2>
-          <ul class="point-list">
-            <li>实验五：复用 <code>SshLinuxProvider</code>、<code>SchedulerEngine.run_budget_schedule</code> 和 <code>AlertEngine</code>，在真实远端 3090 上人为制造高功耗负载，再人工触发一次预算治理，观察功耗上限、功耗曲线和告警条件是否同步变化。</li>
-            <li>实验一：构造 4 GPU / 11 进程的受控快照，执行导入、实时查询、任务查询和暂停动作，观察 scope 是否在多个入口同时收缩。</li>
-            <li>实验二：向 SQLite 写入多 GPU 历史、告警、调度和优化数据，再用导入范围做 6 类查询，观察是否存在越界泄漏。</li>
-            <li>实验三：执行 Agent 侧采样、缓存、远程细节透传、训练日志过滤和启动提示链路，观察 Agent 是否同时具备可接入、可过滤、可解释能力。</li>
-            <li>实验四：执行 direct、confirm_required、approval_required、reject 四类命令，观察控制平面是否真的形成状态闭环和持久化台账。</li>
-          </ul>
+          <h2>5.2 评价指标与判据</h2>
+          <table>
+            <thead><tr><th>评价维度</th><th>数据口径</th><th>判据</th></tr></thead>
+            <tbody>
+              <tr><td>风险发现是否成立</td><td>真实功耗曲线与阈值线</td><td>必须先出现越阈，再出现治理动作，最后出现回落，否则不能叫治理闭环</td></tr>
+              <tr><td>调度决策是否分流</td><td>5 类计划输出</td><td>系统必须区分 place、wait、reject、hold、preempt_then_place，而不是只会“放置/失败”两种结果</td></tr>
+              <tr><td>治理结果是否回写</td><td>controller snapshot 与 last_summary</td><td>执行场景必须回写统计，跳过场景必须明确 skipped，不能给假成功</td></tr>
+              <tr><td>治理对象是否真正存在</td><td>当前前端命令面</td><td>作业、队列、节点、allocation 必须都有可操作对象与明确动作，而不是停留在后端接口</td></tr>
+              <tr><td>对象选择是否有效</td><td>双 GPU 对照实测</td><td>治理动作必须只命中目标 GPU；若对照 GPU 被一起治理，则不能证明系统具备针对性治理能力</td></tr>
+              <tr><td>任务接续是否成立</td><td>检查点 manifest、进度步数与双卡样本</td><td>恢复后的任务必须从检查点继续增长，而不能回到 0；同时源卡负载退出、目标卡负载接手必须同时成立</td></tr>
+            </tbody>
+          </table>
+          <p>这六个判据对应的是“发现风险”“做出决策”“落地执行”“覆盖对象”“精准选中对象”“跨卡接续执行”六个层次，组合起来才能说明系统具备可答辩的集群治理能力，而不只是有若干功能入口。</p>
         </article>
       </div>
       <div class="figure-grid">
-        <article class="figure"><h3 class="figure__title">真实验证结果摘要</h3><img src="assets/book_validation_summary.svg" alt="真实验证结果摘要"><p class="caption">这张图给出当前已经实际跑出的单测验证结果，并说明其覆盖链路。这样可以避免在作品书中把“结构存在”和“结果验证”混为一谈。</p></article>
-        <article class="figure"><h3 class="figure__title">实验五：真实远端功耗告警治理闭环</h3><img src="assets/book_remote_budget_experiment.svg" alt="真实远端功耗告警治理闭环"><p class="caption">这张图里的 <strong>324.24W</strong> 代表 GPU3 的越阈峰值，<strong>261W</strong> 代表系统一次人工预算调度后实际写入的功耗上限，<strong>18/18</strong> 清洁率表示治理后整个观测窗口内没有新的越阈采样点。它直接回答“系统是否真的能治理功耗风险”。</p></article>
-      </div>
-      <div class="figure-grid">
-        <article class="figure"><h3 class="figure__title">实验五时间线：功耗越阈到治理回落</h3><img src="assets/book_remote_budget_timeline.svg" alt="真实远端功耗治理时间线"><p class="caption">蓝线是 GPU3 实测功耗，绿线是功耗上限，红虚线是 320W 告警阈值，橙线是人工触发治理动作的时间点。图中先出现越阈，再出现上限切换，随后功耗稳定贴近 261W，说明治理不是“纸面成功”，而是真正改变了设备运行状态。</p></article>
-        <article class="panel">
-          <h2>实验五的数据代表什么</h2>
-          <p>基线窗口的 4 个点用于说明测试前 GPU3 处于空闲状态，平均功耗仅 20.98W；负载爬升窗口的 3 个点用于捕捉风险形成过程，其中第三个点达到 324.24W，触发真实功耗告警；治理后窗口的 18 个点用于验证动作是否稳定生效，结果显示功耗长期贴近 261W 且始终低于 320W 阈值。也就是说，这组数据同时证明了“发现风险”“执行动作”“效果持续”三个环节。</p>
-        </article>
+        <article class="figure"><h3 class="figure__title">实验 A：真实远端功耗告警治理闭环</h3><img src="assets/book_remote_budget_experiment.svg" alt="真实远端功耗告警治理闭环"><p class="caption">这张图的 4 个数字就是实验 A 的结论核心：<strong>324.24W</strong> 是 GPU3 在高负载下出现的真实越阈峰值，<strong>261W</strong> 是系统人工预算治理后真实写回的功耗上限，<strong>63.53W</strong> 是单卡功耗相对峰值的回落量，<strong>18/18</strong> 表示治理后整个观测窗口没有新的越阈点。它证明平台不是“看到告警”，而是“把告警条件压回阈值之下”。</p></article>
+        <article class="figure"><h3 class="figure__title">实验 A 时间线：功耗越阈到治理回落</h3><img src="assets/book_remote_budget_timeline.svg" alt="真实远端功耗治理时间线"><p class="caption">蓝线代表 GPU3 实测功耗，绿线代表功耗上限，红虚线代表 320W 告警阈值，橙线代表人工触发治理动作的时刻。图中顺序清晰可见：先越阈，再下发动作，随后功耗稳定贴近 261W。这个前后关系是治理有效性的关键证据。</p></article>
       </div>
       <div class="panel-grid">
         <article class="panel">
-          <h2>实验五关键数据表</h2>
+          <h2>5.3 实验 A 的数据代表什么</h2>
+          <p>实验 A 不是只取一个峰值点，而是分成三个连续阶段采样。基线窗口用于证明测试开始前 GPU3 是空闲状态，负载爬升窗口用于捕捉风险形成过程，治理后窗口用于判断治理动作是否持续生效。因此，实验 A 证明的不是“偶然把功率降了一次”，而是“系统完成了风险识别、动作下发、持续回落”三个环节。</p>
           <div class="table-wrap">
             <table>
               <thead><tr><th>阶段</th><th>样本数</th><th>平均功耗</th><th>峰值功耗</th><th>平均温度</th><th>越阈样本</th></tr></thead>
@@ -205,22 +206,22 @@
               </tbody>
             </table>
           </div>
-          <p>这张表是图 18 和图 19 的核心数值来源。裁判如果只看一张表，就能直接看到“基线空闲、爬升越阈、治理后稳定回落”的完整变化过程。</p>
+          <p>最关键的现象是：峰值点出现在治理前，而 18 个治理后点全部低于阈值。这说明系统的调度动作改变了设备侧状态，而不只是让界面消失一个告警红点。</p>
         </article>
         <article class="panel">
-          <h2>图表数据文件</h2>
+          <h2>实验 A 数据文件与复核口径</h2>
           <ul class="point-list">
             <li><code>testdoc/data/real_remote_budget_experiment.json</code>：实验摘要、告警记录、调度动作、治理结果。</li>
             <li><code>testdoc/data/real_remote_budget_samples.csv</code>：25 个真实采样点的逐点数据。</li>
             <li><code>testdoc/data/real_remote_budget_summary.csv</code>：给裁判快速看的阶段汇总表。</li>
-            <li><code>testdoc/assets/book_remote_budget_experiment.svg</code>：实验五摘要图，给裁判快速看结果。</li>
-            <li><code>testdoc/assets/book_remote_budget_timeline.svg</code>：实验五时间线图，给裁判看曲线变化与动作时刻。</li>
+            <li><code>testdoc/assets/book_remote_budget_experiment.svg</code>：实验 A 摘要图，快速展示风险、动作和结果。</li>
+            <li><code>testdoc/assets/book_remote_budget_timeline.svg</code>：实验 A 时间线图，用于核查动作前后曲线变化。</li>
           </ul>
-          <p>如果需要现场展示数值来源，优先给裁判看 CSV：每一行都对应时间线图上的一个点，没有把模拟数据混入真实实测。</p>
+          <p>如果评审只追问“这些数是不是编的”，直接给出 CSV 即可。时间线图上的每一个点都能在 CSV 中找到对应行，真实数据和受控实验没有混写。</p>
         </article>
       </div>
       <article class="panel">
-        <h2>实验五原始采样点表（裁判可核查）</h2>
+        <h2>实验 A 原始采样点表（裁判可核查）</h2>
         <div class="table-wrap">
           <table>
             <thead><tr><th>时刻</th><th>阶段</th><th>GPU3 功耗</th><th>功耗上限</th><th>温度</th><th>利用率</th><th>集群总功率</th><th>是否越阈</th></tr></thead>
@@ -253,50 +254,198 @@
             </tbody>
           </table>
         </div>
-        <p>这 25 行就是图 19 背后的原始数据。最关键的行是 <strong>15.21 s</strong> 的越阈点和之后整段 <strong>post_action</strong> 区间；裁判如果要判断治理是否生效，只要看这两段数据是否在动作前后发生了明显变化即可。</p>
+        <p>这 25 行就是图 19 背后的原始数据。最关键的两段是 <strong>15.21 s</strong> 的越阈点，以及之后整段 <strong>post_action</strong> 区间。前者证明风险真实发生，后者证明治理结果真实持续。</p>
       </article>
       <div class="figure-grid">
-        <article class="figure"><h3 class="figure__title">实验一：作用域收缩与越界拦截</h3><img src="assets/book_scope_experiment.svg" alt="作用域收缩与越界拦截实验"><p class="caption">这张图对应受控 workload 实验的实际结果：原始 4 张卡、11 个进程在导入 GPU [1,3] 后收缩为 2 张卡、5 个进程；作用域内 PID 可执行暂停，越界 PID 会被 400 拦截。</p></article>
-        <article class="figure"><h3 class="figure__title">实验二：历史查询与回放一致性</h3><img src="assets/book_history_experiment.svg" alt="历史查询与回放一致性实验"><p class="caption">这张图来自 6 类历史链路的实际查询结果。功率摘要、告警、进程时间线、调度历史、优化历史和回放帧都只返回 GPU [1,3] 范围内的数据，越界泄漏数为 0，越界告警确认同样被 400 拦截。</p></article>
-      </div>
-      <div class="figure-grid">
-        <article class="figure"><h3 class="figure__title">实验三：Agent 数据链路有效性</h3><img src="assets/book_agent_experiment.svg" alt="Agent 数据链路有效性实验"><p class="caption">这张图不再只写接口数，而是直接展示实验观测：CPU 采样为非阻塞、3 次进程读取仅触发 2 次真实扫描、3 条训练日志经过导入过滤后只剩 2 条、缺失 NVML 时会给出远程接入提示。</p></article>
-        <article class="figure"><h3 class="figure__title">实验四：控制平面闭环验证</h3><img src="assets/book_control_experiment.svg" alt="控制平面闭环实验"><p class="caption">这张图直接展示 direct、confirm_required、approval_required、reject 四类控制情形的实际表现。结果显示：未确认风险的命令被阻断，审批型命令先进入 awaiting_approval，再分别转入 succeeded 或 rejected，并最终写入统一命令台账。</p></article>
-      </div>
-      <div class="figure-grid">
-        <article class="figure"><h3 class="figure__title">Agent 运行模式与平台适配</h3><img src="assets/book_agent_integration.svg" alt="Agent 运行模式与平台适配"><p class="caption">这张图补充解释实验三背后的平台消费逻辑：Agent 数据不会原样裸转发，而是先经 Provider、导入作用域和页面模型整合，再进入监控页与训练页。</p></article>
+        <article class="figure"><h3 class="figure__title">实验 B：集群调度决策矩阵</h3><img src="assets/book_cluster_decision_matrix.svg" alt="集群调度决策矩阵"><p class="caption">这张图不是静态分类表，而是直接使用当前 <code>ClusterSchedulerCore.plan_job()</code> 跑出的 5 类结果。它说明调度器能区分“可以放置”“应当等待”“必须拒绝”“暂时 hold”“先抢占再放置”这五种治理状态。</p></article>
         <article class="panel">
-          <h2>实验五如何体现系统能力</h2>
-          <p>这组远端实测复用的是你们代码中的 <code>SshLinuxProvider</code>、<code>AlertEngine</code> 和 <code>SchedulerEngine</code>，因此它证明的不是“硬件本身支持限功率”，而是“系统自己的调度链确实能在真实主机上完成采集、判定、动作下发和效果观测”。更具体地说，越阈点证明平台能识别高功耗风险，261W 的写回证明调度动作已落到设备层，治理后 18 个连续低于阈值的样本则证明告警条件被持续消除。</p>
+          <h2>5.4 实验 B 说明了什么</h2>
+          <p>如果系统只有 <code>place</code> 和 <code>fail</code> 两种结果，就不能称为集群治理。实验 B 的价值在于，它把调度器真实区分出来的五种状态展示给评审：<code>wait</code> 表示队列配额已满但资源策略仍合法，<code>reject</code> 表示治理规则在准入层直接阻断，<code>hold</code> 表示系统识别出有阻塞但当前还没有可回收对象，<code>preempt_then_place</code> 则表示系统已经形成可执行的治理动作序列。</p>
+        </article>
+      </div>
+      <article class="panel">
+        <h2>实验 B 计划输出明细</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>计划类型</th><th>触发条件</th><th>调度输出</th><th>证明能力</th></tr></thead>
+            <tbody>
+              <tr><td>place</td><td>队列 active，node-a/ node-b 均可调度</td><td>选择 node-a，绑定 gpu-0</td><td>系统具备按资源贴合度选择节点的能力</td></tr>
+              <tr><td>wait</td><td>同队列运行作业已达到 <code>max_concurrency=1</code></td><td>不放置节点，返回等待态</td><td>系统能在准入合法但配额已满时避免继续超发</td></tr>
+              <tr><td>reject</td><td>队列状态被切为 paused</td><td>在准入层直接拒绝</td><td>治理规则会前置生效，而不是等资源竞争后再报错</td></tr>
+              <tr><td>hold</td><td>节点存在阻塞，但当前作业不可抢占</td><td>返回 hold，不给虚假执行方案</td><td>系统能识别“现在还不能动”的治理状态</td></tr>
+              <tr><td>preempt_then_place</td><td>高优先级作业遇到低优先级可抢占对象</td><td>先 <code>cancel_job</code>，再 <code>release_allocation</code>，最后放置到 node-blocked</td><td>系统能形成真正可执行的治理动作链</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+      <div class="figure-grid">
+        <article class="figure"><h3 class="figure__title">实验 C：调和执行与状态回写</h3><img src="assets/book_cluster_reconcile_flow.svg" alt="调和执行与状态回写"><p class="caption">实验 C 展示的是当前 <code>ClusterReconcileController.run_once()</code> 的两条真实路径。manual_run 在 runtime connected 时写回 <code>placed / preempted / restored / released</code> 摘要；skip_run 在 runtime reconnecting 时明确返回 <code>skipped=true</code> 和 <code>skip_reason</code>，不制造假成功。</p></article>
+        <article class="panel">
+          <h2>5.5 实验 C 说明了什么</h2>
+          <p>调度计划只有真正进入调和控制器并写回状态，才算形成治理闭环。实验 C 证明了两个关键点：第一，人工触发调和会把一次治理结果压缩成控制器快照中的 <code>last_summary</code>；第二，运行时异常或未连通时，系统不会把“没有执行”包装成“执行成功”，而是显式记录 <code>skipped</code> 和原因。</p>
         </article>
       </div>
       <div class="panel-grid">
         <article class="panel">
-          <h2>Agent 有效性分析</h2>
-          <p>实验三给出的现象比“Agent 能启动”更有说服力：首先，<code>system_monitor.get_system_detail</code> 的 4 次 CPU 采样调用全部是非阻塞的 <code>interval=None/0</code>，说明系统没有为实时观察引入额外等待；其次，连续 3 次 GPU 进程读取只触发了 2 次真实扫描，表明 Agent 具备缓存降载能力；再次，3 条训练日志在导入范围过滤后只保留 2 条，说明 Agent 输出进入平台后还能继续被治理边界约束；最后，缺失 NVML 时系统不会伪造“采集正常”，而是给出远程接入提示。换句话说，Agent 的能力体现为“能采、能省、能接、能解释”，而不是单一的接口存在。</p>
+          <h2>实验 C 回写结果表</h2>
+          <table>
+            <thead><tr><th>场景</th><th>runtime_status</th><th>tick 变化</th><th>返回结果</th><th>结论</th></tr></thead>
+            <tbody>
+              <tr><td>manual_run</td><td>connected</td><td>+1</td><td>placed=2、preempted=1、restored=1、released=1</td><td>说明调和动作确实形成了状态摘要</td></tr>
+              <tr><td>skip_run</td><td>reconnecting</td><td>+1</td><td>skipped=true，skip_reason=runtime status: reconnecting</td><td>说明系统会暴露跳过原因，而不是伪造执行成功</td></tr>
+            </tbody>
+          </table>
         </article>
         <article class="panel">
-          <h2>平台消费 Agent 数据的有效性分析</h2>
-          <p>如果平台不能正确消费 Agent 数据，那么 Agent 再强也只是孤立服务。实验三和配套图表给出的关键现象是：远程 Provider 返回的系统详情字段能原样进入监控接口，而训练日志又会在平台层被再次按 imported GPU 过滤。也就是说，平台对 Agent 既保持兼容，又保留治理权，这正是“统一平台”与“孤立采集脚本”的本质区别。</p>
+          <h2>调和回写为什么重要</h2>
+          <p>评审看到“有调度器”通常还会继续追问：那它的结果如何被平台消费？实验 C 回答的正是这个问题。当前系统并不是在按钮点击后停留于“命令已发送”，而是通过控制器快照把上一次调和的触发方式、执行结果、跳过原因和统计摘要都保留下来，这样前端控制台、审计视图和复盘链路才有可信的数据基础。</p>
         </article>
       </div>
       <div class="figure-grid">
-        <article class="figure"><h3 class="figure__title">扩展能力验证状态</h3><img src="assets/book_extension_status.svg" alt="扩展能力验证状态"><p class="caption">扩展层仍然保留“稳定项 / 漂移项”并列展示的写法。这样既承认当前 Graph、Cluster、Agent Runtime 已有可验证部分，也如实暴露仍需修补的 AI 扩展测试漂移。</p></article>
-        <article class="panel"><h2>5.3 图表释义与证据矩阵</h2><table><thead><tr><th>证据</th><th>数据口径</th><th>直接证明</th></tr></thead><tbody><tr><td>真实验证结果摘要</td><td>已运行 pytest</td><td>导入、治理、Agent、图谱、集群主链路确实可跑</td></tr><tr><td>实验五</td><td>远端 3090 真实闭环 + 25 个采样点</td><td>系统可识别高功耗风险、下发限功率并持续消除告警条件</td></tr><tr><td>实验一</td><td>受控输入 + 实际 API</td><td>导入 scope 会同时改变快照、页面和动作权限</td></tr><tr><td>实验二</td><td>受控历史库 + 实际查询</td><td>历史、告警、回放链路不会泄漏作用域外数据</td></tr><tr><td>实验三</td><td>受控 Agent 输入 + 实际函数</td><td>Agent 具备低阻塞、可过滤、可透传、可解释能力</td></tr><tr><td>实验四</td><td>受控命令场景 + 实际服务</td><td>控制平面具备确认、审批、拒绝、持久化闭环</td></tr></tbody></table><p>本章所有“能力”结论都来自已运行结果或受控实验结果；只有在图中明确标为“示意”的地方，才是为了说明链路结构而非汇报真实线上统计。</p></article>
+        <article class="figure"><h3 class="figure__title">实验 D：治理对象覆盖与审计证据</h3><img src="assets/book_cluster_governance_coverage.svg" alt="治理对象覆盖与审计证据"><p class="caption">这张图从当前集群控制台反推已经真正暴露给用户的治理对象。现在不是只有“提交作业”一个动作，而是已经覆盖 <strong>job / queue / node / allocation</strong> 四类对象，其中 job 对象有 8 项动作，说明治理能力已进入对象级操作面。</p></article>
+        <article class="panel">
+          <h2>5.6 实验 D 说明了什么</h2>
+          <p>实验 D 的重点不是接口数量，而是“哪些对象已经能被真正治理”。当前代码里，作业对象已经覆盖 submit、pause、resume、checkpoint、restore、cancel、requeue、preempt；队列对象覆盖 reconcile；节点对象覆盖 drain、undrain；allocation 对象覆盖 release。也就是说，治理能力已经从单一调度动作扩展为多对象协同控制。</p>
+        </article>
       </div>
       <div class="panel-grid">
         <article class="panel">
-          <h2>核心能力结论</h2>
+          <h2>实验 D 对象覆盖表</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>治理对象</th><th>已暴露动作</th><th>当前入口</th><th>审计意义</th></tr></thead>
+              <tbody>
+                <tr><td>job</td><td>submit、pause、resume、checkpoint、restore、cancel、requeue、preempt</td><td>ClusterJobLedger 提交区 + 行内动作</td><td>说明作业治理已进入对象级命令面</td></tr>
+                <tr><td>queue</td><td>reconcile</td><td>ClusterConsoleToolbar</td><td>说明队列可以手动触发调和并观察摘要回写</td></tr>
+                <tr><td>node</td><td>drain、undrain</td><td>ClusterAllocationPanel</td><td>说明节点可调度性可以被显式治理</td></tr>
+                <tr><td>allocation</td><td>release</td><td>ClusterAllocationPanel</td><td>说明资源占用可以被主动释放并回摆状态</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+        <article class="panel">
+          <h2>实验 F 之前，本章已证明什么</h2>
+          <p>到实验 E 为止，本章已经证明系统有真实单卡闭环、有调度分流、有状态回写、有对象级控制面，也能在同机双 GPU 并发场景下只治理目标卡。但评审仍可能追问一个更强的问题：如果一个高负载任务需要从一张卡切换到另一张卡，系统能不能先停住它、保存进度，再让另一张卡继续执行？实验 F 就是为这个问题准备的。</p>
+        </article>
+      </div>
+      <div class="figure-grid">
+        <article class="figure"><h3 class="figure__title">实验 E：双 GPU 并发竞争治理时间线</h3><img src="assets/dual_gpu_competition_timeline.svg" alt="双 GPU 并发竞争治理时间线"><p class="caption">实验 E 在同一台 4×3090 主机上同时拉高 <strong>GPU1</strong> 与 <strong>GPU3</strong>，并仅通过系统预算调度对 GPU1 下发一次 <code>set_power_limit 279W</code>。图中蓝线是治理卡 GPU1，橙线是对照卡 GPU3；治理动作之后，蓝线快速回落到 268W 左右，而橙线继续维持 328W 高位，形成同机同负载下的清晰分离。</p></article>
+        <article class="panel">
+          <h2>5.7 实验 E 说明了什么</h2>
+          <p>实验 E 的意义不在于再次证明“功率可以被压低”，而在于证明系统具备<strong>针对性治理</strong>能力。两张卡在相同主机、相同时间窗、相同负载脚本下同时进入高功耗区间，但系统只对 GPU1 生成了一条预算动作，GPU3 完全保持未治理状态。也就是说，实验 E 证明的不是“整机自然波动”，而是“系统能选中目标对象并改变其状态”。</p>
+        </article>
+      </div>
+      <div class="figure-grid">
+        <article class="figure"><h3 class="figure__title">实验 E：治理卡与对照卡效果对比</h3><img src="assets/dual_gpu_competition_comparison.svg" alt="治理卡与对照卡效果对比"><p class="caption">这张图把实验 E 压缩成评审最容易读懂的 4 个指标。治理卡峰值 <strong>348.37W</strong>，治理后均值 <strong>268.44W</strong>；对照卡峰值 <strong>325.77W</strong>，治理后均值 <strong>328.26W</strong>。两张卡在治理后窗口形成 <strong>59.82W</strong> 的平均功耗差，而且治理卡后窗清洁率 <strong>100%</strong>，对照卡为 <strong>0%</strong>。</p></article>
+        <article class="figure"><h3 class="figure__title">实验 E：治理时延与清洁率</h3><img src="assets/dual_gpu_competition_latency.svg" alt="治理时延与清洁率"><p class="caption">实验 E 的时延图把“什么时候越阈、什么时候下发动作、什么时候治理卡回到阈值以下”直接串成事件链。双卡首次越阈都发生在 <strong>22.09s</strong>，系统在 <strong>23.18s</strong> 对 GPU1 下发动作，治理卡在同一采样时刻就已经落回阈值下方，而对照卡直到观测窗口结束仍保持 <strong>18/18</strong> 越阈。</p></article>
+      </div>
+      <div class="panel-grid">
+        <article class="panel">
+          <h2>实验 E 关键结果表</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>对象</th><th>阶段</th><th>样本数</th><th>平均功耗</th><th>峰值功耗</th><th>平均温度</th><th>越阈样本</th><th>清洁率</th></tr></thead>
+              <tbody>
+                <tr><td>治理卡 GPU1</td><td>baseline</td><td>4</td><td>35.95 W</td><td>44.91 W</td><td>58.25 °C</td><td>0</td><td>100%</td></tr>
+                <tr><td>治理卡 GPU1</td><td>load_ramp</td><td>6</td><td>126.38 W</td><td>348.37 W</td><td>63.67 °C</td><td>1</td><td>83.3%</td></tr>
+                <tr><td>治理卡 GPU1</td><td>post_action</td><td>18</td><td>268.44 W</td><td>279.13 W</td><td>81.44 °C</td><td>0</td><td>100%</td></tr>
+                <tr><td>对照卡 GPU3</td><td>baseline</td><td>4</td><td>23.78 W</td><td>29.42 W</td><td>41.50 °C</td><td>0</td><td>100%</td></tr>
+                <tr><td>对照卡 GPU3</td><td>load_ramp</td><td>6</td><td>110.19 W</td><td>325.77 W</td><td>47.17 °C</td><td>1</td><td>83.3%</td></tr>
+                <tr><td>对照卡 GPU3</td><td>post_action</td><td>18</td><td>328.26 W</td><td>331.77 W</td><td>72.39 °C</td><td>18</td><td>0%</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>这张表最有说服力的地方在于：治理卡与对照卡在治理前都经历了越阈，但只有治理卡在后窗里完全清空越阈样本。对照卡仍然保持 18 个连续越阈点，说明实验 E 不是“整机一起回落”，而是“目标卡被系统单独治理”。</p>
+        </article>
+        <article class="panel">
+          <h2>实验 E 的治理动作与结论口径</h2>
           <ul class="point-list">
-            <li>已验证：导入边界建立、实时/历史 scope 一致性、控制命令状态机、单机真实功耗告警治理闭环、治理工作台主结构。</li>
-            <li>可合理支撑的系统宣称：本系统是导入式 GPU 治理平台，而非单纯监控页；Agent 不是装饰层，而是以采集、控制、运行时三层能力支撑平台工作区；调度不仅能给出建议，还能在真实设备上把高功耗状态压回安全阈值内。</li>
-            <li>扩展层现状：Graph、Cluster 和 Agent Runtime 已有稳定可验证部分，但部分 AI 扩展测试出现接口漂移，应在后续版本中同步修复。</li>
+            <li>系统生成的预算阈值为 <strong>783W</strong>，治理前整机总功率达到 <strong>848.42W</strong>。</li>
+            <li>系统只生成 1 条预算动作：<code>set_power_limit GPU1 -&gt; 279W</code>，没有对 GPU3 生成任何治理动作。</li>
+            <li>治理卡相对峰值回落 <strong>79.93W</strong>，对照卡相对峰值反而没有回落，后窗均值比峰值高 <strong>2.49W</strong>。</li>
+            <li>治理后两卡形成 <strong>59.82W</strong> 的平均功耗差，整机总功率同步回落 <strong>95.47W</strong>。</li>
           </ul>
+          <div class="callout">实验 E 能支持的最终口径是：系统不仅能在单卡上完成闭环治理，还能在同机双 GPU 并发竞争场景下，只对目标 GPU 下发治理动作，并用对照卡清晰证明这种变化来自系统调度，而不是环境噪声。</div>
+        </article>
+      </div>
+      <div class="panel-grid">
+        <article class="panel">
+          <h2>实验 E 数据文件与核查方式</h2>
+          <ul class="point-list">
+            <li><code>testdoc/data/real_remote_dual_gpu_competition.json</code>：完整结果，含角色分工、预算动作、时延和汇总。</li>
+            <li><code>testdoc/data/real_remote_dual_gpu_competition_samples.csv</code>：56 个原始样本点，逐行对应双卡时间线。</li>
+            <li><code>testdoc/data/real_remote_dual_gpu_competition_summary.csv</code>：按角色与阶段汇总的裁判快读表。</li>
+            <li><code>testdoc/assets/dual_gpu_competition_timeline.svg</code>：双卡时间线图。</li>
+            <li><code>testdoc/assets/dual_gpu_competition_comparison.svg</code>：治理卡与对照卡对比图。</li>
+            <li><code>testdoc/assets/dual_gpu_competition_latency.svg</code>：时延与清洁率图。</li>
+          </ul>
+          <p>如果评审追问“是不是把两张卡都一起限了”，直接看 JSON 中的 <code>budget_actions</code> 即可：该字段只包含 GPU1 的一条 <code>set_power_limit</code> 动作，没有任何 GPU3 动作记录。</p>
+        </article>
+      </div>
+      <div class="figure-grid">
+        <article class="figure"><h3 class="figure__title">实验 F：跨 GPU 检查点恢复时间线</h3><img src="assets/checkpoint_restore_timeline.svg" alt="跨 GPU 检查点恢复时间线"><p class="caption">实验 F 在同一台 4×3090 主机上先把高负载任务启动在 <strong>GPU1</strong>，随后通过当前 <code>ssh_linux</code> 管理链路执行暂停、检查点写出，再在 <strong>GPU2</strong> 上恢复继续。图中蓝线是源卡 GPU1，橙线是目标卡 GPU2。暂停阶段蓝线从运行时的 <strong>249.27W</strong> 回落到 <strong>134.92W</strong> 左右且利用率降为 0；恢复后橙线抬升到 <strong>299.10W</strong>，而蓝线回到 33-65W 空闲区间，说明负载位置发生了真实切换。</p></article>
+        <article class="panel">
+          <h2>5.8 实验 F 说明了什么</h2>
+          <p>实验 F 证明的不是“暂停按钮存在”或“脚本支持恢复参数”，而是<strong>任务治理可以跨越单次动作并形成连续事件链</strong>。这组数据清楚显示：源卡任务先运行，再被冻结，接着写出 manifest，最后在目标卡上以更高的步数继续前进。也就是说，实验 F 支持的结论是“系统已经具备基于检查点的任务迁移恢复能力雏形”，而不是只会对现存进程做就地控制。</p>
+        </article>
+      </div>
+      <div class="figure-grid">
+        <article class="figure"><h3 class="figure__title">实验 F：进度连续性与控制效果</h3><img src="assets/checkpoint_restore_progress.svg" alt="进度连续性与控制效果"><p class="caption">这张图专门回答评审最敏感的问题：恢复后的任务是不是从 0 重跑。实验中检查点步数为 <strong>29</strong>，恢复后第一批可见步数已经来到 <strong>34</strong>，最终增长到 <strong>42</strong>。这意味着恢复链路不是重新启动一个“同名任务”，而是沿着已有进度继续向前。</p></article>
+        <article class="figure"><h3 class="figure__title">实验 F：暂停、恢复与跨卡切换压缩图</h3><img src="assets/checkpoint_restore_comparison.svg" alt="暂停恢复与跨卡切换压缩图"><p class="caption">这张图把实验 F 压缩成三组最关键的证据：第一，暂停窗口内源卡平均功耗只有 <strong>134.92W</strong>，且 3 个暂停样本的 GPU 利用率均为 0；第二，恢复窗口内目标卡平均功耗达到 <strong>299.10W</strong> 且利用率维持 100%；第三，从检查点 ready 到目标卡启动恢复的切换时延仅 <strong>0.65s</strong>。三者合在一起，才足以说明任务不是“停了又重开”，而是完成了真正的跨卡接续。</p></article>
+      </div>
+      <div class="panel-grid">
+        <article class="panel">
+          <h2>实验 F 关键结果表</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>阶段</th><th>核心样本</th><th>关键数据</th><th>证明能力</th></tr></thead>
+              <tbody>
+                <tr><td>源卡运行</td><td>1 个样本</td><td>GPU1 功耗 <strong>249.27W</strong>，利用率 <strong>100%</strong>，进程数 <strong>1</strong></td><td>说明任务最初确实落在 GPU1 上执行</td></tr>
+                <tr><td>暂停窗口</td><td>3 个样本</td><td>GPU1 平均功耗 <strong>134.92W</strong>，利用率持续 <strong>0%</strong>，进程仍保留 <strong>1</strong></td><td>说明任务被暂停而非直接退出，控制动作真实作用到了进程</td></tr>
+                <tr><td>检查点就绪</td><td>manifest + 结果文件</td><td>检查点步数 <strong>29</strong>，manifest 记录源卡可见 GPU 为 <strong>1</strong></td><td>说明系统在切卡前确实保存了可恢复进度，而不是盲目重启</td></tr>
+                <tr><td>目标卡恢复</td><td>4 个样本</td><td>GPU2 平均功耗 <strong>299.10W</strong>，利用率持续 <strong>100%</strong>，进程数从 <strong>0 -&gt; 1</strong></td><td>说明目标卡接手了同一任务的后续执行</td></tr>
+                <tr><td>进度连续性</td><td>progress.json</td><td>恢复起点 <strong>34</strong>，最终步数 <strong>42</strong>，没有回到 0</td><td>说明恢复链路是接续执行，不是从头重跑</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>这张表最重要的不是某一个大数字，而是三个现象在同一条时间线上同时成立：源卡停止继续增长、检查点保存成功、目标卡接着往前跑。只要少一个环节，这个实验就不能叫“跨 GPU 恢复”。</p>
         </article>
         <article class="panel">
-          <h2>保守结论与后续补测边界</h2>
-          <p>本章能够支撑的，是“系统主内核和主要扩展层已经具备真实可验证能力”。它不能直接支撑的，是大规模多机长稳和长期生产环境可靠性。也就是说，当前作品书已经足够证明系统不是空壳 Demo，但如果后续需要更强评审说服力，还应补充跨多主机、长时间运行和更复杂集群负载下的实测结果。这样的边界说明比简单宣称“系统稳定可靠”更有可信度。</p>
-          <div class="callout">本章最终口径：先给真实运行结果，再用多维图表解释系统能力如何形成。重点不是“通过了多少测试”，而是“这些测试分别证明了 Agent、导入边界、控制平面、复盘联动和扩展层的哪些能力”。</div>
+          <h2>实验 F 的数据意义与结论口径</h2>
+          <ul class="point-list">
+            <li>暂停信号发出前，源卡进度步数为 <strong>12</strong>；暂停后可见步数停在 <strong>14</strong>，说明只允许当前计算批次收尾，没有继续持续增长。</li>
+            <li>恢复信号后，源卡步数快速提升到 <strong>22</strong>，说明暂停和恢复不是 UI 假动作，而是真实改变了进程执行状态。</li>
+            <li>检查点就绪时刻为 <strong>20.03s</strong>，目标卡恢复启动时刻为 <strong>20.68s</strong>，切换时延只有 <strong>0.65s</strong>。</li>
+            <li>恢复后的任务带着 <code>restore_from=/tmp/aidc_ssh_job-source/artifacts/ckpt-1775895201.json</code> 继续执行，直接把“接续”写进了运行态元数据。</li>
+            <li>因此，实验 F 能支持的口径是：系统已经具备<strong>基于检查点的任务迁移恢复</strong>能力，能够让高负载任务在一张卡上停住并保存进度后，于另一张卡上继续执行；它不是透明 live migration，而是显式的 <code>checkpoint -&gt; restore</code> 过程。</li>
+          </ul>
+          <div class="callout">实验 F 补上的是“任务能否接续”的证据。实验 E 解决“能否精准治理目标 GPU”，实验 F 解决“治理动作之后任务能否继续完成”。两者合在一起，才更接近评审想看到的集群治理能力全貌。</div>
+        </article>
+      </div>
+      <div class="panel-grid">
+        <article class="panel">
+          <h2>实验 F 数据文件与核查方式</h2>
+          <ul class="point-list">
+            <li><code>testdoc/data/real_remote_checkpoint_restore_experiment.json</code>：完整结果，含源卡/目标卡、进程状态、检查点 manifest 和恢复状态。</li>
+            <li><code>testdoc/data/real_remote_checkpoint_restore_samples.csv</code>：10 个原始样本点，逐行对应暂停、检查点和恢复时间线。</li>
+            <li><code>testdoc/data/real_remote_checkpoint_restore_summary.csv</code>：冻结增量、恢复增量、检查点步数与切换时延的裁判快读表。</li>
+            <li><code>testdoc/assets/checkpoint_restore_timeline.svg</code>：源卡与目标卡负载切换时间线。</li>
+            <li><code>testdoc/assets/checkpoint_restore_progress.svg</code>：检查点步数与恢复后步数对比图。</li>
+            <li><code>testdoc/assets/checkpoint_restore_comparison.svg</code>：暂停、恢复和跨卡接手的多维压缩图。</li>
+          </ul>
+          <p>如果评审追问“是不是同一个任务”，直接看 JSON 中的 <code>checkpoint.manifest.step</code>、<code>restore_state_initial.step</code> 和 <code>restore_state_initial.restore_from</code> 三个字段即可。它们共同证明恢复任务是沿原任务进度继续执行，而不是重新提交一个空白任务。</p>
+        </article>
+        <article class="panel">
+          <h2>本章综合结论</h2>
+          <ul class="point-list">
+            <li>实验 A 证明：系统确实能在真实 3090 上发现功耗风险、下发治理动作，并把连续越阈状态压回阈值以下。</li>
+            <li>实验 B 证明：系统的调度器不是单一路径，而是能根据准入、配额、阻塞与抢占条件输出五种治理计划。</li>
+            <li>实验 C 证明：系统的调和控制器会把治理结果或跳过原因明确回写，前端可以拿到可信的状态摘要。</li>
+            <li>实验 D 证明：系统已经把治理动作挂接到 job、queue、node、allocation 四类对象上，形成可展示、可操作、可审计的控制台。</li>
+            <li>实验 E 证明：系统在同机双 GPU 并发竞争场景下，能够只选中目标 GPU 执行治理，并让治理卡与对照卡在功耗、告警、时延和整机功率四个维度上出现显著分离。</li>
+            <li>实验 F 证明：系统已经能让任务在源卡暂停并保存检查点后，于目标卡继续执行，从而把治理能力从“就地控制”推进到“跨卡接续”。</li>
+          </ul>
+          <div class="callout">因此，本章能够支撑的结论是：当前作品已经具备“发现风险、做出决策、精准选中对象、执行治理、回写状态、覆盖对象、跨卡接续”的集群治理能力。这个结论来自真实数据和受控实验，而不是来自对代码结构的主观解释。</div>
         </article>
       </div>
     </section>

@@ -1,0 +1,2 @@
+source_gpu_index,target_gpu_index,pause_freeze_delta_steps,resume_recovery_delta_steps,checkpoint_step,restored_initial_step,restored_final_step,progress_continued,source_paused_avg_power_w,target_restored_avg_power_w,switch_latency_s
+1,2,2,8,29,34,42,True,134.92,299.1,0.65

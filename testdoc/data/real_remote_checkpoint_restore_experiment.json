@@ -1,0 +1,252 @@
+{
+  "check_only": false,
+  "host": "10.151.225.108",
+  "source_gpu_index": 1,
+  "target_gpu_index": 2,
+  "execution_path": "ssh_provider",
+  "source_runtime": {
+    "root": "/tmp/aidc_ssh_job-source",
+    "control_dir": "/tmp/aidc_ssh_job-source/control",
+    "artifact_root": "/tmp/aidc_ssh_job-source/artifacts",
+    "progress_path": "/tmp/aidc_ssh_job-source/artifacts/progress.json",
+    "checkpoint_request_path": "/tmp/aidc_ssh_job-source/control/checkpoint-request.json",
+    "checkpoint_result_path": "/tmp/aidc_ssh_job-source/control/checkpoint-result.json",
+    "log_path": "/tmp/aidc_ssh_job-source/run.log",
+    "pid": 2017420,
+    "gpu_index": 1
+  },
+  "samples": [
+    {
+      "timestamp": 1775895188.133,
+      "elapsed_s": 5.44,
+      "phase": "source_running",
+      "source_gpu_index": 1,
+      "target_gpu_index": 2,
+      "source_power_w": 249.27,
+      "target_power_w": 32.06,
+      "source_util": 100,
+      "target_util": 0,
+      "source_process_count": 1,
+      "target_process_count": 0
+    },
+    {
+      "timestamp": 1775895192.75,
+      "elapsed_s": 10.05,
+      "phase": "paused_window",
+      "source_gpu_index": 1,
+      "target_gpu_index": 2,
+      "source_power_w": 134.27,
+      "target_power_w": 31.3,
+      "source_util": 0,
+      "target_util": 0,
+      "source_process_count": 1,
+      "target_process_count": 0
+    },
+    {
+      "timestamp": 1775895195.328,
+      "elapsed_s": 12.63,
+      "phase": "paused_window",
+      "source_gpu_index": 1,
+      "target_gpu_index": 2,
+      "source_power_w": 134.46,
+      "target_power_w": 31.94,
+      "source_util": 0,
+      "target_util": 0,
+      "source_process_count": 1,
+      "target_process_count": 0
+    },
+    {
+      "timestamp": 1775895197.834,
+      "elapsed_s": 15.14,
+      "phase": "paused_window",
+      "source_gpu_index": 1,
+      "target_gpu_index": 2,
+      "source_power_w": 136.04,
+      "target_power_w": 31.21,
+      "source_util": 0,
+      "target_util": 0,
+      "source_process_count": 1,
+      "target_process_count": 0
+    },
+    {
+      "timestamp": 1775895201.62,
+      "elapsed_s": 18.92,
+      "phase": "source_resumed",
+      "source_gpu_index": 1,
+      "target_gpu_index": 2,
+      "source_power_w": 248.37,
+      "target_power_w": 37.64,
+      "source_util": 100,
+      "target_util": 0,
+      "source_process_count": 1,
+      "target_process_count": 0
+    },
+    {
+      "timestamp": 1775895203.338,
+      "elapsed_s": 20.64,
+      "phase": "checkpoint_ready",
+      "source_gpu_index": 1,
+      "target_gpu_index": 2,
+      "source_power_w": 178.88,
+      "target_power_w": 32.43,
+      "source_util": 0,
+      "target_util": 0,
+      "source_process_count": 1,
+      "target_process_count": 0
+    },
+    {
+      "timestamp": 1775895208.222,
+      "elapsed_s": 25.52,
+      "phase": "restored_window",
+      "source_gpu_index": 1,
+      "target_gpu_index": 2,
+      "source_power_w": 64.98,
+      "target_power_w": 298.28,
+      "source_util": 0,
+      "target_util": 100,
+      "source_process_count": 0,
+      "target_process_count": 1
+    },
+    {
+      "timestamp": 1775895210.86,
+      "elapsed_s": 28.16,
+      "phase": "restored_window",
+      "source_gpu_index": 1,
+      "target_gpu_index": 2,
+      "source_power_w": 34.08,
+      "target_power_w": 299.1,
+      "source_util": 0,
+      "target_util": 100,
+      "source_process_count": 0,
+      "target_process_count": 1
+    },
+    {
+      "timestamp": 1775895213.472,
+      "elapsed_s": 30.77,
+      "phase": "restored_window",
+      "source_gpu_index": 1,
+      "target_gpu_index": 2,
+      "source_power_w": 35.64,
+      "target_power_w": 299.19,
+      "source_util": 0,
+      "target_util": 100,
+      "source_process_count": 0,
+      "target_process_count": 1
+    },
+    {
+      "timestamp": 1775895216.187,
+      "elapsed_s": 33.49,
+      "phase": "restored_window",
+      "source_gpu_index": 1,
+      "target_gpu_index": 2,
+      "source_power_w": 33.03,
+      "target_power_w": 299.83,
+      "source_util": 0,
+      "target_util": 100,
+      "source_process_count": 0,
+      "target_process_count": 1
+    }
+  ],
+  "paused_runtime": {
+    "success": true,
+    "pid": 2017420,
+    "signal": "STOP",
+    "error": ""
+  },
+  "resumed_runtime": {
+    "success": true,
+    "pid": 2017420,
+    "signal": "CONT",
+    "error": ""
+  },
+  "pause_state_before": {
+    "timestamp": 1775895188.333,
+    "step": 12,
+    "visible_gpu": "1",
+    "event": "running",
+    "restored": false,
+    "restore_from": ""
+  },
+  "pause_state_after": {
+    "timestamp": 1775895188.616,
+    "step": 14,
+    "visible_gpu": "1",
+    "event": "running",
+    "restored": false,
+    "restore_from": ""
+  },
+  "resume_state_after": {
+    "timestamp": 1775895201.413,
+    "step": 22,
+    "visible_gpu": "1",
+    "event": "running",
+    "restored": false,
+    "restore_from": ""
+  },
+  "checkpoint_request": {
+    "checkpoint_id": "ckpt-1775895201",
+    "artifact_root": "/tmp/aidc_ssh_job-source/artifacts",
+    "timeout_seconds": 30,
+    "requested_at": 1775895201.621
+  },
+  "checkpoint": {
+    "status": {
+      "checkpoint_id": "ckpt-1775895201",
+      "status": "ready",
+      "manifest_path": "/tmp/aidc_ssh_job-source/artifacts/ckpt-1775895201.json",
+      "artifact_paths": [
+        "/tmp/aidc_ssh_job-source/artifacts/progress.json",
+        "/tmp/aidc_ssh_job-source/artifacts/progress.log"
+      ],
+      "completed_at": 1775895202.431
+    },
+    "manifest": {
+      "checkpoint_id": "ckpt-1775895201",
+      "step": 29,
+      "visible_gpu": "1",
+      "saved_at": 1775895202.43
+    },
+    "ready_elapsed_s": 20.03
+  },
+  "restore_runtime": {
+    "root": "/tmp/aidc_ssh_job-restore",
+    "control_dir": "/tmp/aidc_ssh_job-restore/control",
+    "artifact_root": "/tmp/aidc_ssh_job-restore/artifacts",
+    "progress_path": "/tmp/aidc_ssh_job-restore/artifacts/progress.json",
+    "checkpoint_request_path": "/tmp/aidc_ssh_job-restore/control/checkpoint-request.json",
+    "checkpoint_result_path": "/tmp/aidc_ssh_job-restore/control/checkpoint-result.json",
+    "log_path": "/tmp/aidc_ssh_job-restore/run.log",
+    "pid": 2018327,
+    "gpu_index": 2
+  },
+  "restore_state_initial": {
+    "timestamp": 1775895207.146,
+    "step": 34,
+    "visible_gpu": "2",
+    "event": "running",
+    "restored": true,
+    "restore_from": "/tmp/aidc_ssh_job-source/artifacts/ckpt-1775895201.json"
+  },
+  "restore_state_final": {
+    "timestamp": 1775895208.129,
+    "step": 42,
+    "visible_gpu": "2",
+    "event": "running",
+    "restored": true,
+    "restore_from": "/tmp/aidc_ssh_job-source/artifacts/ckpt-1775895201.json"
+  },
+  "restore_started_at": 20.68,
+  "summary": {
+    "source_gpu_index": 1,
+    "target_gpu_index": 2,
+    "pause_freeze_delta_steps": 2,
+    "resume_recovery_delta_steps": 8,
+    "checkpoint_step": 29,
+    "restored_initial_step": 34,
+    "restored_final_step": 42,
+    "progress_continued": true,
+    "source_paused_avg_power_w": 134.92,
+    "target_restored_avg_power_w": 299.1,
+    "switch_latency_s": 0.65
+  }
+}

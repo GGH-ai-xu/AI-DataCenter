@@ -6,6 +6,7 @@ import logging
 from typing import Optional
 
 from openai import AsyncOpenAI
+from app.services.goal_runtime.session_context import format_session_context_for_prompt
 from app.services.optimization_ontology import (
     build_graph_extract_prompt,
     graph_source_default,
@@ -339,7 +340,21 @@ class LLMService:
     def supports_control_plan_stream(self) -> bool:
         return True
 
-    async def chat(self, user_message: str, gpu_context: str = "") -> dict:
+    @staticmethod
+    def _append_session_context(messages: list[dict], session_context: dict | None) -> None:
+        if not session_context:
+            return
+        messages.append({
+            "role": "system",
+            "content": f"当前会话记忆上下文：\n{format_session_context_for_prompt(session_context)}",
+        })
+
+    async def chat(
+        self,
+        user_message: str,
+        gpu_context: str = "",
+        session_context: dict | None = None,
+    ) -> dict:
         """AI对话 - 基于实时数据回答用户问题"""
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -349,6 +364,7 @@ class LLMService:
                 "role": "system",
                 "content": f"当前GPU集群实时状态：\n{gpu_context}",
             })
+        self._append_session_context(messages, session_context)
         messages.append({"role": "user", "content": user_message})
 
         try:
@@ -369,13 +385,19 @@ class LLMService:
                 "suggestions": [],
             }
 
-    async def chat_stream(self, user_message: str, gpu_context: str = ""):
+    async def chat_stream(
+        self,
+        user_message: str,
+        gpu_context: str = "",
+        session_context: dict | None = None,
+    ):
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
         if gpu_context:
             messages.append({
                 "role": "system",
                 "content": f"当前GPU集群实时状态：\n{gpu_context}",
             })
+        self._append_session_context(messages, session_context)
         messages.append({"role": "user", "content": user_message})
         async for item in self._stream_with_retry(
             model=self.model,
@@ -389,6 +411,7 @@ class LLMService:
         self,
         user_message: str,
         gpu_context: str = "",
+        session_context: dict | None = None,
     ) -> dict:
         messages = [{"role": "system", "content": WORKBENCH_DISPATCH_PROMPT}]
         if gpu_context:
@@ -396,6 +419,7 @@ class LLMService:
                 "role": "system",
                 "content": f"当前GPU集群实时状态：\n{gpu_context}",
             })
+        self._append_session_context(messages, session_context)
         messages.append({"role": "user", "content": user_message})
 
         content = await self._call_with_retry(
