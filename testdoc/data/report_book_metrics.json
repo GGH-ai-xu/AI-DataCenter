@@ -975,5 +975,167 @@
         "above_power_alert": false
       }
     ]
+  },
+  "cluster_governance": {
+    "decision_matrix": [
+      {
+        "plan_type": "place",
+        "condition": "队列 active，node-a/ node-b 都可调度，node-a 资源贴合度更高。",
+        "meaning": "证明调度器会先做准入与资源匹配，再按 best-fit 选择放置节点。",
+        "reason": "best-fit schedulable node selected",
+        "selected_node": "node-a",
+        "selected_devices": [
+          "gpu-0"
+        ],
+        "victim_job_ids": [],
+        "required_actions": [],
+        "tone": "green"
+      },
+      {
+        "plan_type": "wait",
+        "condition": "队列仍是 active，但同队列运行作业已达到 max_concurrency=1。",
+        "meaning": "证明系统不会盲目继续放置，而是把作业留在等待态，避免抢占式超发。",
+        "reason": "queue queue-busy reached max_concurrency 1",
+        "selected_node": "无",
+        "selected_devices": [],
+        "victim_job_ids": [],
+        "required_actions": [],
+        "tone": "amber"
+      },
+      {
+        "plan_type": "reject",
+        "condition": "队列被运维切为 paused，作业在准入层直接被拒绝。",
+        "meaning": "证明治理状态能在调度入口生效，队列停用后不会再进入资源竞争。",
+        "reason": "queue queue-paused is paused",
+        "selected_node": "无",
+        "selected_devices": [],
+        "victim_job_ids": [],
+        "required_actions": [],
+        "tone": "red"
+      },
+      {
+        "plan_type": "hold",
+        "condition": "节点上已有占用，但现有作业不可抢占，调度器只能等待可回收对象出现。",
+        "meaning": "证明系统不会把“不可治理”的占用伪装成可执行计划，而是明确输出 hold。",
+        "reason": "waiting for a reclaimable victim to appear",
+        "selected_node": "无",
+        "selected_devices": [],
+        "victim_job_ids": [],
+        "required_actions": [],
+        "tone": "slate"
+      },
+      {
+        "plan_type": "preempt_then_place",
+        "condition": "目标作业优先级更高，节点被低优先级可抢占作业占用。",
+        "meaning": "证明调度器会输出“先抢占再放置”的治理计划，而不是只给静态告警。",
+        "reason": "preempt job job-low-priority before placing target job",
+        "selected_node": "node-blocked",
+        "selected_devices": [
+          "gpu-0"
+        ],
+        "victim_job_ids": [
+          "job-low-priority"
+        ],
+        "required_actions": [
+          {
+            "action": "cancel_job",
+            "job_id": "job-low-priority"
+          },
+          {
+            "action": "release_allocation",
+            "allocation_id": "alloc-low-priority"
+          }
+        ],
+        "tone": "blue"
+      }
+    ],
+    "reconcile_flow": {
+      "manual_run": {
+        "trigger": "manual",
+        "runtime_status": "connected",
+        "tick_count_delta": 1,
+        "skipped": false,
+        "skip_reason": "",
+        "summary": {
+          "placed": 2,
+          "preempted": 1,
+          "restored": 1,
+          "released": 1
+        },
+        "last_summary_keys": [
+          "placed",
+          "preempted",
+          "released",
+          "restored",
+          "runtime_status",
+          "skipped"
+        ],
+        "meaning": "一次人工调和会形成可回写的状态摘要。"
+      },
+      "skip_run": {
+        "trigger": "background",
+        "runtime_status": "reconnecting",
+        "tick_count_delta": 1,
+        "skipped": true,
+        "skip_reason": "runtime status: reconnecting",
+        "summary": {},
+        "last_summary_keys": [
+          "runtime_status",
+          "skip_reason",
+          "skipped"
+        ],
+        "meaning": "运行时未连通时会显式跳过，不会伪造治理成功。"
+      }
+    },
+    "governance_coverage": [
+      {
+        "object": "job",
+        "label": "作业对象",
+        "actions": [
+          "cancel",
+          "checkpoint",
+          "pause",
+          "preempt",
+          "requeue",
+          "restore",
+          "resume",
+          "submit"
+        ],
+        "action_count": 8,
+        "surface": "ClusterJobLedger 提交区 + 行内动作",
+        "evidence": "作业台账提交与行内动作，共享 submitBuiltinCommand 与刷新回写。"
+      },
+      {
+        "object": "queue",
+        "label": "队列对象",
+        "actions": [
+          "reconcile"
+        ],
+        "action_count": 1,
+        "surface": "ClusterConsoleToolbar 手动调和",
+        "evidence": "队列对象通过 queue.reconcile 进入调和控制器，状态回写到 controller snapshot。"
+      },
+      {
+        "object": "node",
+        "label": "节点对象",
+        "actions": [
+          "drain",
+          "undrain"
+        ],
+        "action_count": 2,
+        "surface": "ClusterAllocationPanel 节点排空切换",
+        "evidence": "节点对象通过 drain_state 在调和前改变可调度性，再刷新节点快照。"
+      },
+      {
+        "object": "allocation",
+        "label": "allocation 对象",
+        "actions": [
+          "release"
+        ],
+        "action_count": 1,
+        "surface": "ClusterAllocationPanel allocation 释放",
+        "evidence": "allocation.release 先释放资源，再触发作业状态回摆，避免资源悬挂。"
+      }
+    ]
   }
 }

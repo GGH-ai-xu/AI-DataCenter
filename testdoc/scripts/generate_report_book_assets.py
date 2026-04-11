@@ -19,12 +19,11 @@ from report_book_charts_metrics import (
     validation_summary_svg,
 )
 from report_book_charts_experiments import (
-    agent_experiment_svg,
-    control_experiment_svg,
-    history_experiment_svg,
+    cluster_decision_matrix_svg,
+    cluster_governance_coverage_svg,
+    cluster_reconcile_flow_svg,
     remote_budget_experiment_svg,
     remote_budget_timeline_svg,
-    scope_experiment_svg,
 )
 from report_book_charts_structure import (
     agent_chain_svg,
@@ -73,12 +72,11 @@ def main() -> None:
         "book_agent_effectiveness.svg": agent_effectiveness_svg(data),
         "book_agent_integration.svg": agent_integration_svg(data),
         "book_agent_dimensions.svg": agent_dimensions_svg(data),
-        "book_scope_experiment.svg": scope_experiment_svg(data),
-        "book_history_experiment.svg": history_experiment_svg(data),
-        "book_agent_experiment.svg": agent_experiment_svg(data),
-        "book_control_experiment.svg": control_experiment_svg(data),
         "book_remote_budget_experiment.svg": remote_budget_experiment_svg(data),
         "book_remote_budget_timeline.svg": remote_budget_timeline_svg(data),
+        "book_cluster_decision_matrix.svg": cluster_decision_matrix_svg(data),
+        "book_cluster_reconcile_flow.svg": cluster_reconcile_flow_svg(data),
+        "book_cluster_governance_coverage.svg": cluster_governance_coverage_svg(data),
         "book_extension_status.svg": extension_status_svg(data),
     }
     for name, svg in charts.items():
