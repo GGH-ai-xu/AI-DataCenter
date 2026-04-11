@@ -1,5 +1,7 @@
 """公平治理API - 返回公平指数、用户画像与建议让路任务"""
 
+import asyncio
+
 from fastapi import APIRouter, Query
 from fastapi.responses import Response
 
@@ -11,6 +13,7 @@ from app.services.runtime_snapshot import (
 )
 
 router = APIRouter(prefix="/api/governance", tags=["Governance"])
+FULL_REPORT_AI_TIMEOUT_SECONDS = 20.0
 
 
 def _selected_gpu_indexes(app_state) -> list[int]:
@@ -22,6 +25,43 @@ def _cached_scope(app_state) -> tuple[list[dict] | None, list[dict] | None]:
     if not has_runtime_snapshot(snapshot):
         return None, None
     return snapshot_scoped_gpus(snapshot), snapshot_scoped_processes(snapshot)
+
+
+async def _build_full_report_ai_section(app_state, hours: float, gpu_indexes: list[int], logger) -> list[str]:
+    if not app_state.llm:
+        return []
+
+    try:
+        gpus = await asyncio.wait_for(app_state.agent.get_all_gpus(), timeout=8.0)
+        gpus = app_state.import_context.filter_gpus(gpus)
+        if not gpus:
+            return []
+
+        summary = await asyncio.wait_for(
+            app_state.store.get_power_summary(hours, gpu_indexes=gpu_indexes),
+            timeout=8.0,
+        )
+        alerts = await asyncio.wait_for(
+            app_state.store.get_alerts(limit=10, gpu_indexes=gpu_indexes),
+            timeout=8.0,
+        )
+        ai_report = await asyncio.wait_for(
+            app_state.llm.generate_report(summary, alerts),
+            timeout=FULL_REPORT_AI_TIMEOUT_SECONDS,
+        )
+        return [
+            "## 五、AI 分析报告\n",
+            ai_report or "AI 分析暂未生成。",
+            "",
+        ]
+    except asyncio.TimeoutError:
+        logger.warning("综合报告-AI分析生成超时")
+        return [
+            "## 五、AI 分析报告\n\nAI 分析生成超时，已跳过该章节，其余治理数据仍可正常导出。\n",
+        ]
+    except Exception as e:
+        logger.warning("综合报告-AI分析生成失败: %s", e)
+        return ["## 五、AI 分析报告\n\n数据暂不可用。\n"]
 
 
 @router.get("/fairness")
@@ -139,7 +179,7 @@ async def export_full_governance_report(
     sections = []
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    sections.append(f"# GPU 共享治理综合报告\n\n> 生成时间：{now_str}  \n> 统计周期：过去 {hours} 小时\n")
+    sections.append(f"# 智算中心优化代码生成系统综合治理报告\n\n> 生成时间：{now_str}  \n> 统计周期：过去 {hours} 小时\n")
 
     # 1. 能耗统计
     try:
@@ -218,26 +258,14 @@ async def export_full_governance_report(
         sections.append("## 四、治理操作记录\n\n数据暂不可用。\n")
 
     # 5. AI 洞察
-    if app_state.llm:
-        try:
-            gpus = await app_state.agent.get_all_gpus()
-            gpus = app_state.import_context.filter_gpus(gpus)
-            if gpus:
-                summary = await app_state.store.get_power_summary(
-                    hours,
-                    gpu_indexes=gpu_indexes,
-                )
-                alerts = await app_state.store.get_alerts(
-                    limit=10,
-                    gpu_indexes=gpu_indexes,
-                )
-                ai_report = await app_state.llm.generate_report(summary, alerts)
-                sections.append("## 五、AI 分析报告\n")
-                sections.append(ai_report or "AI 分析暂未生成。")
-                sections.append("")
-        except Exception as e:
-            _logger.warning("综合报告-AI分析生成失败: %s", e)
-            sections.append("## 五、AI 分析报告\n\n数据暂不可用。\n")
+    sections.extend(
+        await _build_full_report_ai_section(
+            app_state,
+            hours=hours,
+            gpu_indexes=gpu_indexes,
+            logger=_logger,
+        )
+    )
 
     sections.append("---\n\n*由智算中心优化代码生成系统自动生成*")
 

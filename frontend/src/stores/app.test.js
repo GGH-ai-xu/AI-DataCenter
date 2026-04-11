@@ -78,6 +78,21 @@ test('governance domains follow actions policies review split', () => {
   assert.ok(store.domains.governance.review)
 })
 
+test('domain requests create missing keyed state on demand', () => {
+  setActivePinia(createPinia())
+  const store = useAppStore()
+
+  assert.equal(store.domains.energy.analysis, undefined)
+
+  store.beginDomainRequest('energy', 'analysis')
+  store.completeDomainRequest('energy', 'analysis', { ready: true }, 123)
+
+  assert.equal(store.domains.energy.analysis.loading, false)
+  assert.equal(store.domains.energy.analysis.inFlight, false)
+  assert.equal(store.domains.energy.analysis.lastUpdatedAt, 123)
+  assert.deepEqual(store.domains.energy.analysis.data, { ready: true })
+})
+
 test('theme preference defaults to system and can resolve to explicit theme', () => {
   setActivePinia(createPinia())
   const store = useAppStore()

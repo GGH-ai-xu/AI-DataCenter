@@ -914,7 +914,7 @@ class EnergyAnalytics:
         pred = report["prediction"]
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        md = f"""# AI数据中心能耗分析报告
+        md = f"""# 智算中心优化代码生成系统能耗分析报告
 
 > 生成时间：{ts}
 > 统计周期：{hours}小时
@@ -991,7 +991,7 @@ class EnergyAnalytics:
             except Exception as e:
                 logger.warning(f"AI报告章节生成失败: {e}")
 
-        md += f"*报告由AI数据中心能耗智能优化管理系统自动生成*\n"
+        md += f"*报告由智算中心优化代码生成系统自动生成*\n"
 
         if fmt == "html":
             return self._markdown_to_simple_html(md)

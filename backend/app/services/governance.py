@@ -176,7 +176,7 @@ class GovernanceService:
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         level_label = self._level_label(overview.get("level"))
 
-        md = f"""# GPU 共享治理报告
+        md = f"""# 智算中心优化代码生成系统治理报告
 
 > 生成时间：{ts}
 > 数据来源：本机实时采集
@@ -200,7 +200,7 @@ class GovernanceService:
 | 规则违规总条数 | {overview.get('violation_count', 0)} |
 | 建议让路任务数 | {overview.get('reclaimable_candidates', 0)} |
 
-## 二、平台判断
+## 二、系统判断
 
 - {overview.get('summary', '当前暂无治理结论')}
 """

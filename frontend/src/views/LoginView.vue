@@ -37,8 +37,8 @@ async function handleSubmit() {
   <div class="auth-page">
     <section class="auth-shell">
       <article class="auth-hero tech-card">
-        <div class="auth-hero__eyebrow">GPU Governance Console</div>
-        <h1 class="auth-hero__title">把 GPU 治理台做成真正的产品界面，而不是拼起来的后台页。</h1>
+        <div class="auth-hero__eyebrow">智算中心优化代码生成系统</div>
+        <h1 class="auth-hero__title">把智算中心优化代码生成系统做成真正可交付的产品界面。</h1>
         <p class="auth-hero__description">
           登录后先进入导入层，确定本次要治理的机器与计算卡范围。后续所有告警、调度、观察与复盘都会围绕这一组 GPU 展开。
         </p>
@@ -60,7 +60,7 @@ async function handleSubmit() {
 
       <section class="auth-card tech-card">
         <div class="auth-card__eyebrow">平台登录</div>
-        <h1 class="auth-card__title">进入 GPU 治理控制台</h1>
+        <h1 class="auth-card__title">进入智算中心优化代码生成系统</h1>
         <p class="auth-card__description">
           先完成平台账号认证，再进入导入层选择本次受管机器与计算卡范围。
         </p>
