@@ -387,12 +387,21 @@ class StartDevScriptTests(unittest.TestCase):
         script = (ROOT / "scripts" / "build-desktop-shell.ps1").read_text(encoding="utf-8")
 
         self.assertIn("function Reset-BuildTarget", script)
+        self.assertIn('$pyInstallerSpecDir = Join-Path $root "scripts\\pyinstaller"', script)
         self.assertIn('Reset-BuildTarget -Name "GPUGovernanceBackend"', script)
         self.assertIn('Reset-BuildTarget -Name "GPUServerAgent"', script)
         self.assertIn('Reset-BuildTarget -Name "GPUGovernanceWorkbench"', script)
         self.assertIn('"PyInstaller", "--clean", "--noconfirm"', script)
         self.assertIn('"--distpath", $distPyInstallerDir', script)
         self.assertIn('"--workpath", $pyInstallerWorkDir', script)
+
+    def test_pyinstaller_specs_are_tracked_under_scripts_directory(self):
+        for relative in (
+            "scripts/pyinstaller/GPUGovernanceBackend.spec",
+            "scripts/pyinstaller/GPUServerAgent.spec",
+            "scripts/pyinstaller/GPUGovernanceWorkbench.spec",
+        ):
+            self.assertTrue((ROOT / relative).exists(), relative)
 
     def test_vite_config_reads_dynamic_proxy_targets(self):
         config = (ROOT / "frontend" / "vite.config.js").read_text(encoding="utf-8")

@@ -45,6 +45,20 @@ const canGenerateGraphStrategy = computed(() => (
   && Boolean(graphWorkspace.summary.neo4j_connected)
 ))
 
+function resolveGraphStrategyErrorSummary(error) {
+  const detail = String(error?.response?.data?.detail || '').trim()
+  if (detail) {
+    return detail
+  }
+
+  const message = String(error?.message || '').trim()
+  if (error?.code === 'ECONNABORTED' || /timeout/i.test(message)) {
+    return '图谱策略生成超时，请确认 LLM 与 Neo4j 已就绪，或缩小问题范围后重试。'
+  }
+
+  return '图谱策略生成失败。'
+}
+
 async function generateGraphStrategy() {
   const message = graphStrategyForm.value.message.trim()
   if (!message || graphStrategyBusy.value) return
@@ -54,8 +68,9 @@ async function generateGraphStrategy() {
     const { data } = await graphStrategy({ message })
     graphStrategyResult.value = data
   } catch (error) {
+    const summary = resolveGraphStrategyErrorSummary(error)
     graphStrategyResult.value = {
-      summary: error?.response?.data?.detail || '图谱策略生成失败。',
+      summary,
       strategy_steps: [],
       control_prompt: '',
       code_title: '未生成',

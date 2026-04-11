@@ -520,9 +520,9 @@ async def lifespan(app: FastAPI):
 
 # 创建FastAPI应用
 app = FastAPI(
-    title="GPU 共享治理平台",
-    description="高校实验室 GPU 服务器智能运维与功率预算治理平台",
-    version="1.1.0",
+    title="智算中心优化代码生成系统",
+    description="面向智算中心的优化治理、知识图谱分析与代码生成系统",
+    version="1.1.3",
     lifespan=lifespan,
 )
 
