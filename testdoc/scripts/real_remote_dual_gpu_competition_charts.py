@@ -4,6 +4,20 @@ import csv
 import json
 from pathlib import Path
 
+from report_book_plot_utils import (
+    PlotArea,
+    nice_ticks,
+    pad_domain,
+    render_grouped_bars,
+    render_horizontal_marker,
+    render_legend,
+    render_line_series,
+    render_phase_band,
+    render_plot_shell,
+    render_vertical_marker,
+    scale_x,
+    scale_y,
+)
 from report_book_svg_base import PALETTE, bar, card, chip, esc, svg_frame
 
 
@@ -58,32 +72,85 @@ def timeline_svg(data: dict) -> str:
     control = _role_samples(data, "control")
     total_points = governance
     action_elapsed = data["summary"]["latency"]["governance"]["action_elapsed_s"]
-    plot_x = lambda index: 74 + index * (760 / max(len(governance) - 1, 1))
-    plot_y = lambda value: 468 - value / 360 * 260
-    total_y = lambda value: 654 - (value - 200) / 720 * 150
-    governance_line = _polyline(governance, plot_x, plot_y, "power_usage", PALETTE["blue"], 4)
-    control_line = _polyline(control, plot_x, plot_y, "power_usage", PALETTE["amber"], 4)
-    limit_line = _polyline(governance, plot_x, plot_y, "power_limit", PALETTE["green"], 3)
-    total_line = _polyline(total_points, plot_x, total_y, "total_power", PALETTE["slate"], 3)
-    action_index = _action_index(governance, action_elapsed)
-    marker_x = plot_x(action_index)
+    power_plot = PlotArea(74, 176, 760, 280)
+    total_plot = PlotArea(74, 520, 760, 122)
+    elapsed_values = [item["elapsed_s"] for item in governance]
+    x_domain = (min(elapsed_values), max(elapsed_values))
+    x_ticks = nice_ticks(x_domain[0], x_domain[1], 6)
+    power_values = [item["power_usage"] for item in governance + control] + [item["power_limit"] for item in governance] + [320]
+    power_domain = pad_domain(min(power_values), max(power_values), 0.08)
+    power_ticks = nice_ticks(power_domain[0], power_domain[1], 6)
+    total_values = [item["total_power"] for item in total_points]
+    total_domain = pad_domain(min(total_values), max(total_values), 0.08)
+    total_ticks = nice_ticks(total_domain[0], total_domain[1], 4)
+    governance_points = [(item["elapsed_s"], item["power_usage"]) for item in governance]
+    control_points = [(item["elapsed_s"], item["power_usage"]) for item in control]
+    limit_points = [(item["elapsed_s"], item["power_limit"]) for item in governance]
+    total_series = [(item["elapsed_s"], item["total_power"]) for item in total_points]
     body = [
         '<rect class="card" x="42" y="126" width="828" height="368" rx="24"/>',
         '<rect class="card" x="42" y="520" width="828" height="178" rx="24"/>',
         '<rect class="card" x="900" y="126" width="478" height="572" rx="24"/>',
-        f'<rect x="74" y="180" width="{plot_x(3) - 74:.1f}" height="288" fill="#E8F1FF"/>',
-        f'<rect x="{plot_x(3):.1f}" y="180" width="{plot_x(9) - plot_x(3):.1f}" height="288" fill="#FFF4E5"/>',
-        f'<rect x="{plot_x(9):.1f}" y="180" width="{834 - plot_x(9):.1f}" height="288" fill="#ECFDF5"/>',
-        f'<line x1="74" y1="{plot_y(320):.1f}" x2="834" y2="{plot_y(320):.1f}" stroke="{PALETTE["red"]}" stroke-width="2.5" stroke-dasharray="8 8"/>',
-        governance_line,
-        control_line,
-        limit_line,
-        f'<line x1="{marker_x:.1f}" y1="180" x2="{marker_x:.1f}" y2="468" stroke="{PALETTE["cyan"]}" stroke-width="3" stroke-dasharray="10 8"/>',
-        '<text class="h" x="74" y="166">治理卡 vs 对照卡功耗时间线</text>',
-        f'<text class="s" x="74" y="{plot_y(320) - 8:.1f}">告警阈值 320W</text>',
-        total_line,
-        f'<line x1="{marker_x:.1f}" y1="548" x2="{marker_x:.1f}" y2="654" stroke="{PALETTE["cyan"]}" stroke-width="3" stroke-dasharray="10 8"/>',
-        '<text class="h" x="74" y="540">整机总功率变化</text>',
+        _phase_sections(governance, power_plot, x_domain),
+        render_plot_shell(
+            power_plot,
+            x_ticks=x_ticks,
+            y_ticks=power_ticks,
+            x_domain=x_domain,
+            y_domain=power_domain,
+            x_label="Elapsed Time (s)",
+            y_label="Power (W)",
+            x_formatter=lambda value: f"{value:.0f}",
+            y_formatter=lambda value: f"{value:.0f}",
+        ),
+        render_line_series(governance_points, x_domain=x_domain, y_domain=power_domain, area=power_plot, color=PALETTE["blue"]),
+        render_line_series(control_points, x_domain=x_domain, y_domain=power_domain, area=power_plot, color=PALETTE["amber"]),
+        render_line_series(limit_points, x_domain=x_domain, y_domain=power_domain, area=power_plot, color=PALETTE["green"], width=2.8),
+        render_horizontal_marker(
+            power_plot,
+            value=320,
+            y_domain=power_domain,
+            color=PALETTE["red"],
+            label="阈值 320W",
+        ),
+        render_vertical_marker(
+            power_plot,
+            value=action_elapsed,
+            x_domain=x_domain,
+            color=PALETTE["cyan"],
+            label="治理动作",
+        ),
+        render_legend(
+            84,
+            148,
+            [
+                ("治理卡功耗", PALETTE["blue"]),
+                ("对照卡功耗", PALETTE["amber"]),
+                ("治理卡上限", PALETTE["green"]),
+                ("阈值线", PALETTE["red"]),
+            ],
+        ),
+        '<text class="h" x="74" y="164">治理卡 vs 对照卡功耗时间线</text>',
+        render_plot_shell(
+            total_plot,
+            x_ticks=x_ticks,
+            y_ticks=total_ticks,
+            x_domain=x_domain,
+            y_domain=total_domain,
+            x_label="Elapsed Time (s)",
+            y_label="Total Power (W)",
+            x_formatter=lambda value: f"{value:.0f}",
+            y_formatter=lambda value: f"{value:.0f}",
+        ),
+        render_line_series(total_series, x_domain=x_domain, y_domain=total_domain, area=total_plot, color=PALETTE["slate"], width=3.0),
+        render_vertical_marker(
+            total_plot,
+            value=action_elapsed,
+            x_domain=x_domain,
+            color=PALETTE["cyan"],
+            label="动作",
+        ),
+        '<text class="h" x="74" y="510">整机总功率变化</text>',
         '<text class="s" x="920" y="176">怎么读这张图</text>',
         '<text class="p" x="920" y="208">1. 蓝线是治理 GPU1 的实测功耗，橙线是对照 GPU3 的实测功耗。</text>',
         '<text class="p" x="920" y="236">2. 绿线是治理卡的功耗上限，青虚线是治理动作生效时刻。</text>',
@@ -105,17 +172,71 @@ def timeline_svg(data: dict) -> str:
 def comparison_svg(data: dict) -> str:
     governance = data["summary"]["governance"]
     control = data["summary"]["control"]
+    power_plot = PlotArea(74, 170, 390, 240)
+    temp_plot = PlotArea(514, 170, 320, 240)
+    ratio_plot = PlotArea(884, 170, 430, 240)
+    power_categories = ["峰值功耗", "治理后均值"]
+    power_series = [
+        ("治理卡", PALETTE["blue"], [governance["ramp"]["peak_power"], governance["post_action"]["avg_power"]]),
+        ("对照卡", PALETTE["amber"], [control["ramp"]["peak_power"], control["post_action"]["avg_power"]]),
+    ]
+    power_domain = pad_domain(0, max(governance["ramp"]["peak_power"], control["ramp"]["peak_power"]), 0.08)
+    power_ticks = nice_ticks(power_domain[0], power_domain[1], 5)
+    temp_categories = ["治理后温度"]
+    temp_series = [
+        ("治理卡", PALETTE["blue"], [governance["post_action"]["avg_temperature"]]),
+        ("对照卡", PALETTE["amber"], [control["post_action"]["avg_temperature"]]),
+    ]
+    temp_domain = pad_domain(0, max(governance["post_action"]["avg_temperature"], control["post_action"]["avg_temperature"]), 0.1)
+    temp_ticks = nice_ticks(temp_domain[0], temp_domain[1], 5)
+    gov_alert_ratio = governance["post_action"]["above_alert_samples"] / governance["post_action"]["sample_count"] * 100.0
+    ctl_alert_ratio = control["post_action"]["above_alert_samples"] / control["post_action"]["sample_count"] * 100.0
+    ratio_categories = ["清洁率", "告警样本率"]
+    ratio_series = [
+        ("治理卡", PALETTE["blue"], [data["summary"]["contrast"]["governance_clean_ratio_pct"], gov_alert_ratio]),
+        ("对照卡", PALETTE["amber"], [data["summary"]["contrast"]["control_clean_ratio_pct"], ctl_alert_ratio]),
+    ]
     body = [
         '<rect class="card" x="42" y="126" width="1336" height="458" rx="24"/>',
-        '<text class="h" x="68" y="164">功耗、温度与清洁率对比</text>',
-        bar(96, 470, 110, 220, int(round(governance["ramp"]["peak_power"])), 360, PALETTE["blue"], "治理峰值"),
-        bar(230, 470, 110, 220, int(round(control["ramp"]["peak_power"])), 360, PALETTE["amber"], "对照峰值"),
-        bar(406, 470, 110, 220, int(round(governance["post_action"]["avg_power"])), 360, PALETTE["blue"], "治理后均值"),
-        bar(540, 470, 110, 220, int(round(control["post_action"]["avg_power"])), 360, PALETTE["amber"], "对照后均值"),
-        bar(716, 470, 110, 220, int(round(governance["post_action"]["avg_temperature"])), 120, PALETTE["blue"], "治理后温度"),
-        bar(850, 470, 110, 220, int(round(control["post_action"]["avg_temperature"])), 120, PALETTE["amber"], "对照后温度"),
-        bar(1026, 470, 110, 220, int(round(data["summary"]["contrast"]["governance_clean_ratio_pct"])), 100, PALETTE["green"], "治理清洁率"),
-        bar(1160, 470, 110, 220, int(round(data["summary"]["contrast"]["control_clean_ratio_pct"])), 100, PALETTE["red"], "对照清洁率"),
+        render_grouped_bars(
+            power_plot,
+            categories=power_categories,
+            series=power_series,
+            y_domain=power_domain,
+            y_ticks=power_ticks,
+            x_label="功耗指标",
+            y_label="Power (W)",
+            formatter=lambda value: f"{value:.0f}",
+        ),
+        render_grouped_bars(
+            temp_plot,
+            categories=temp_categories,
+            series=temp_series,
+            y_domain=temp_domain,
+            y_ticks=temp_ticks,
+            x_label="温度指标",
+            y_label="Temperature (°C)",
+            formatter=lambda value: f"{value:.0f}",
+        ),
+        render_grouped_bars(
+            ratio_plot,
+            categories=ratio_categories,
+            series=ratio_series,
+            y_domain=(0, 100),
+            y_ticks=[0, 25, 50, 75, 100],
+            x_label="治理结果",
+            y_label="Ratio (%)",
+            formatter=lambda value: f"{value:.0f}%",
+        ),
+        render_legend(
+            86,
+            146,
+            [
+                ("治理卡", PALETTE["blue"]),
+                ("对照卡", PALETTE["amber"]),
+            ],
+        ),
+        '<text class="h" x="68" y="160">功耗、温度与清洁率对比</text>',
         card(54, 610, 408, 120, "治理卡", [
             f'峰值 {governance["ramp"]["peak_power"]:.2f}W -> 后窗均值 {governance["post_action"]["avg_power"]:.2f}W',
             f'后窗越阈样本 {governance["post_action"]["above_alert_samples"]} / {governance["post_action"]["sample_count"]}',
@@ -135,6 +256,17 @@ def comparison_svg(data: dict) -> str:
 def latency_svg(data: dict) -> str:
     governance = data["summary"]["latency"]["governance"]
     control = data["summary"]["latency"]["control"]
+    end_elapsed = max(item["elapsed_s"] for item in data["samples"])
+    timeline_plot = PlotArea(94, 372, 1232, 180)
+    x_domain = (0.0, end_elapsed)
+    x_ticks = nice_ticks(0.0, end_elapsed, 6)
+    y_domain = (-0.4, 1.4)
+    gov_y = 1.0
+    ctl_y = 0.0
+    gov_alert_x = float(governance["first_alert_elapsed_s"] or 0)
+    ctl_alert_x = float(control["first_alert_elapsed_s"] or 0)
+    action_x = float(governance["action_elapsed_s"] or 0)
+    safe_x = float(governance["first_safe_elapsed_s"] or 0)
     body = [
         card(54, 154, 274, 148, "首次越阈", [
             f'治理卡 {governance["first_alert_elapsed_s"]:.2f}s',
@@ -153,12 +285,40 @@ def latency_svg(data: dict) -> str:
             '对照卡在观测窗口内始终高于阈值',
         ], PALETTE["blue"]),
         '<rect class="card" x="42" y="344" width="1336" height="250" rx="24"/>',
-        '<text class="h" x="68" y="382">治理事件链</text>',
-        '<line x1="108" y1="472" x2="1308" y2="472" stroke="#D7E1EC" stroke-width="8" stroke-linecap="round"/>',
-        _event_marker(160, "22.09s", "双卡同时越阈", PALETTE["red"]),
-        _event_marker(536, "23.18s", "系统对 GPU1 下发限功率", PALETTE["cyan"]),
-        _event_marker(912, "23.18s", "治理卡首次回到阈值下方", PALETTE["green"]),
-        _event_marker(1248, "后窗结束", "对照卡仍 18/18 越阈", PALETTE["amber"]),
+        render_plot_shell(
+            timeline_plot,
+            x_ticks=x_ticks,
+            y_ticks=[0, 1],
+            x_domain=x_domain,
+            y_domain=y_domain,
+            x_label="Elapsed Time (s)",
+            y_label="对象",
+            x_formatter=lambda value: f"{value:.0f}",
+            y_formatter=lambda value: "治理卡" if value >= 0.5 else "对照卡",
+        ),
+        f'<text class="h" x="68" y="382">治理事件链</text>',
+        _event_line(timeline_plot, x_domain, y_domain, gov_alert_x, safe_x, gov_y, PALETTE["blue"]),
+        _event_line(timeline_plot, x_domain, y_domain, ctl_alert_x, end_elapsed, ctl_y, PALETTE["amber"]),
+        render_vertical_marker(
+            timeline_plot,
+            value=action_x,
+            x_domain=x_domain,
+            color=PALETTE["cyan"],
+            label="治理动作",
+        ),
+        _event_point(timeline_plot, x_domain, y_domain, gov_alert_x, gov_y, PALETTE["red"], "首次越阈"),
+        _event_point(timeline_plot, x_domain, y_domain, safe_x, gov_y, PALETTE["green"], "首次回落"),
+        _event_point(timeline_plot, x_domain, y_domain, ctl_alert_x, ctl_y, PALETTE["red"], "首次越阈"),
+        _event_point(timeline_plot, x_domain, y_domain, end_elapsed, ctl_y, PALETTE["amber"], "窗口结束"),
+        render_legend(
+            96,
+            356,
+            [
+                ("治理卡事件链", PALETTE["blue"]),
+                ("对照卡事件链", PALETTE["amber"]),
+                ("动作时刻", PALETTE["cyan"]),
+            ],
+        ),
         chip(54, 624, 250, "治理卡清洁率", f'{data["summary"]["contrast"]["governance_clean_ratio_pct"]:.1f}%', PALETTE["green"]),
         chip(328, 624, 250, "对照卡清洁率", f'{data["summary"]["contrast"]["control_clean_ratio_pct"]:.1f}%', PALETTE["red"]),
         chip(602, 624, 346, "治理卡功耗回落", f'{data["summary"]["contrast"]["governance_drop_from_peak_w"]:.2f}W', PALETTE["blue"]),
@@ -175,31 +335,60 @@ def _role_samples(data: dict, role: str) -> list[dict]:
     return sorted(rows, key=lambda item: float(item.get("elapsed_s", 0) or 0))
 
 
-def _action_index(rows: list[dict], action_elapsed: float | None) -> int:
-    if action_elapsed is None:
-        return max(len(rows) - 1, 0)
-    for index, item in enumerate(rows):
-        if float(item.get("elapsed_s", 0) or 0) >= action_elapsed:
-            return index
-    return max(len(rows) - 1, 0)
+def _phase_sections(rows: list[dict], area: PlotArea, x_domain: tuple[float, float]) -> str:
+    fill_by_phase = {
+        "baseline": ("基线", "#E8F1FF"),
+        "load_ramp": ("爬升", "#FFF4E5"),
+        "post_action": ("治理后", "#ECFDF5"),
+    }
+    bands = []
+    for phase in ("baseline", "load_ramp", "post_action"):
+        phase_rows = [item for item in rows if item["phase"] == phase]
+        if not phase_rows:
+            continue
+        label, fill = fill_by_phase[phase]
+        bands.append(
+            render_phase_band(
+                area,
+                start=phase_rows[0]["elapsed_s"],
+                end=phase_rows[-1]["elapsed_s"],
+                x_domain=x_domain,
+                fill=fill,
+                label=label,
+            )
+        )
+    return "".join(bands)
 
 
-def _polyline(samples: list[dict], x_fn, y_fn, key: str, color: str, width: int) -> str:
-    points = " ".join(
-        f"{x_fn(index):.1f},{y_fn(float(sample[key])):.1f}"
-        for index, sample in enumerate(samples)
-    )
+def _event_line(
+    area: PlotArea,
+    x_domain: tuple[float, float],
+    y_domain: tuple[float, float],
+    start: float,
+    end: float,
+    y_value: float,
+    color: str,
+) -> str:
+    x1 = scale_x(start, x_domain, area)
+    x2 = scale_x(end, x_domain, area)
+    y = scale_y(y_value, y_domain, area)
+    return f'<line x1="{x1:.1f}" y1="{y:.1f}" x2="{x2:.1f}" y2="{y:.1f}" stroke="{color}" stroke-width="4" stroke-linecap="round"/>'
+
+
+def _event_point(
+    area: PlotArea,
+    x_domain: tuple[float, float],
+    y_domain: tuple[float, float],
+    x_value: float,
+    y_value: float,
+    color: str,
+    label: str,
+) -> str:
+    x = scale_x(x_value, x_domain, area)
+    y = scale_y(y_value, y_domain, area)
     return (
-        f'<polyline points="{esc(points)}" fill="none" stroke="{color}" '
-        f'stroke-width="{width}" stroke-linejoin="round" stroke-linecap="round"/>'
-    )
-
-
-def _event_marker(x: int, label: str, text: str, color: str) -> str:
-    return (
-        f'<circle cx="{x}" cy="472" r="14" fill="{color}"/>'
-        f'<text class="k" x="{x - 20}" y="438">{esc(label)}</text>'
-        f'<text class="p" x="{x - 72}" y="518">{esc(text)}</text>'
+        f'<circle cx="{x:.1f}" cy="{y:.1f}" r="7" fill="{color}" stroke="#FFFFFF" stroke-width="1.4"/>'
+        f'<text class="s" x="{x + 8:.1f}" y="{y - 10:.1f}">{esc(label)}</text>'
     )
 
 

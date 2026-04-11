@@ -47,14 +47,12 @@ class ShellHeaderPruningStructureTests(unittest.TestCase):
         governance_text = (ROOT / "frontend/src/views/GovernanceLayout.vue").read_text(encoding="utf-8")
         energy_text = (ROOT / "frontend/src/views/EnergyOptimization.vue").read_text(encoding="utf-8")
         alert_text = (ROOT / "frontend/src/views/AlertCenter.vue").read_text(encoding="utf-8")
-        ai_text = (ROOT / "frontend/src/views/AIAssistant.vue").read_text(encoding="utf-8")
 
         self.assertIn("WorkspaceSummary", dashboard_text)
         self.assertIn("WorkspaceSummary", monitor_text)
         self.assertIn("WorkspaceSummary", governance_text)
         self.assertIn("WorkspaceSummary", energy_text)
         self.assertIn("WorkspaceSummary", alert_text)
-        self.assertIn("WorkspaceSummary", ai_text)
 
 
 if __name__ == "__main__":

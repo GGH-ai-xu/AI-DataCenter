@@ -1,5 +1,17 @@
 from __future__ import annotations
 
+from report_book_plot_utils import (
+    PlotArea,
+    nice_ticks,
+    pad_domain,
+    render_grouped_bars,
+    render_horizontal_marker,
+    render_legend,
+    render_line_series,
+    render_phase_band,
+    render_plot_shell,
+    render_vertical_marker,
+)
 from report_book_svg_base import PALETTE, arrow, card, chip, esc, svg_frame, text_block
 
 
@@ -15,17 +27,60 @@ TINTS = {
 
 def remote_budget_experiment_svg(dataset: dict) -> str:
     exp = dataset["real_remote_budget_experiment"]
+    plot = PlotArea(64, 170, 760, 324)
+    categories = ["基线", "爬升", "治理后"]
+    avg_values = [
+        exp["baseline"]["avg_power"],
+        exp["ramp"]["avg_power"],
+        exp["post_action"]["avg_power"],
+    ]
+    peak_values = [
+        exp["baseline"]["peak_power"],
+        exp["ramp"]["peak_power"],
+        exp["post_action"]["peak_power"],
+    ]
+    power_domain = pad_domain(0, max(peak_values + [exp["power_alert_threshold"]]), 0.08)
+    power_ticks = nice_ticks(power_domain[0], power_domain[1], 6)
     body = [
-        card(54, 154, 284, 128, "实测对象", [f'主机 {exp["host"]}', f'GPU {exp["gpu_index"]} / 原始上限 {exp["original_power_limit"]}W'], PALETTE["blue"]),
-        card(366, 154, 284, 128, "告警触发", [f'峰值功耗 {exp["peak_sample"]["power_usage"]:.2f}W', f'阈值 {exp["power_alert_threshold"]}W'], PALETTE["red"]),
-        card(678, 154, 324, 128, "治理动作", [f'预算 {exp["budget_limit"]}W', f'功耗上限 {exp["original_power_limit"]}W -> {exp["managed_power_limit"]}W'], PALETTE["green"]),
-        card(1030, 154, 336, 128, "治理结果", [f'后窗平均功耗 {exp["post_action"]["avg_power"]:.2f}W', f'连续 {exp["post_action"]["sample_count"]} 点越阈样本 {exp["post_action"]["above_alert_samples"]}'], PALETTE["cyan"]),
-        card(54, 324, 640, 150, "现象解释", [exp["alert_message"], f'GPU 功耗下降 {exp["power_drop_watts"]:.2f}W（{exp["power_drop_pct"]}%），说明调度动作不是“记录成功”，而是实际改写了 GPU 功耗上限。'], PALETTE["slate"]),
-        card(726, 324, 640, 150, "实验结论", ["这组实验直接证明：系统可借助 SSH provider 在真实 3090 主机上观察到功耗越阈，再通过一次人工预算调度下发 set_power_limit。", "治理后 18 个连续采样点全部低于 320W 告警阈值，说明调度对功耗和告警条件都产生了可观测影响。"], PALETTE["red"]),
-        chip(54, 520, 302, "单次功耗降幅", f'{exp["power_drop_watts"]:.2f}W', PALETTE["blue"]),
-        chip(382, 520, 338, "集群总功率回落", f'{exp["total_power_drop_watts"]:.2f}W', PALETTE["green"]),
-        chip(746, 520, 286, "治理是否成功", str(exp["action_success"]), PALETTE["amber"]),
-        chip(1058, 520, 308, "后窗清洁率", f'{exp["post_clean_ratio_pct"]:.1f}%', PALETTE["cyan"]),
+        '<rect class="card" x="42" y="126" width="812" height="388" rx="24"/>',
+        render_grouped_bars(
+            plot,
+            categories=categories,
+            series=[
+                ("平均功耗", PALETTE["blue"], avg_values),
+                ("峰值功耗", PALETTE["amber"], peak_values),
+            ],
+            y_domain=power_domain,
+            y_ticks=power_ticks,
+            x_label="实验阶段",
+            y_label="功耗 (W)",
+            formatter=lambda value: f"{value:.0f}",
+        ),
+        render_horizontal_marker(
+            plot,
+            value=exp["power_alert_threshold"],
+            y_domain=power_domain,
+            color=PALETTE["red"],
+            label=f'告警阈值 {exp["power_alert_threshold"]}W',
+        ),
+        render_legend(
+            86,
+            148,
+            [
+                ("平均功耗", PALETTE["blue"]),
+                ("峰值功耗", PALETTE["amber"]),
+                ("告警阈值", PALETTE["red"]),
+            ],
+        ),
+        '<text class="h" x="64" y="160">功耗统计图</text>',
+        '<text class="s" x="64" y="182">横轴为阶段，纵轴为功耗，所有数值均来自真实采样窗口汇总。</text>',
+        card(884, 154, 482, 118, "实测对象", [f'主机 {exp["host"]}', f'GPU {exp["gpu_index"]}，PID {exp["workload_pid"]}', f'原始上限 {exp["original_power_limit"]}W'], PALETTE["blue"]),
+        card(884, 290, 482, 118, "治理动作", [f'预算阈值 {exp["budget_limit"]}W', f'功耗上限 {exp["original_power_limit"]}W -> {exp["managed_power_limit"]}W', f'动作执行成功 {exp["action_success"]}'], PALETTE["green"]),
+        card(884, 426, 482, 118, "实验结论", [f'峰值 {exp["peak_sample"]["power_usage"]:.2f}W 后回落 {exp["power_drop_watts"]:.2f}W', f'治理后 {exp["post_action"]["sample_count"]} 个样本越阈数 {exp["post_action"]["above_alert_samples"]}', '说明系统动作真实改变了设备侧功耗状态'], PALETTE["cyan"]),
+        chip(54, 548, 280, "后窗均值", f'{exp["post_action"]["avg_power"]:.2f}W', PALETTE["green"]),
+        chip(356, 548, 280, "功耗降幅", f'{exp["power_drop_watts"]:.2f}W', PALETTE["blue"]),
+        chip(658, 548, 280, "总功率回落", f'{exp["total_power_drop_watts"]:.2f}W', PALETTE["amber"]),
+        chip(960, 548, 406, "后窗清洁率", f'{exp["post_clean_ratio_pct"]:.1f}%  ({exp["post_action"]["sample_count"]} 个样本)', PALETTE["cyan"]),
     ]
     return svg_frame("图 18  实验 A：真实远端功耗告警治理闭环", "在 10.151.225.108 的空闲 RTX 3090 上制造高功耗负载，再人工触发一次预算治理，观察功耗与告警条件的真实变化。", 1420, 630, "".join(body))
 
@@ -33,30 +88,84 @@ def remote_budget_experiment_svg(dataset: dict) -> str:
 def remote_budget_timeline_svg(dataset: dict) -> str:
     exp = dataset["real_remote_budget_experiment"]
     samples = exp["samples"]
-    plot_x = lambda index: 74 + index * (760 / max(len(samples) - 1, 1))
-    plot_y = lambda value: 468 - value / 360 * 260
-    total_y = lambda value: 654 - (value - 220) / 360 * 150
-    power_line = _polyline(samples, plot_x, plot_y, "power_usage", PALETTE["blue"], 4)
-    limit_line = _polyline(samples, plot_x, plot_y, "power_limit", PALETTE["green"], 4)
-    total_line = _polyline(samples, plot_x, total_y, "total_power", PALETTE["slate"], 3)
-    action_index = next(index for index, item in enumerate(samples) if item["phase"] == "post_action")
-    marker_x = plot_x(action_index)
+    power_plot = PlotArea(74, 176, 760, 280)
+    total_plot = PlotArea(74, 520, 760, 122)
+    elapsed_values = [item["elapsed_s"] for item in samples]
+    x_domain = (min(elapsed_values), max(elapsed_values))
+    x_ticks = nice_ticks(x_domain[0], x_domain[1], 6)
+    power_values = [item["power_usage"] for item in samples] + [item["power_limit"] for item in samples] + [exp["power_alert_threshold"]]
+    power_domain = pad_domain(min(power_values), max(power_values), 0.08)
+    power_ticks = nice_ticks(power_domain[0], power_domain[1], 6)
+    total_values = [item["total_power"] for item in samples]
+    total_domain = pad_domain(min(total_values), max(total_values), 0.08)
+    total_ticks = nice_ticks(total_domain[0], total_domain[1], 4)
+    power_points = [(item["elapsed_s"], item["power_usage"]) for item in samples]
+    limit_points = [(item["elapsed_s"], item["power_limit"]) for item in samples]
+    total_points = [(item["elapsed_s"], item["total_power"]) for item in samples]
+    action_elapsed = next(item["elapsed_s"] for item in samples if item["phase"] == "post_action")
     body = [
         '<rect class="card" x="42" y="126" width="828" height="368" rx="24"/>',
         '<rect class="card" x="42" y="520" width="828" height="178" rx="24"/>',
         '<rect class="card" x="900" y="126" width="478" height="572" rx="24"/>',
-        f'<rect x="74" y="180" width="{plot_x(3) - 74:.1f}" height="288" fill="#E8F1FF"/>',
-        f'<rect x="{plot_x(3):.1f}" y="180" width="{plot_x(6) - plot_x(3):.1f}" height="288" fill="#FFF4E5"/>',
-        f'<rect x="{plot_x(6):.1f}" y="180" width="{834 - plot_x(6):.1f}" height="288" fill="#ECFDF5"/>',
-        f'<line x1="74" y1="{plot_y(exp["power_alert_threshold"]):.1f}" x2="834" y2="{plot_y(exp["power_alert_threshold"]):.1f}" stroke="{PALETTE["red"]}" stroke-width="2.5" stroke-dasharray="8 8"/>',
-        power_line,
-        limit_line,
-        f'<line x1="{marker_x:.1f}" y1="180" x2="{marker_x:.1f}" y2="468" stroke="{PALETTE["amber"]}" stroke-width="3" stroke-dasharray="10 8"/>',
-        '<text class="h" x="74" y="166">GPU3 功耗与功耗上限时间线</text>',
-        f'<text class="s" x="74" y="{plot_y(exp["power_alert_threshold"]) - 8:.1f}">告警阈值 {exp["power_alert_threshold"]}W</text>',
-        total_line,
-        f'<line x1="{marker_x:.1f}" y1="548" x2="{marker_x:.1f}" y2="654" stroke="{PALETTE["amber"]}" stroke-width="3" stroke-dasharray="10 8"/>',
-        '<text class="h" x="74" y="540">集群总功率变化</text>',
+        _phase_sections(samples, power_plot, x_domain),
+        render_plot_shell(
+            power_plot,
+            x_ticks=x_ticks,
+            y_ticks=power_ticks,
+            x_domain=x_domain,
+            y_domain=power_domain,
+            x_label="Elapsed Time (s)",
+            y_label="Power (W)",
+            x_formatter=lambda value: f"{value:.0f}",
+            y_formatter=lambda value: f"{value:.0f}",
+        ),
+        render_line_series(power_points, x_domain=x_domain, y_domain=power_domain, area=power_plot, color=PALETTE["blue"]),
+        render_line_series(limit_points, x_domain=x_domain, y_domain=power_domain, area=power_plot, color=PALETTE["green"]),
+        render_horizontal_marker(
+            power_plot,
+            value=exp["power_alert_threshold"],
+            y_domain=power_domain,
+            color=PALETTE["red"],
+            label=f'阈值 {exp["power_alert_threshold"]}W',
+        ),
+        render_vertical_marker(
+            power_plot,
+            value=action_elapsed,
+            x_domain=x_domain,
+            color=PALETTE["amber"],
+            label="治理动作",
+        ),
+        render_legend(
+            84,
+            148,
+            [
+                ("实测功耗", PALETTE["blue"]),
+                ("功耗上限", PALETTE["green"]),
+                ("阈值线", PALETTE["red"]),
+                ("动作时刻", PALETTE["amber"]),
+            ],
+        ),
+        '<text class="h" x="74" y="164">GPU3 功耗与功耗上限时间线</text>',
+        render_plot_shell(
+            total_plot,
+            x_ticks=x_ticks,
+            y_ticks=total_ticks,
+            x_domain=x_domain,
+            y_domain=total_domain,
+            x_label="Elapsed Time (s)",
+            y_label="Total Power (W)",
+            x_formatter=lambda value: f"{value:.0f}",
+            y_formatter=lambda value: f"{value:.0f}",
+        ),
+        render_line_series(total_points, x_domain=x_domain, y_domain=total_domain, area=total_plot, color=PALETTE["slate"], width=3.0),
+        render_vertical_marker(
+            total_plot,
+            value=action_elapsed,
+            x_domain=x_domain,
+            color=PALETTE["amber"],
+            label="动作",
+        ),
+        '<text class="h" x="74" y="510">集群总功率变化</text>',
         '<text class="s" x="920" y="176">怎么读这张图</text>',
         '<text class="p" x="920" y="208">1. 蓝线是 GPU3 实测功耗，绿线是当前功耗上限。</text>',
         '<text class="p" x="920" y="236">2. 红虚线是 320W 告警阈值，蓝线穿越后触发一次真实告警。</text>',
@@ -204,3 +313,31 @@ def _wrap_text(text: str, width: int) -> list[str]:
 def _polyline(samples: list[dict], x_fn, y_fn, key: str, color: str, width: int) -> str:
     points = " ".join(f"{x_fn(index):.1f},{y_fn(sample[key]):.1f}" for index, sample in enumerate(samples))
     return f'<polyline points="{esc(points)}" fill="none" stroke="{color}" stroke-width="{width}" stroke-linejoin="round" stroke-linecap="round"/>'
+
+
+def _phase_sections(samples: list[dict], area: PlotArea, x_domain: tuple[float, float]) -> str:
+    bands = []
+    phase_ranges = []
+    for phase in ("baseline", "load_ramp", "post_action"):
+        rows = [item for item in samples if item["phase"] == phase]
+        if not rows:
+            continue
+        phase_ranges.append((phase, rows[0]["elapsed_s"], rows[-1]["elapsed_s"]))
+    labels = {
+        "baseline": ("空闲基线", "#E8F1FF"),
+        "load_ramp": ("负载爬升", "#FFF4E5"),
+        "post_action": ("治理后观测", "#ECFDF5"),
+    }
+    for phase, start, end in phase_ranges:
+        label, fill = labels[phase]
+        bands.append(
+            render_phase_band(
+                area,
+                start=start,
+                end=end,
+                x_domain=x_domain,
+                fill=fill,
+                label=label,
+            )
+        )
+    return "".join(bands)
