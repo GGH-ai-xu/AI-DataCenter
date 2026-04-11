@@ -581,7 +581,7 @@ function buildExportedAgentReadme() {
     '',
     `1. Double-click ${AGENT_START_SCRIPT_NAME}`,
     `2. On the remote host, open http://127.0.0.1:${DEFAULT_AGENT_PORT}/api/health`,
-    `3. In GPU Governance Workbench, fill in http://<server-ip>:${DEFAULT_AGENT_PORT}`,
+    `3. In 智算中心优化代码生成系统, fill in http://<server-ip>:${DEFAULT_AGENT_PORT}`,
     '4. Click Test Connection, then Save and Switch',
     '',
     'Notes:',

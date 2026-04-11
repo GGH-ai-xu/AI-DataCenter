@@ -134,6 +134,7 @@ class GoalRuntimeSessionRuntime:
         session_id: str,
         goal_spec,
         plan,
+        round_index: int,
         sequence_start: int,
     ) -> None:
         parsed_event = build_goal_parsed_event(
@@ -146,7 +147,7 @@ class GoalRuntimeSessionRuntime:
             session_id,
             parsed_event.event_type,
             dict(parsed_event.payload),
-            round_index=1,
+            round_index=round_index,
             sequence=sequence_start,
             source="planner",
         )
@@ -164,7 +165,7 @@ class GoalRuntimeSessionRuntime:
                     for step in plan.steps
                 ],
             },
-            round_index=1,
+            round_index=round_index,
             sequence=sequence_start + 1,
             source="planner",
         )
@@ -191,6 +192,8 @@ class GoalRuntimeSessionRuntime:
         session_id: str,
         message: str,
         permission_mode: str,
+        *,
+        round_index: int,
     ) -> None:
         try:
             await self.stream_broker.publish(
@@ -204,6 +207,7 @@ class GoalRuntimeSessionRuntime:
                 permission_mode=permission_mode,
                 registry=self.registry,
                 llm_service=self.llm_service_reader(),
+                round_index=round_index,
                 on_llm_snapshot=lambda text, revision: self.publish_planner_snapshot(
                     session_id,
                     text,
@@ -224,6 +228,7 @@ class GoalRuntimeSessionRuntime:
                 session_id,
                 goal_spec,
                 plan,
+                round_index,
                 len(trace_events) + 1,
             )
             await self.set_session_status(
@@ -238,6 +243,8 @@ class GoalRuntimeSessionRuntime:
                 plan,
                 self.registry,
                 self,
+                round_index=round_index,
+                sequence_start=len(trace_events) + 3,
             )
             await self.complete_background_run(
                 session_id,
@@ -245,7 +252,13 @@ class GoalRuntimeSessionRuntime:
                 goal_spec.raw_message,
             )
         except Exception as exc:
-            await self.append_event(session_id, "SessionFailed", {"error": str(exc)})
+            await self.append_event(
+                session_id,
+                "SessionFailed",
+                {"error": str(exc)},
+                round_index=round_index,
+                sequence=999,
+            )
             await self.set_session_status(
                 session_id,
                 "failed",

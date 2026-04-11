@@ -5,6 +5,7 @@ import { createAgentRuntimeSessionPolling } from '../lib/agentRuntimeSessionPoll
 import { reduceRuntimeStreamEvent } from '../lib/agentRuntimeStreaming.js'
 import { parseSseFrames, readResponseTextChunks } from '../lib/sseFrameStream.js'
 import {
+  appendAgentRuntimeChatTurn,
   approveAgentRuntimeSession,
   deleteAgentRuntimeSession,
   getAgentRuntimeSession,
@@ -158,29 +159,61 @@ export function useAiAssistantRuntimeSession({
     runtimePolling.start(() => refreshRuntimeSession(runtimeSession.value.session_id))
   }
 
-  async function startRuntimeRequest(message) {
+  async function startRuntimeRequest(message, options = {}) {
     const text = String(message || '').trim()
     if (!text || controlPlanning.value) return
+    const requestedSessionId = String(options.sessionId || '').trim()
+    if (
+      requestedSessionId
+      && requestedSessionId === activeSessionId.value
+      && ACTIVE_RUNTIME_STATUSES.has(runtimeSession.value?.status)
+    ) {
+      throw new Error('当前会话仍在执行或等待审批，请先完成这一轮。')
+    }
     controlPlanning.value = true
     stopRuntimeStream()
     resetPlannerStream()
     runtimeEvents.value = []
     try {
-      const { data } = await startAgentRuntimeSession(text, controlPermissionMode.value)
+      const { data } = await startAgentRuntimeSession(
+        text,
+        controlPermissionMode.value,
+        requestedSessionId,
+      )
       mergeRuntimeSession(data)
       if (data?.session_id) {
         void connectRuntimeStream(data.session_id)
         await refreshRuntimeSession(data.session_id)
       }
       await loadSessionHistory()
+      return runtimeSession.value
     } catch (error) {
       runtimeSession.value = null
       runtimeEvents.value = []
       resetPlannerStream()
-      onError?.(error?.response?.data?.detail || '创建运行时会话失败。')
+      throw error
     } finally {
       controlPlanning.value = false
     }
+  }
+
+  async function persistChatTurn(message, reply, options = {}) {
+    const text = String(message || '').trim()
+    const assistantReply = String(reply || '').trim()
+    if (!text || !assistantReply || controlPlanning.value) return runtimeSession.value
+    const requestedSessionId = String(options.sessionId || '').trim()
+    const { data } = await appendAgentRuntimeChatTurn(
+      text,
+      assistantReply,
+      controlPermissionMode.value,
+      requestedSessionId,
+      String(options.replyMode || 'inline'),
+      [...(options.suggestions || [])],
+    )
+    mergeRuntimeSession(data?.session || null)
+    runtimeEvents.value = data?.events || []
+    await loadSessionHistory()
+    return runtimeSession.value
   }
 
   async function handleApproval(approved) {
@@ -240,6 +273,7 @@ export function useAiAssistantRuntimeSession({
     refreshRuntimeSession,
     resetActiveSession,
     startRuntimeRequest,
+    persistChatTurn,
     handleApproval,
     selectSession,
     deleteSession,

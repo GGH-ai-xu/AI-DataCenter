@@ -9,8 +9,17 @@ async def _append_event(
     session_id: str,
     event_type: str,
     payload: dict,
+    *,
+    round_index: int,
+    sequence: int,
 ) -> str:
-    await persistence.append_event(session_id, event_type, payload)
+    await persistence.append_event(
+        session_id,
+        event_type,
+        payload,
+        round_index=round_index,
+        sequence=sequence,
+    )
     return event_type
 
 
@@ -36,41 +45,28 @@ def _update_execution_context(
 
 
 async def _handle_fallbacks(
-    session_id: str,
     goal_spec,
     step,
     registry,
-    persistence,
     execution_context: dict,
-    event_types: list[str],
+    emit_event,
 ) -> dict | None:
     for fallback_name in step.fallback_capabilities:
-        event_types.append(
-            await _append_event(
-                persistence,
-                session_id,
-                "PlanRevised",
-                {
-                    "step_id": step.step_id,
-                    "from_capability": step.capability_name,
-                    "to_capability": fallback_name,
-                },
-            )
+        await emit_event(
+            "PlanRevised",
+            {
+                "step_id": step.step_id,
+                "from_capability": step.capability_name,
+                "to_capability": fallback_name,
+            },
         )
         definition = registry.get(fallback_name).definition
         if requires_approval(definition, goal_spec.permission_mode):
             pending_approval = {"actions": [_pending_action(step, fallback_name)]}
-            event_types.append(
-                await _append_event(
-                    persistence,
-                    session_id,
-                    "AwaitingApproval",
-                    pending_approval,
-                )
-            )
+            await emit_event("AwaitingApproval", pending_approval)
             return {
                 "status": "awaiting_approval",
-                "event_types": event_types,
+                "event_types": [],
                 "pending_approval": pending_approval,
             }
 
@@ -81,16 +77,12 @@ async def _handle_fallbacks(
             dict(step.arguments),
         )
         if fallback_result["success"]:
-            event_types.append(
-                await _append_event(
-                    persistence,
-                    session_id,
-                    "StepCompleted",
-                    {
-                        "step_id": step.step_id,
-                        "capability_name": fallback_name,
-                    },
-                )
+            await emit_event(
+                "StepCompleted",
+                {
+                    "step_id": step.step_id,
+                    "capability_name": fallback_name,
+                },
             )
             return {
                 "status": "completed",
@@ -110,37 +102,44 @@ async def execute_plan_session(
     registry,
     persistence,
     execution_context: dict | None = None,
+    *,
+    round_index: int = 1,
+    sequence_start: int = 1,
 ) -> dict:
     context = dict(execution_context or {})
     event_types: list[str] = []
+    next_sequence = sequence_start
+
+    async def emit_event(event_type: str, payload: dict) -> None:
+        nonlocal next_sequence
+        event_types.append(
+            await _append_event(
+                persistence,
+                session_id,
+                event_type,
+                payload,
+                round_index=round_index,
+                sequence=next_sequence,
+            )
+        )
+        next_sequence += 1
 
     for step in plan.steps:
         if step.approval_required:
             pending_approval = {"actions": [_pending_action(step, step.capability_name)]}
-            event_types.append(
-                await _append_event(
-                    persistence,
-                    session_id,
-                    "AwaitingApproval",
-                    pending_approval,
-                )
-            )
+            await emit_event("AwaitingApproval", pending_approval)
             return {
                 "status": "awaiting_approval",
                 "event_types": event_types,
                 "pending_approval": pending_approval,
             }
 
-        event_types.append(
-            await _append_event(
-                persistence,
-                session_id,
-                "StepStarted",
-                {
-                    "step_id": step.step_id,
-                    "capability_name": step.capability_name,
-                },
-            )
+        await emit_event(
+            "StepStarted",
+            {
+                "step_id": step.step_id,
+                "capability_name": step.capability_name,
+            },
         )
         result = await execute_capability(
             registry,
@@ -154,45 +153,36 @@ async def execute_plan_session(
                 step.capability_name,
                 result.get("output"),
             )
-            event_types.append(
-                await _append_event(
-                    persistence,
-                    session_id,
-                    "StepCompleted",
-                    {
-                        "step_id": step.step_id,
-                        "capability_name": step.capability_name,
-                    },
-                )
+            await emit_event(
+                "StepCompleted",
+                {
+                    "step_id": step.step_id,
+                    "capability_name": step.capability_name,
+                },
             )
             continue
 
         fallback_state = await _handle_fallbacks(
-            session_id,
             goal_spec,
             step,
             registry,
-            persistence,
             context,
-            event_types,
+            emit_event,
         )
         if fallback_state is not None:
             if fallback_state["status"] == "completed":
                 context = fallback_state["execution_context"]
                 continue
+            fallback_state["event_types"] = event_types
             return fallback_state
 
-        event_types.append(
-            await _append_event(
-                persistence,
-                session_id,
-                "SessionFailed",
-                {
-                    "step_id": step.step_id,
-                    "capability_name": step.capability_name,
-                    "error": result["error"],
-                },
-            )
+        await emit_event(
+            "SessionFailed",
+            {
+                "step_id": step.step_id,
+                "capability_name": step.capability_name,
+                "error": result["error"],
+            },
         )
         return {
             "status": "failed",
@@ -200,16 +190,12 @@ async def execute_plan_session(
             "error": result["error"],
         }
 
-    event_types.append(
-        await _append_event(
-            persistence,
-            session_id,
-            "SessionCompleted",
-            {
-                "plan_id": plan.plan_id,
-                "steps_completed": len(plan.steps),
-            },
-        )
+    await emit_event(
+        "SessionCompleted",
+        {
+            "plan_id": plan.plan_id,
+            "steps_completed": len(plan.steps),
+        },
     )
     return {
         "status": "completed",

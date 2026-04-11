@@ -8,7 +8,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(ROOT, "backend"))
 
 from app.services.data_store import DataStore  # noqa: E402
-from app.services.cluster_control.models import JobSpecRecord  # noqa: E402
+from app.services.cluster_control.models import JobSpecRecord, PlacementPlan  # noqa: E402
 
 
 class ClusterControlModelTests(unittest.IsolatedAsyncioTestCase):
@@ -89,6 +89,27 @@ class ClusterControlModelTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(record.args, ("--epochs", "2"))
         self.assertEqual(record.priority, 60)
+
+    def test_placement_plan_carries_victim_and_action_metadata(self):
+        plan = PlacementPlan(
+            job_id="job-target",
+            plan_type="preempt_then_place",
+            selected_node="node-a",
+            selected_devices=("gpu-0",),
+            score_breakdown={"fit": 1.0},
+            victim_job_ids=("job-low",),
+            victim_allocation_ids=("alloc-low",),
+            followup_job_ids=("job-target",),
+            required_actions=(
+                {"action": "cancel_job", "job_id": "job-low"},
+                {"action": "release_allocation", "allocation_id": "alloc-low"},
+            ),
+        )
+
+        self.assertEqual(plan.victim_job_ids, ("job-low",))
+        self.assertEqual(plan.victim_allocation_ids, ("alloc-low",))
+        self.assertEqual(plan.followup_job_ids, ("job-target",))
+        self.assertEqual(plan.required_actions[0]["action"], "cancel_job")
 
 
 if __name__ == "__main__":

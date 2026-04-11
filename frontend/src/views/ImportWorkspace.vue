@@ -89,6 +89,7 @@ const workspace = proxyRefs(useImportWorkspace())
       <ImportSelectionStage
         v-else
         :saved-host-summary="workspace.savedHostSummary"
+        :feedback="workspace.feedback"
         :model-value="workspace.selectedGpuIndexes"
         :gpus="workspace.scanResult?.gpus || []"
         @update:model-value="workspace.selectedGpuIndexes = $event"

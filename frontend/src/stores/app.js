@@ -149,7 +149,16 @@ export const useAppStore = defineStore('app', () => {
   }
 
   function domainEntry(section, key = null) {
-    return key ? domains.value[section][key] : domains.value[section]
+    if (!domains.value[section]) {
+      domains.value[section] = {}
+    }
+    if (!key) {
+      return domains.value[section]
+    }
+    if (!domains.value[section][key]) {
+      domains.value[section][key] = requestState()
+    }
+    return domains.value[section][key]
   }
 
   function beginDomainRequest(section, key = null) {

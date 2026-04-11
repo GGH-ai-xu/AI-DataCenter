@@ -47,7 +47,7 @@ async function handleLogout() {
         <div class="auth-hero__eyebrow">First Login Check</div>
         <h1 class="auth-hero__title">先把默认口令切成你自己的平台密码。</h1>
         <p class="auth-hero__description">
-          当前账号 {{ auth.currentUser?.username || '当前用户' }} 仍处于一次性密码状态。完成改密后，系统才会放行到导入层与治理控制台。
+          当前账号 {{ auth.currentUser?.username || '当前用户' }} 仍处于一次性密码状态。完成改密后，系统才会放行到导入层与智算中心优化代码生成系统工作台。
         </p>
         <div class="auth-hero__grid">
           <article class="auth-hero__item">
@@ -65,7 +65,7 @@ async function handleLogout() {
         <div class="auth-card__eyebrow">首次登录校验</div>
         <h1 class="auth-card__title">先修改平台密码</h1>
         <p class="auth-card__description">
-          当前账号 {{ auth.currentUser?.username || '当前用户' }} 仍处于一次性密码状态。完成改密后才能进入导入层与控制台。
+          当前账号 {{ auth.currentUser?.username || '当前用户' }} 仍处于一次性密码状态。完成改密后才能进入导入层与系统工作台。
         </p>
         <form class="auth-form" @submit.prevent="handleSubmit">
           <label class="auth-form__field">

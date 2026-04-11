@@ -31,6 +31,11 @@ from app.services.ssh_linux_system_detail import (
     parse_uptime_seconds,
 )
 from app.services.ssh_linux_training import SshLinuxTrainingCollector
+from app.services.ssh_power_limit_support import (
+    build_power_limit_query,
+    validate_power_limit_readback,
+    validate_power_limit_write,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -158,15 +163,41 @@ class SshLinuxProvider:
 
     async def set_power_limit(self, gpu_index: int, power_limit: int) -> dict:
         await self._ensure_connected()
+        normalized_gpu_index = int(gpu_index)
+        normalized_power_limit = int(power_limit)
+        command = f"nvidia-smi -i {normalized_gpu_index} -pl {normalized_power_limit}"
         result = await self.executor.run(
-            f"nvidia-smi -i {int(gpu_index)} -pl {int(power_limit)}",
+            command,
             use_sudo=self.target.sudo_enabled,
         )
+        error = validate_power_limit_write(result, command)
+        if error:
+            return {
+                "success": False,
+                "gpu_index": normalized_gpu_index,
+                "power_limit": normalized_power_limit,
+                "error": error,
+            }
+        readback_command = build_power_limit_query(normalized_gpu_index)
+        readback_result = await self.executor.run(readback_command)
+        applied_power_limit, readback_error = validate_power_limit_readback(
+            readback_result,
+            readback_command,
+            normalized_power_limit,
+        )
+        if readback_error:
+            return {
+                "success": False,
+                "gpu_index": normalized_gpu_index,
+                "power_limit": normalized_power_limit,
+                "error": readback_error,
+            }
         return {
-            "success": result.code == 0,
-            "gpu_index": int(gpu_index),
-            "power_limit": int(power_limit),
-            "error": result.stderr.strip(),
+            "success": True,
+            "gpu_index": normalized_gpu_index,
+            "power_limit": normalized_power_limit,
+            "applied_power_limit": round(float(applied_power_limit), 1),
+            "error": "",
         }
 
     async def pause_task(self, pid: int) -> dict:

@@ -3,7 +3,14 @@ from __future__ import annotations
 from app.services.goal_runtime.control_heuristics import build_control_heuristic
 from app.services.goal_runtime.goal_spec import GoalSpec
 
-JOB_ACTIONS = {"submit_job", "pause_job", "resume_job", "cancel_job"}
+JOB_ACTIONS = {
+    "submit_job",
+    "pause_job",
+    "resume_job",
+    "cancel_job",
+    "checkpoint_job",
+    "restore_job",
+}
 
 
 def _extract_constraints(message: str) -> tuple[str, ...]:

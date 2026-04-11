@@ -14,6 +14,9 @@ const api = axios.create({
   timeout: 15000,
 })
 
+const GRAPH_LLM_TIMEOUT_MS = 60000
+const GRAPH_RECONNECT_TIMEOUT_MS = 60000
+
 api.interceptors.request.use((config) => {
   const token = readSessionToken()
   if (token) {
@@ -135,8 +138,23 @@ export const dispatchAiWorkbenchMessage = (message) =>
   api.post('/ai/workbench/dispatch', { message })
 export const openAiChatStream = (message, options = {}) =>
   openAuthorizedEventStream('/api/ai/chat/stream', { message }, options)
-export const startAgentRuntimeSession = (message, permission_mode = 'low') =>
-  api.post('/agent-runtime/sessions', { message, permission_mode })
+export const startAgentRuntimeSession = (message, permission_mode = 'low', session_id = '') =>
+  api.post('/agent-runtime/sessions', { message, permission_mode, session_id })
+export const appendAgentRuntimeChatTurn = (
+  message,
+  reply,
+  permission_mode = 'low',
+  session_id = '',
+  reply_mode = 'inline',
+  suggestions = [],
+) => api.post('/agent-runtime/sessions/chat-turn', {
+  message,
+  reply,
+  permission_mode,
+  session_id,
+  reply_mode,
+  suggestions,
+})
 export const approveAgentRuntimeSession = (sessionId, approved) =>
   api.post(`/agent-runtime/sessions/${sessionId}/approve`, { approved })
 export const deleteAgentRuntimeSession = (sessionId) =>
@@ -155,22 +173,29 @@ export const openAgentRuntimeSessionStream = (sessionId, options = {}) =>
   )
 
 // 图谱
-export const graphDraft = (payload) => api.post('/graph/draft', payload)
+export const graphDraft = (payload) =>
+  api.post('/graph/draft', payload, { timeout: GRAPH_LLM_TIMEOUT_MS })
 export const graphExecute = (payload) => api.post('/graph/execute', payload)
 export const getGraphSummary = () => api.get('/graph/summary')
 export const getGraphView = (params = {}) => api.get('/graph/view', { params })
 export const getGraphNeighbors = (params = {}) => api.get('/graph/neighbors', { params })
-export const reconnectGraph = () => api.post('/graph/reconnect')
+export const reconnectGraph = () =>
+  api.post('/graph/reconnect', null, { timeout: GRAPH_RECONNECT_TIMEOUT_MS })
 export const rebuildGraphDemo = (kind = 'optimization') => api.post('/graph/demo/rebuild', null, { params: { kind } })
-export const graphQa = (payload) => api.post('/graph/qa', payload)
-export const graphStrategy = (payload) => api.post('/graph/strategy', payload)
+export const graphQa = (payload) =>
+  api.post('/graph/qa', payload, { timeout: GRAPH_LLM_TIMEOUT_MS })
+export const graphStrategy = (payload) =>
+  api.post('/graph/strategy', payload, { timeout: GRAPH_LLM_TIMEOUT_MS })
 
 // 集群控制台
 export const listClusterQueues = () => api.get('/cluster/queues')
+export const listClusterNodes = () => api.get('/cluster/nodes')
 export const listClusterJobs = () => api.get('/cluster/jobs')
 export const listClusterAllocations = () => api.get('/cluster/allocations')
 export const submitClusterJob = (payload) => api.post('/cluster/jobs', payload)
 export const getClusterJob = (jobId) => api.get(`/cluster/jobs/${jobId}`)
+export const getClusterControllerStatus = () => api.get('/cluster/controller')
+export const configureClusterController = (payload) => api.post('/cluster/controller', payload)
 export const getControlCapabilities = () => api.get('/control/capabilities')
 export const getControlCatalog = () => api.get('/control/catalog')
 export const createControlCommand = (payload) => api.post('/control/commands', payload)

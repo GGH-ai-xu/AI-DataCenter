@@ -77,7 +77,7 @@ OPTIMIZATION_DEMO_GRAPH = {
         {"id": "api_1", "label": "API", "name": "set_power_limit", "description": "设置 GPU 功率上限的执行接口。"},
         {"id": "api_2", "label": "API", "name": "run_schedule_once", "description": "执行一次调度的控制接口。"},
         {"id": "api_3", "label": "API", "name": "set_task_priority", "description": "调整任务优先级的接口。"},
-        {"id": "cluster_1", "label": "Cluster", "name": "共享 GPU 集群", "description": "当前治理平台服务的共享 GPU 资源池。"},
+        {"id": "cluster_1", "label": "Cluster", "name": "智算资源集群", "description": "当前系统纳管的智算资源池。"},
     ],
     "relations": [
         {"from_id": "policy_1", "to_id": "constraint_1", "type": "CONSTRAINS", "description": "总则明确紧急任务保护底线。"},

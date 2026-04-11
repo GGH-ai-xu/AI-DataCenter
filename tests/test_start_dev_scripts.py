@@ -43,14 +43,9 @@ class StartDevScriptTests(unittest.TestCase):
 
         self.assertIn(r"scripts\start-dev.ps1", script)
 
-    def test_worktree_start_dev_batch_calls_dedicated_powershell_launcher(self):
-        script = (
-            ROOT / "start-dev-worktree-merge-origin-main-20260410.bat"
-        ).read_text(encoding="utf-8")
-
-        self.assertIn(
-            r"scripts\start-dev-worktree-merge-origin-main-20260410.ps1",
-            script,
+    def test_worktree_start_dev_batch_entry_is_not_kept_at_repo_root(self):
+        self.assertFalse(
+            (ROOT / "start-dev-worktree-merge-origin-main-20260410.bat").exists()
         )
 
     def test_start_electron_dev_batch_calls_powershell_launcher(self):
@@ -387,12 +382,29 @@ class StartDevScriptTests(unittest.TestCase):
         script = (ROOT / "scripts" / "build-desktop-shell.ps1").read_text(encoding="utf-8")
 
         self.assertIn("function Reset-BuildTarget", script)
+        self.assertIn('$pyInstallerSpecDir = Join-Path $root "scripts\\pyinstaller"', script)
         self.assertIn('Reset-BuildTarget -Name "GPUGovernanceBackend"', script)
         self.assertIn('Reset-BuildTarget -Name "GPUServerAgent"', script)
         self.assertIn('Reset-BuildTarget -Name "GPUGovernanceWorkbench"', script)
         self.assertIn('"PyInstaller", "--clean", "--noconfirm"', script)
         self.assertIn('"--distpath", $distPyInstallerDir', script)
         self.assertIn('"--workpath", $pyInstallerWorkDir', script)
+
+    def test_pyinstaller_specs_are_tracked_under_scripts_directory(self):
+        for relative in (
+            "scripts/pyinstaller/GPUGovernanceBackend.spec",
+            "scripts/pyinstaller/GPUServerAgent.spec",
+            "scripts/pyinstaller/GPUGovernanceWorkbench.spec",
+        ):
+            self.assertTrue((ROOT / relative).exists(), relative)
+
+    def test_launcher_pyinstaller_spec_embeds_desktop_icon(self):
+        spec = (ROOT / "scripts" / "pyinstaller" / "GPUGovernanceWorkbench.spec").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('ICON = ROOT / "desktop-shell" / "build" / "icon.ico"', spec)
+        self.assertIn("icon=str(ICON)", spec)
 
     def test_vite_config_reads_dynamic_proxy_targets(self):
         config = (ROOT / "frontend" / "vite.config.js").read_text(encoding="utf-8")

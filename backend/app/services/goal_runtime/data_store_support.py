@@ -218,6 +218,33 @@ async def append_agent_event(
     await connection.commit()
 
 
+async def update_agent_session_request(
+    connection: aiosqlite.Connection,
+    session_id: str,
+    goal_json: dict,
+    permission_mode: str,
+    status: str,
+    summary: str,
+    *,
+    live_phase: str,
+) -> None:
+    await connection.execute(
+        """UPDATE agent_runtime_sessions
+           SET goal_json = ?, permission_mode = ?, status = ?, live_phase = ?, summary = ?, updated_at = ?
+           WHERE session_id = ?""",
+        (
+            json.dumps(goal_json, ensure_ascii=False),
+            permission_mode,
+            status,
+            live_phase,
+            summary,
+            time.time(),
+            session_id,
+        ),
+    )
+    await connection.commit()
+
+
 async def upsert_agent_stream_state(
     connection: aiosqlite.Connection,
     session_id: str,

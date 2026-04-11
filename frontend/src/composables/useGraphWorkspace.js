@@ -156,7 +156,7 @@ function defaultDeps() {
     graphQaApi: graphQaRequest,
     rebuildGraphDemoApi: rebuildGraphDemoRequest,
     reconnectGraphApi: reconnectGraphRequest,
-    requestTimeoutMs: 20000,
+    requestTimeoutMs: 65000,
   }
 }
 

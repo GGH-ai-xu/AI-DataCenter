@@ -9,7 +9,7 @@ from app.services.goal_runtime.control_heuristics import build_control_heuristic
 from app.services.goal_runtime.executor import execute_capability
 from app.services.llm import LLMService
 
-TRACE_ROUND_INDEX = 1
+DEFAULT_TRACE_ROUND_INDEX = 1
 SNAPSHOT_FLUSH_INTERVAL_CHARS = 48
 PlanSnapshotCallback = Callable[[str, int], Awaitable[None]]
 PlanDeltaCallback = Callable[[str], Awaitable[None]]
@@ -105,7 +105,13 @@ async def _load_llm_plan(
     return await llm_service.generate_control_plan(message, control_context)
 
 
-def _build_fallback_events(summary: str, actions: list[dict], error: str) -> list[dict]:
+def _build_fallback_events(
+    summary: str,
+    actions: list[dict],
+    error: str,
+    *,
+    round_index: int,
+) -> list[dict]:
     return [
         {
             "event_type": "LLMCallFailed",
@@ -113,7 +119,7 @@ def _build_fallback_events(summary: str, actions: list[dict], error: str) -> lis
                 "summary": "LLM 未返回有效结构化计划，切换到规则解析",
                 "error": error,
             },
-            "round_index": TRACE_ROUND_INDEX,
+            "round_index": round_index,
             "sequence": 3,
             "source": "llm",
             "duration_ms": 0,
@@ -124,7 +130,7 @@ def _build_fallback_events(summary: str, actions: list[dict], error: str) -> lis
                 "summary": summary or "已切换到规则解析",
                 "actions": actions,
             },
-            "round_index": TRACE_ROUND_INDEX,
+            "round_index": round_index,
             "sequence": 4,
             "source": "planner",
             "duration_ms": 0,
@@ -138,6 +144,7 @@ async def build_reasoning_trace(
     permission_mode: str,
     registry,
     llm_service,
+    round_index: int = DEFAULT_TRACE_ROUND_INDEX,
     on_llm_delta: PlanDeltaCallback | None = None,
     on_llm_snapshot: PlanSnapshotCallback | None = None,
 ) -> tuple[dict, list[dict]]:
@@ -151,7 +158,7 @@ async def build_reasoning_trace(
                 "summary": "已采集当前运行时快照",
                 "snapshot_preview": snapshot,
             },
-            "round_index": TRACE_ROUND_INDEX,
+            "round_index": round_index,
             "sequence": 1,
             "source": "planner",
             "duration_ms": _duration_ms(snapshot_started),
@@ -164,7 +171,7 @@ async def build_reasoning_trace(
                 {
                     "event_type": "LLMUnavailable",
                     "payload": {"summary": "当前未配置 LLM，切换到规则解析"},
-                    "round_index": TRACE_ROUND_INDEX,
+                    "round_index": round_index,
                     "sequence": 2,
                     "source": "llm",
                     "duration_ms": 0,
@@ -172,10 +179,10 @@ async def build_reasoning_trace(
                 {
                     "event_type": "RuleFallbackUsed",
                     "payload": {
-                        "summary": heuristic.get("summary") or "已切换到规则解析",
-                        "actions": heuristic.get("actions") or [],
-                    },
-                    "round_index": TRACE_ROUND_INDEX,
+                            "summary": heuristic.get("summary") or "已切换到规则解析",
+                            "actions": heuristic.get("actions") or [],
+                        },
+                    "round_index": round_index,
                     "sequence": 3,
                     "source": "planner",
                     "duration_ms": 0,
@@ -197,7 +204,7 @@ async def build_reasoning_trace(
                 "prompt_preview": _preview(request_payload),
                 "prompt_full": request_payload,
             },
-            "round_index": TRACE_ROUND_INDEX,
+            "round_index": round_index,
             "sequence": 2,
             "source": "llm",
             "duration_ms": 0,
@@ -219,6 +226,7 @@ async def build_reasoning_trace(
                 heuristic.get("summary") or "",
                 heuristic.get("actions") or [],
                 str(exc),
+                round_index=round_index,
             )
         )
         events[-2]["duration_ms"] = _duration_ms(llm_started)
@@ -230,6 +238,7 @@ async def build_reasoning_trace(
                 heuristic.get("summary") or "",
                 heuristic.get("actions") or [],
                 "llm returned no structured plan",
+                round_index=round_index,
             )
         )
         events[-2]["duration_ms"] = _duration_ms(llm_started)
@@ -244,7 +253,7 @@ async def build_reasoning_trace(
                     "response_preview": _preview(llm_plan),
                     "response_full": llm_plan,
                 },
-                "round_index": TRACE_ROUND_INDEX,
+                "round_index": round_index,
                 "sequence": 3,
                 "source": "llm",
                 "duration_ms": _duration_ms(llm_started),
@@ -255,7 +264,7 @@ async def build_reasoning_trace(
                     "summary": llm_plan.get("summary") or "已提取结构化计划",
                     "structured_plan": llm_plan,
                 },
-                "round_index": TRACE_ROUND_INDEX,
+                "round_index": round_index,
                 "sequence": 4,
                 "source": "planner",
                 "duration_ms": 0,

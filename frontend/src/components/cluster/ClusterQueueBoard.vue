@@ -11,7 +11,7 @@ defineProps({
   <section class="tech-card cluster-queue-board">
     <div class="cluster-section-heading">
       <h3>队列概览</h3>
-      <p>只保留队列状态、等待数和运行数。</p>
+      <p>保留最关键的准入状态、并发上限与阻塞原因。</p>
     </div>
     <div class="cluster-queue-board__grid">
       <article
@@ -28,8 +28,15 @@ defineProps({
         <div class="cluster-queue-card__metrics">
           <span>等待 {{ queue.queuedJobs }}</span>
           <span>运行 {{ queue.runningJobs }}</span>
+          <span v-if="queue.dispatchingJobs">调和中 {{ queue.dispatchingJobs }}</span>
+          <span v-if="queue.failedJobs">失败 {{ queue.failedJobs }}</span>
+          <span>{{ queue.concurrencyLabel }}</span>
+          <span v-if="queue.blockedJobs">阻塞 {{ queue.blockedJobs }}</span>
           <span>默认优先级 {{ queue.defaultPriority }}</span>
         </div>
+        <p v-if="queue.waitReasonSummary" class="cluster-queue-card__reason">
+          {{ queue.waitReasonSummary }}
+        </p>
       </article>
     </div>
   </section>
@@ -61,7 +68,7 @@ defineProps({
 
 .cluster-queue-card {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   padding: 14px;
   border-radius: 16px;
   border: 1px solid var(--border-subtle);
@@ -80,5 +87,12 @@ defineProps({
 .cluster-queue-card__metrics {
   font-size: 0.8rem;
   color: var(--text-secondary);
+}
+
+.cluster-queue-card__reason {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  line-height: 1.45;
 }
 </style>

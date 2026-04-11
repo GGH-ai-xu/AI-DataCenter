@@ -12,15 +12,27 @@ ACTION_CAPABILITY_MAP = {
     "terminate_task": "tasks.terminate",
     "set_task_priority": "tasks.priority.set",
     "configure_budget": "scheduler.budget.configure",
+    "configure_auto_schedule": "scheduler.auto.configure",
+    "configure_carbon_budget": "scheduler.carbon_budget.configure",
     "run_schedule_once": "scheduler.run_once",
+    "reconcile_queue": "queue.reconcile",
     "submit_job": "job.submit",
+    "plan_job": "job.plan",
+    "upsert_user_rule": "policy.user_rule.upsert",
+    "delete_user_rule": "policy.user_rule.delete",
     "pause_job": "job.pause",
     "resume_job": "job.resume",
     "cancel_job": "job.cancel",
+    "requeue_job": "job.requeue",
+    "preempt_job": "job.preempt",
+    "checkpoint_job": "job.checkpoint",
+    "restore_job": "job.restore",
+    "plan_reschedule": "reschedule.plan",
+    "drain_node": "node.drain",
+    "undrain_node": "node.undrain",
+    "release_allocation": "allocation.release",
 }
-FALLBACK_CAPABILITY_MAP = {
-    "scheduler.power_limit.set": ("tasks.pause",),
-}
+FALLBACK_CAPABILITY_MAP = {}
 
 
 def _lookup_definition(registry, capability_name: str):

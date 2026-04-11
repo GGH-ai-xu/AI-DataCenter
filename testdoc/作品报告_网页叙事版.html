@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>智算中心导入式 GPU 治理与智能分析平台 作品书</title>
+  <link rel="stylesheet" href="assets/report_book.css">
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <div class="hero__eyebrow">2025 大数据应用赛 · 六章结构网页作品书</div>
+      <h1>智算中心导入式 GPU 治理与智能分析平台</h1>
+      <p class="hero__lead">这份网页作品书严格保留大赛模板的六章结构，但展示方式改为更适合答辩的证据型叙事。所有对系统核心能力的描述均来自当前代码库：前端存在独立导入层、治理/能耗/观察/告警/智能工作区，后端存在导入与运行时、治理与控制、能耗分析、监控回放、AI Runtime、图谱、集群作业等能力域，并由 server-agent、SQLite 与 Neo4j 共同支撑。</p>
+      <div class="hero__meta">
+        <span class="tag">作品编号：待填</span>
+        <span class="tag">作品形式：系统实现</span>
+        <span class="tag">实际后端端点：111</span>
+        <span class="tag">控制能力：29</span>
+        <span class="tag">持久化表：22</span>
+        <span class="tag">相关测试资产：260</span>
+      </div>
+    </section>
+
+    <nav class="sticky-nav chapter-tabs" aria-label="章节切换" role="tablist">
+      <button type="button" class="chapter-tab is-active" data-tab-target="chapter1" role="tab" aria-selected="true">第1章 作品概述</button>
+      <button type="button" class="chapter-tab" data-tab-target="chapter2" role="tab" aria-selected="false">第2章 问题分析</button>
+      <button type="button" class="chapter-tab" data-tab-target="chapter3" role="tab" aria-selected="false">第3章 技术方案</button>
+      <button type="button" class="chapter-tab" data-tab-target="chapter4" role="tab" aria-selected="false">第4章 系统实现</button>
+      <button type="button" class="chapter-tab" data-tab-target="chapter5" role="tab" aria-selected="false">第5章 测试分析</button>
+      <button type="button" class="chapter-tab" data-tab-target="chapter6" role="tab" aria-selected="false">第6章 作品总结</button>
+    </nav>
+
+    <div class="summary-grid">
+      <article class="panel"><div class="metric">14</div><h2>命名视图</h2><p>前端并非单页拼贴，而是由导入层和多工作区组成的完整交互壳层。</p></article>
+      <article class="panel"><div class="metric metric--green">26</div><h2>真实通过验证</h2><p>当前作品书已纳入实际运行结果，而不是只展示结构图和模拟图。</p></article>
+      <article class="panel"><div class="metric metric--amber">6</div><h2>一级工作区入口</h2><p>总览、治理、能耗、观察、告警、智能构成了当前系统的主导航结构。</p></article>
+      <article class="panel"><div class="metric">3</div><h2>扩展能力面</h2><p>AI Runtime、Graph、Cluster 在代码中均以独立路由与能力集存在。</p></article>
+    </div>
+
+    <div class="chapter-panels">
+    <section id="chapter1" class="chapter chapter-panel is-active" role="tabpanel">
+      <div class="chapter__head">
+        <div><div class="section-eyebrow">Chapter 1</div><h2>第1章 作品概述</h2></div>
+        <div class="tag">模板要求：主题背景、用户群体、主要功能与应用价值</div>
+      </div>
+      <p class="chapter__lead">本作品面向智算中心 GPU 共享与治理场景，构建了一套“导入式边界建立 + 统一治理控制 + 历史分析复盘 + 智能扩展”的平台。它不是单纯的监控看板，也不是孤立的 GraphRAG 演示，而是从接入、治理、分析到扩展执行的完整系统。系统当前主要服务于需要对 GPU 资源做精细化导入、风险可控治理、能耗复盘和智能辅助分析的管理员、运维人员、实验室使用者与算法工程团队。</p>
+      <div class="figure-grid">
+        <article class="figure"><h3 class="figure__title">平台总体规模指标</h3><img src="assets/book_platform_scale.svg" alt="平台总体规模指标"><p class="caption">这张图用真实可统计的工程指标给出系统体量：命名视图、后端端点、持久化表、控制能力和测试资产均来自代码扫描，而不是文案估计。</p></article>
+        <article class="figure"><h3 class="figure__title">系统全景能力架构</h3><img src="assets/book_system_panorama.svg" alt="系统全景能力架构"><p class="caption">图中分层说明本作品的真实定位是“导入式 GPU 治理与智能分析平台”。评审看到这张图，就能理解为什么后续章节不是单纯围绕能耗或图谱展开。</p></article>
+      </div>
+      <div class="figure-grid">
+        <article class="figure"><h3 class="figure__title">用户工作流与控制台叙事</h3><img src="assets/book_user_workflow.svg" alt="用户工作流"><p class="caption">用户从登录后不会直接进入监控页，而是先进入导入层，完成扫描、选卡和 import context 提交，再进入控制台壳层的多工作区。这个顺序来自 <code>frontend/src/main.js</code> 与导入控制逻辑。</p></article>
+        <article class="panel">
+          <h2>应用对象与价值</h2>
+          <ul class="point-list">
+            <li>对实验室或小型智算中心而言，系统可先定义治理边界，再对边界内 GPU 做动作控制、策略治理和复盘导出。</li>
+            <li>对运维侧而言，系统把实时状态、历史回放、告警确认和治理日志收敛到统一平台，而不是分散在多工具之间。</li>
+            <li>对扩展研发侧而言，AI Runtime、Graph 和 Cluster 已经在当前代码中形成独立能力面，可继续承载更高级的自动化与编排能力。</li>
+          </ul>
+          <div class="callout">本章结论：作品的核心并非“看见 GPU”，而是“在被导入的作用域内可证明地治理 GPU，并能把治理结果写回历史与复盘链路”。</div>
+        </article>
+      </div>
+    </section>
+
+    <section id="chapter2" class="chapter chapter-panel" role="tabpanel" hidden>
+      <div class="chapter__head">
+        <div><div class="section-eyebrow">Chapter 2</div><h2>第2章 问题分析</h2></div>
+        <div class="tag">模板要求：问题来源、现有方案、痛点、解决思路</div>
+      </div>
+      <p class="chapter__lead">在 GPU 共享场景中，真正困难的问题不是“能否采集指标”，而是“谁可以管理哪些卡、危险动作是否会误伤、策略是否能和复盘链路连通、智能能力能否接在统一控制平面上”。如果系统只有监控，没有边界与命令台账，就无法支撑真实治理；如果系统只有智能问答，没有接入、权限和历史回放，也无法支撑生产级场景。</p>
+      <div class="panel-grid">
+        <article class="panel">
+          <h2>现有通用方案的局限</h2>
+          <table>
+            <thead><tr><th>方案类别</th><th>优势</th><th>局限</th></tr></thead>
+            <tbody>
+              <tr><td>单点监控工具</td><td>实时数据直观</td><td>通常缺少导入边界、动作审批和复盘链路</td></tr>
+              <tr><td>单纯控制脚本</td><td>动作直接</td><td>缺少统一工作区、历史回放和策略联动</td></tr>
+              <tr><td>孤立 AI / 图谱 Demo</td><td>智能展示强</td><td>常与实时接入、治理闭环、集群作业脱节</td></tr>
+            </tbody>
+          </table>
+        </article>
+        <article class="panel">
+          <h2>本作品要解决的痛点</h2>
+          <ul class="point-list">
+            <li>导入目标与治理边界没有统一建立，容易出现“看得到但不该管”的资源泄漏。</li>
+            <li>危险动作缺少统一控制平面，难以记录审批、执行、失败与拒绝。</li>
+            <li>策略写入若无法同步进入复盘与导出，就只能算配置页，不能算治理平台。</li>
+            <li>AI、图谱、集群能力如果不挂在统一平台上，就无法形成实际工程价值。</li>
+          </ul>
+        </article>
+      </div>
+      <article class="figure">
+        <h3 class="figure__title">痛点问题到模块能力映射</h3>
+        <img src="assets/book_problem_matrix.svg" alt="痛点到模块映射">
+        <p class="caption">这张图把问题来源与代码中的真实模块做了一一对应。第 2 章不再泛泛谈“行业背景”，而是直接回答为什么当前代码库要有导入层、控制平面、复盘导出和扩展能力。</p>
+      </article>
+      <div class="callout">本章解决思路：作品采用“先建立作用域，再在作用域内统一治理，再把治理过程写入历史和复盘，最后在此基础上扩展 AI、图谱与集群能力”的技术路径。后续第 3 章和第 4 章将分别从原理和工程角度展开。</div>
+    </section>
+
+    <section id="chapter3" class="chapter chapter-panel" role="tabpanel" hidden>
+      <div class="chapter__head">
+        <div><div class="section-eyebrow">Chapter 3</div><h2>第3章 技术方案</h2></div>
+        <div class="tag">模板要求：总体技术路线、模型/协议/算法、模块设计</div>
+      </div>
+      <p class="chapter__lead">从代码结构看，本系统的技术路线可以概括为五步：一是通过本机 Agent、远程 Agent 或 SSH Linux 导入目标主机；二是建立 import context 并刷新 scoped 快照；三是在控制台工作区内对同一作用域进行治理、能耗、观察和告警分析；四是通过控制平面为动作、策略与集群对象提供统一能力目录；五是在统一平台上叠加 AI Runtime、Graph 和 Cluster 等扩展能力。</p>
+      <div class="figure-grid">
+        <article class="figure"><h3 class="figure__title">前端工作区层级结构</h3><img src="assets/book_workspace_map.svg" alt="前端工作区层级结构"><p class="caption">导入层、一级工作区、治理二级页和智能二级页共同构成用户可见的交互框架，证据来自 <code>frontend/src/main.js</code>、<code>useConsoleShell.js</code>、<code>importWorkbench.js</code> 与 <code>governancePageModels.js</code>。</p></article>
+        <article class="figure"><h3 class="figure__title">Agent 采集与回传链路</h3><img src="assets/book_agent_chain.svg" alt="Agent 采集链路"><p class="caption">这张图说明 server-agent 不是装饰性组件，而是平台接入、采集和控制动作的真实执行层。当前支持 GPU、系统、进程、训练日志采集，以及功耗与任务控制。</p></article>
+      </div>
+      <div class="figure-grid">
+        <article class="figure"><h3 class="figure__title">智能、图谱与集群扩展能力</h3><img src="assets/book_extension_map.svg" alt="扩展能力图"><p class="caption">AI Runtime、Graph 和 Cluster 在代码中都拥有独立路由与能力面，不是附会在主平台上的零散组件。作品书将其写为“扩展层”，而不是主内核替代物。</p></article>
+        <article class="figure"><h3 class="figure__title">控制能力前缀分布</h3><img src="assets/book_capability_prefixes.svg" alt="控制能力前缀分布"><p class="caption">能力前缀来自 <code>backend/app/services/goal_runtime</code> 中的 <code>CapabilityDefinition</code>，说明控制平面覆盖 runtime、scheduler、tasks、policy、job、queue、node、allocation 等对象。</p></article>
+      </div>
+      <article class="figure">
+        <h3 class="figure__title">导入作用域建立链路</h3>
+        <img src="assets/book_import_scope.svg" alt="导入作用域建立链路">
+        <p class="caption">这是整个技术方案的关键。<code>commit_import_context</code> 提交后，会触发 <code>refresh_runtime_snapshot_scope</code>，因此系统不是前端临时过滤，而是把治理边界持久写入当前工作区快照。</p>
+      </article>
+    </section>
+
+    <section id="chapter4" class="chapter chapter-panel" role="tabpanel" hidden>
+      <div class="chapter__head">
+        <div><div class="section-eyebrow">Chapter 4</div><h2>第4章 系统实现</h2></div>
+        <div class="tag">模板要求：软件设计、界面、数据来源、部署与实现过程</div>
+      </div>
+      <p class="chapter__lead">工程实现上，前端负责导入层、控制台壳层和各工作区页面；后端负责路由注册、作用域刷新、治理与分析服务、控制平面、AI Runtime、图谱与集群服务；server-agent 负责在目标主机上采集 GPU / 系统 / 进程状态并执行部分控制动作。数据方面，系统同时维护实时快照与持久历史，前者用于页面即时响应，后者用于能耗、回放、治理复盘与导出。</p>
+      <div class="figure-grid">
+        <article class="figure"><h3 class="figure__title">后端 API 能力域分布</h3><img src="assets/book_api_domains.svg" alt="后端 API 能力域分布"><p class="caption">111 个端点的分布直接来自后端代码统计。该图回答了“项目是否真的是综合平台”这个问题。答案是肯定的，而且治理、分析、AI、图谱、集群都已形成独立域。</p></article>
+        <article class="figure"><h3 class="figure__title">持久化数据资产分布</h3><img src="assets/book_persistence_map.svg" alt="持久化数据资产"><p class="caption">22 张持久化表来自 SQLite 支撑代码，覆盖运行时历史、治理复盘、平台身份、控制命令、AI Runtime 会话与集群状态。该图证明作品并非无状态演示。</p></article>
+      </div>
+      <div class="panel-grid">
+        <article class="panel">
+          <h2>数据来源与格式</h2>
+          <ul class="point-list">
+            <li>实时数据：由 server-agent 的 GPU、系统、进程与训练日志采集接口提供。</li>
+            <li>历史数据：写入 SQLite，形成功耗历史、告警、进程时间线、调度日志、优化快照、控制命令、运行时会话等结构化数据。</li>
+            <li>图谱数据：通过图草稿、Demo 重建、Cypher 执行与图问答逻辑进入 Neo4j 相关工作流。</li>
+            <li>智能数据：AI Runtime 会话、事件流与审批状态由后端会话数据结构持久维护。</li>
+          </ul>
+        </article>
+        <article class="panel">
+          <h2>部署与运行方式</h2>
+          <ul class="point-list">
+            <li>接入方式支持 <code>http_local</code>、<code>http_remote</code> 与 <code>ssh_linux</code> 三类 Provider。</li>
+            <li>前端路由采用独立导入页 + 控制台壳层结构，保证工作区之间能共享当前导入作用域。</li>
+            <li>后端主入口在 <code>backend/app/main.py</code> 中统一注册所有主能力路由，并通过 WebSocket 回传实时状态。</li>
+            <li>server-agent 可部署在 GPU 主机上提供采集、功耗控制和任务控制接口。</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section id="chapter5" class="chapter chapter-panel" role="tabpanel" hidden>
+      <div class="chapter__head">
+        <div><div class="section-eyebrow">Chapter 5</div><h2>第5章 测试分析</h2></div>
+        <div class="tag">模板要求：数据来源、规模、测试过程、分析与结论</div>
+      </div>
+      <p class="chapter__lead">本章不再把“代码里有这个模块”当作能力证明，而是把第 5 章改写为“真实跑数 + 受控实验”双证据结构。真实跑数又分成两层：一层是仓库级验证，回答系统主链路是否可运行；另一层是远端 3090 闭环实测，回答调度是否真的能在真实设备上发现高功耗风险、下发治理动作并让告警条件回落。其余受控实验继续回答导入边界、历史 scope、Agent 消费链和控制平面的可观测现象是否成立。</p>
+      <div class="panel-grid">
+        <article class="panel">
+          <h2>5.1 验证数据来源与规模</h2>
+          <ul class="point-list">
+            <li>真实验证命令一：导入边界、治理工作台和控制平面主链路，共 <strong>26 passed in 1.69s</strong>。</li>
+            <li>真实验证命令二：Agent / Monitor / Cluster / Graph 相关能力，共 <strong>21 passed in 0.73s</strong>。</li>
+            <li>真实验证命令三：Agent Runtime API 路由层，共 <strong>3 passed in 0.38s</strong>。</li>
+            <li>真实闭环实验：远端 <strong>10.151.225.108</strong> 单机 4×RTX 3090，选取空闲 GPU3，完成基线 4 点、负载爬升 3 点、治理后连续观测 18 点，共 <strong>25 个真实采样点</strong>。</li>
+            <li>静态规模统计：前端命名视图 14 个，后端端点 111 个，控制能力 29 个，持久化表 22 张，相关测试资产 260 项。</li>
+          </ul>
+        </article>
+        <article class="panel">
+          <h2>5.2 实验设计</h2>
+          <ul class="point-list">
+            <li>实验五：复用 <code>SshLinuxProvider</code>、<code>SchedulerEngine.run_budget_schedule</code> 和 <code>AlertEngine</code>，在真实远端 3090 上人为制造高功耗负载，再人工触发一次预算治理，观察功耗上限、功耗曲线和告警条件是否同步变化。</li>
+            <li>实验一：构造 4 GPU / 11 进程的受控快照，执行导入、实时查询、任务查询和暂停动作，观察 scope 是否在多个入口同时收缩。</li>
+            <li>实验二：向 SQLite 写入多 GPU 历史、告警、调度和优化数据，再用导入范围做 6 类查询，观察是否存在越界泄漏。</li>
+            <li>实验三：执行 Agent 侧采样、缓存、远程细节透传、训练日志过滤和启动提示链路，观察 Agent 是否同时具备可接入、可过滤、可解释能力。</li>
+            <li>实验四：执行 direct、confirm_required、approval_required、reject 四类命令，观察控制平面是否真的形成状态闭环和持久化台账。</li>
+          </ul>
+        </article>
+      </div>
+      <div class="figure-grid">
+        <article class="figure"><h3 class="figure__title">真实验证结果摘要</h3><img src="assets/book_validation_summary.svg" alt="真实验证结果摘要"><p class="caption">这张图给出当前已经实际跑出的单测验证结果，并说明其覆盖链路。这样可以避免在作品书中把“结构存在”和“结果验证”混为一谈。</p></article>
+        <article class="figure"><h3 class="figure__title">实验五：真实远端功耗告警治理闭环</h3><img src="assets/book_remote_budget_experiment.svg" alt="真实远端功耗告警治理闭环"><p class="caption">这张图里的 <strong>324.24W</strong> 代表 GPU3 的越阈峰值，<strong>261W</strong> 代表系统一次人工预算调度后实际写入的功耗上限，<strong>18/18</strong> 清洁率表示治理后整个观测窗口内没有新的越阈采样点。它直接回答“系统是否真的能治理功耗风险”。</p></article>
+      </div>
+      <div class="figure-grid">
+        <article class="figure"><h3 class="figure__title">实验五时间线：功耗越阈到治理回落</h3><img src="assets/book_remote_budget_timeline.svg" alt="真实远端功耗治理时间线"><p class="caption">蓝线是 GPU3 实测功耗，绿线是功耗上限，红虚线是 320W 告警阈值，橙线是人工触发治理动作的时间点。图中先出现越阈，再出现上限切换，随后功耗稳定贴近 261W，说明治理不是“纸面成功”，而是真正改变了设备运行状态。</p></article>
+        <article class="panel">
+          <h2>实验五的数据代表什么</h2>
+          <p>基线窗口的 4 个点用于说明测试前 GPU3 处于空闲状态，平均功耗仅 20.98W；负载爬升窗口的 3 个点用于捕捉风险形成过程，其中第三个点达到 324.24W，触发真实功耗告警；治理后窗口的 18 个点用于验证动作是否稳定生效，结果显示功耗长期贴近 261W 且始终低于 320W 阈值。也就是说，这组数据同时证明了“发现风险”“执行动作”“效果持续”三个环节。</p>
+        </article>
+      </div>
+      <div class="panel-grid">
+        <article class="panel">
+          <h2>实验五关键数据表</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>阶段</th><th>样本数</th><th>平均功耗</th><th>峰值功耗</th><th>平均温度</th><th>越阈样本</th></tr></thead>
+              <tbody>
+                <tr><td>空闲基线</td><td>4</td><td>20.98 W</td><td>28.91 W</td><td>41.25 °C</td><td>0</td></tr>
+                <tr><td>负载爬升</td><td>3</td><td>135.14 W</td><td>324.24 W</td><td>48.67 °C</td><td>1</td></tr>
+                <tr><td>治理后观测</td><td>18</td><td>260.71 W</td><td>265.42 W</td><td>66.39 °C</td><td>0</td></tr>
+                <tr><td>治理动作</td><td>1 次</td><td>预算 492 W</td><td>限功率 350 W → 261 W</td><td>功耗下降 63.53 W</td><td>后窗清洁率 100%</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>这张表是图 18 和图 19 的核心数值来源。裁判如果只看一张表，就能直接看到“基线空闲、爬升越阈、治理后稳定回落”的完整变化过程。</p>
+        </article>
+        <article class="panel">
+          <h2>图表数据文件</h2>
+          <ul class="point-list">
+            <li><code>testdoc/data/real_remote_budget_experiment.json</code>：实验摘要、告警记录、调度动作、治理结果。</li>
+            <li><code>testdoc/data/real_remote_budget_samples.csv</code>：25 个真实采样点的逐点数据。</li>
+            <li><code>testdoc/data/real_remote_budget_summary.csv</code>：给裁判快速看的阶段汇总表。</li>
+            <li><code>testdoc/assets/book_remote_budget_experiment.svg</code>：实验五摘要图，给裁判快速看结果。</li>
+            <li><code>testdoc/assets/book_remote_budget_timeline.svg</code>：实验五时间线图，给裁判看曲线变化与动作时刻。</li>
+          </ul>
+          <p>如果需要现场展示数值来源，优先给裁判看 CSV：每一行都对应时间线图上的一个点，没有把模拟数据混入真实实测。</p>
+        </article>
+      </div>
+      <article class="panel">
+        <h2>实验五原始采样点表（裁判可核查）</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>时刻</th><th>阶段</th><th>GPU3 功耗</th><th>功耗上限</th><th>温度</th><th>利用率</th><th>集群总功率</th><th>是否越阈</th></tr></thead>
+            <tbody>
+              <tr><td>1.05 s</td><td>baseline</td><td>18.36 W</td><td>350.0 W</td><td>41 °C</td><td>0 %</td><td>244.69 W</td><td>否</td></tr>
+              <tr><td>3.32 s</td><td>baseline</td><td>18.34 W</td><td>350.0 W</td><td>41 °C</td><td>0 %</td><td>226.33 W</td><td>否</td></tr>
+              <tr><td>5.62 s</td><td>baseline</td><td>28.91 W</td><td>350.0 W</td><td>42 °C</td><td>0 %</td><td>234.42 W</td><td>否</td></tr>
+              <tr><td>8.12 s</td><td>baseline</td><td>18.3 W</td><td>350.0 W</td><td>41 °C</td><td>0 %</td><td>240.19 W</td><td>否</td></tr>
+              <tr><td>10.55 s</td><td>load_ramp</td><td>18.32 W</td><td>350.0 W</td><td>41 °C</td><td>0 %</td><td>227.46 W</td><td>否</td></tr>
+              <tr><td>12.86 s</td><td>load_ramp</td><td>62.87 W</td><td>350.0 W</td><td>46 °C</td><td>3 %</td><td>268.29 W</td><td>否</td></tr>
+              <tr><td>15.21 s</td><td>load_ramp</td><td>324.24 W</td><td>350.0 W</td><td>59 °C</td><td>100 %</td><td>545.3 W</td><td>是</td></tr>
+              <tr><td>16.2 s</td><td>post_action</td><td>265.42 W</td><td>261.0 W</td><td>58 °C</td><td>100 %</td><td>479.66 W</td><td>否</td></tr>
+              <tr><td>18.43 s</td><td>post_action</td><td>260.72 W</td><td>261.0 W</td><td>58 °C</td><td>100 %</td><td>468.26 W</td><td>否</td></tr>
+              <tr><td>20.65 s</td><td>post_action</td><td>259.82 W</td><td>261.0 W</td><td>59 °C</td><td>100 %</td><td>467.69 W</td><td>否</td></tr>
+              <tr><td>23.16 s</td><td>post_action</td><td>261.03 W</td><td>261.0 W</td><td>61 °C</td><td>100 %</td><td>487.18 W</td><td>否</td></tr>
+              <tr><td>25.62 s</td><td>post_action</td><td>260.96 W</td><td>261.0 W</td><td>62 °C</td><td>100 %</td><td>468.71 W</td><td>否</td></tr>
+              <tr><td>27.87 s</td><td>post_action</td><td>259.82 W</td><td>261.0 W</td><td>63 °C</td><td>100 %</td><td>467.64 W</td><td>否</td></tr>
+              <tr><td>30.14 s</td><td>post_action</td><td>260.23 W</td><td>261.0 W</td><td>64 °C</td><td>100 %</td><td>476.0 W</td><td>否</td></tr>
+              <tr><td>32.36 s</td><td>post_action</td><td>259.74 W</td><td>261.0 W</td><td>65 °C</td><td>100 %</td><td>467.95 W</td><td>否</td></tr>
+              <tr><td>34.74 s</td><td>post_action</td><td>261.29 W</td><td>261.0 W</td><td>66 °C</td><td>100 %</td><td>469.31 W</td><td>否</td></tr>
+              <tr><td>37.08 s</td><td>post_action</td><td>261.27 W</td><td>261.0 W</td><td>67 °C</td><td>100 %</td><td>487.31 W</td><td>否</td></tr>
+              <tr><td>39.37 s</td><td>post_action</td><td>260.39 W</td><td>261.0 W</td><td>68 °C</td><td>100 %</td><td>468.51 W</td><td>否</td></tr>
+              <tr><td>41.67 s</td><td>post_action</td><td>259.9 W</td><td>261.0 W</td><td>69 °C</td><td>100 %</td><td>467.95 W</td><td>否</td></tr>
+              <tr><td>44.01 s</td><td>post_action</td><td>259.56 W</td><td>261.0 W</td><td>70 °C</td><td>100 %</td><td>485.08 W</td><td>否</td></tr>
+              <tr><td>46.35 s</td><td>post_action</td><td>260.95 W</td><td>261.0 W</td><td>71 °C</td><td>100 %</td><td>468.8 W</td><td>否</td></tr>
+              <tr><td>48.59 s</td><td>post_action</td><td>260.06 W</td><td>261.0 W</td><td>72 °C</td><td>100 %</td><td>467.38 W</td><td>否</td></tr>
+              <tr><td>50.88 s</td><td>post_action</td><td>260.95 W</td><td>261.0 W</td><td>73 °C</td><td>100 %</td><td>483.31 W</td><td>否</td></tr>
+              <tr><td>53.15 s</td><td>post_action</td><td>261.1 W</td><td>261.0 W</td><td>74 °C</td><td>100 %</td><td>469.29 W</td><td>否</td></tr>
+              <tr><td>55.42 s</td><td>post_action</td><td>259.5 W</td><td>261.0 W</td><td>75 °C</td><td>100 %</td><td>465.57 W</td><td>否</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>这 25 行就是图 19 背后的原始数据。最关键的行是 <strong>15.21 s</strong> 的越阈点和之后整段 <strong>post_action</strong> 区间；裁判如果要判断治理是否生效，只要看这两段数据是否在动作前后发生了明显变化即可。</p>
+      </article>
+      <div class="figure-grid">
+        <article class="figure"><h3 class="figure__title">实验一：作用域收缩与越界拦截</h3><img src="assets/book_scope_experiment.svg" alt="作用域收缩与越界拦截实验"><p class="caption">这张图对应受控 workload 实验的实际结果：原始 4 张卡、11 个进程在导入 GPU [1,3] 后收缩为 2 张卡、5 个进程；作用域内 PID 可执行暂停，越界 PID 会被 400 拦截。</p></article>
+        <article class="figure"><h3 class="figure__title">实验二：历史查询与回放一致性</h3><img src="assets/book_history_experiment.svg" alt="历史查询与回放一致性实验"><p class="caption">这张图来自 6 类历史链路的实际查询结果。功率摘要、告警、进程时间线、调度历史、优化历史和回放帧都只返回 GPU [1,3] 范围内的数据，越界泄漏数为 0，越界告警确认同样被 400 拦截。</p></article>
+      </div>
+      <div class="figure-grid">
+        <article class="figure"><h3 class="figure__title">实验三：Agent 数据链路有效性</h3><img src="assets/book_agent_experiment.svg" alt="Agent 数据链路有效性实验"><p class="caption">这张图不再只写接口数，而是直接展示实验观测：CPU 采样为非阻塞、3 次进程读取仅触发 2 次真实扫描、3 条训练日志经过导入过滤后只剩 2 条、缺失 NVML 时会给出远程接入提示。</p></article>
+        <article class="figure"><h3 class="figure__title">实验四：控制平面闭环验证</h3><img src="assets/book_control_experiment.svg" alt="控制平面闭环实验"><p class="caption">这张图直接展示 direct、confirm_required、approval_required、reject 四类控制情形的实际表现。结果显示：未确认风险的命令被阻断，审批型命令先进入 awaiting_approval，再分别转入 succeeded 或 rejected，并最终写入统一命令台账。</p></article>
+      </div>
+      <div class="figure-grid">
+        <article class="figure"><h3 class="figure__title">Agent 运行模式与平台适配</h3><img src="assets/book_agent_integration.svg" alt="Agent 运行模式与平台适配"><p class="caption">这张图补充解释实验三背后的平台消费逻辑：Agent 数据不会原样裸转发，而是先经 Provider、导入作用域和页面模型整合，再进入监控页与训练页。</p></article>
+        <article class="panel">
+          <h2>实验五如何体现系统能力</h2>
+          <p>这组远端实测复用的是你们代码中的 <code>SshLinuxProvider</code>、<code>AlertEngine</code> 和 <code>SchedulerEngine</code>，因此它证明的不是“硬件本身支持限功率”，而是“系统自己的调度链确实能在真实主机上完成采集、判定、动作下发和效果观测”。更具体地说，越阈点证明平台能识别高功耗风险，261W 的写回证明调度动作已落到设备层，治理后 18 个连续低于阈值的样本则证明告警条件被持续消除。</p>
+        </article>
+      </div>
+      <div class="panel-grid">
+        <article class="panel">
+          <h2>Agent 有效性分析</h2>
+          <p>实验三给出的现象比“Agent 能启动”更有说服力：首先，<code>system_monitor.get_system_detail</code> 的 4 次 CPU 采样调用全部是非阻塞的 <code>interval=None/0</code>，说明系统没有为实时观察引入额外等待；其次，连续 3 次 GPU 进程读取只触发了 2 次真实扫描，表明 Agent 具备缓存降载能力；再次，3 条训练日志在导入范围过滤后只保留 2 条，说明 Agent 输出进入平台后还能继续被治理边界约束；最后，缺失 NVML 时系统不会伪造“采集正常”，而是给出远程接入提示。换句话说，Agent 的能力体现为“能采、能省、能接、能解释”，而不是单一的接口存在。</p>
+        </article>
+        <article class="panel">
+          <h2>平台消费 Agent 数据的有效性分析</h2>
+          <p>如果平台不能正确消费 Agent 数据，那么 Agent 再强也只是孤立服务。实验三和配套图表给出的关键现象是：远程 Provider 返回的系统详情字段能原样进入监控接口，而训练日志又会在平台层被再次按 imported GPU 过滤。也就是说，平台对 Agent 既保持兼容，又保留治理权，这正是“统一平台”与“孤立采集脚本”的本质区别。</p>
+        </article>
+      </div>
+      <div class="figure-grid">
+        <article class="figure"><h3 class="figure__title">扩展能力验证状态</h3><img src="assets/book_extension_status.svg" alt="扩展能力验证状态"><p class="caption">扩展层仍然保留“稳定项 / 漂移项”并列展示的写法。这样既承认当前 Graph、Cluster、Agent Runtime 已有可验证部分，也如实暴露仍需修补的 AI 扩展测试漂移。</p></article>
+        <article class="panel"><h2>5.3 图表释义与证据矩阵</h2><table><thead><tr><th>证据</th><th>数据口径</th><th>直接证明</th></tr></thead><tbody><tr><td>真实验证结果摘要</td><td>已运行 pytest</td><td>导入、治理、Agent、图谱、集群主链路确实可跑</td></tr><tr><td>实验五</td><td>远端 3090 真实闭环 + 25 个采样点</td><td>系统可识别高功耗风险、下发限功率并持续消除告警条件</td></tr><tr><td>实验一</td><td>受控输入 + 实际 API</td><td>导入 scope 会同时改变快照、页面和动作权限</td></tr><tr><td>实验二</td><td>受控历史库 + 实际查询</td><td>历史、告警、回放链路不会泄漏作用域外数据</td></tr><tr><td>实验三</td><td>受控 Agent 输入 + 实际函数</td><td>Agent 具备低阻塞、可过滤、可透传、可解释能力</td></tr><tr><td>实验四</td><td>受控命令场景 + 实际服务</td><td>控制平面具备确认、审批、拒绝、持久化闭环</td></tr></tbody></table><p>本章所有“能力”结论都来自已运行结果或受控实验结果；只有在图中明确标为“示意”的地方，才是为了说明链路结构而非汇报真实线上统计。</p></article>
+      </div>
+      <div class="panel-grid">
+        <article class="panel">
+          <h2>核心能力结论</h2>
+          <ul class="point-list">
+            <li>已验证：导入边界建立、实时/历史 scope 一致性、控制命令状态机、单机真实功耗告警治理闭环、治理工作台主结构。</li>
+            <li>可合理支撑的系统宣称：本系统是导入式 GPU 治理平台，而非单纯监控页；Agent 不是装饰层，而是以采集、控制、运行时三层能力支撑平台工作区；调度不仅能给出建议，还能在真实设备上把高功耗状态压回安全阈值内。</li>
+            <li>扩展层现状：Graph、Cluster 和 Agent Runtime 已有稳定可验证部分，但部分 AI 扩展测试出现接口漂移，应在后续版本中同步修复。</li>
+          </ul>
+        </article>
+        <article class="panel">
+          <h2>保守结论与后续补测边界</h2>
+          <p>本章能够支撑的，是“系统主内核和主要扩展层已经具备真实可验证能力”。它不能直接支撑的，是大规模多机长稳和长期生产环境可靠性。也就是说，当前作品书已经足够证明系统不是空壳 Demo，但如果后续需要更强评审说服力，还应补充跨多主机、长时间运行和更复杂集群负载下的实测结果。这样的边界说明比简单宣称“系统稳定可靠”更有可信度。</p>
+          <div class="callout">本章最终口径：先给真实运行结果，再用多维图表解释系统能力如何形成。重点不是“通过了多少测试”，而是“这些测试分别证明了 Agent、导入边界、控制平面、复盘联动和扩展层的哪些能力”。</div>
+        </article>
+      </div>
+    </section>
+
+    <section id="chapter6" class="chapter chapter-panel" role="tabpanel" hidden>
+      <div class="chapter__head">
+        <div><div class="section-eyebrow">Chapter 6</div><h2>第6章 作品总结</h2></div>
+        <div class="tag">模板要求：特色创新、应用推广、展望</div>
+      </div>
+      <p class="chapter__lead">综合前述章节，可以将本作品概括为一个以“导入边界”为起点、以“统一控制平面”为核心、以“历史分析与复盘”为支撑、并能挂接 AI / 图谱 / 集群扩展能力的智算中心 GPU 治理平台。它既覆盖了接入与实时控制，也覆盖了历史分析与扩展能力，因此在工程完整性上明显强于单点工具。</p>
+      <div class="panel-grid">
+        <article class="panel">
+          <h2>6.1 作品特色与创新点</h2>
+          <ul class="point-list">
+            <li>导入式治理边界：先导入、再治理，所有页面与动作共享统一 scoped 快照。</li>
+            <li>统一控制平面：任务动作、调度策略、用户规则、集群对象均可进入统一能力目录与命令台账。</li>
+            <li>多能力工作区：治理、能耗、观察、告警、智能在同一控制台壳层中协同存在。</li>
+            <li>扩展层清晰：AI Runtime、Graph、Cluster 三类能力没有脱离主平台，而是沿同一平台结构继续扩展。</li>
+          </ul>
+        </article>
+        <article class="panel">
+          <h2>6.2 应用推广与 6.3 作品展望</h2>
+          <ul class="point-list">
+            <li>应用推广方面，平台可服务实验室 GPU 共享治理、训练机资源看护、导入式运维和历史复盘场景。</li>
+            <li>作品展望方面，可继续补强多机长稳测试、集群调度实跑、图谱知识注入和 AI 自动治理闭环。</li>
+            <li>当前代码已具备继续延展的接口基础，因此后续工作重点是把现有扩展能力从“可用”推进到“规模化验证”。</li>
+          </ul>
+        </article>
+      </div>
+      <article class="panel">
+        <h2>大模型使用说明</h2>
+        <p>按照模板要求，本作品书需要说明大模型的使用方式。基于当前代码，可确认系统中存在 LLM 配置、Graph 问答、Graph 策略、AI Runtime 会话规划与能耗 AI 洞察等相关能力。与此同时，本次网页作品书的撰写过程也使用了大模型辅助整理结构、生成图表脚本和完成页面排版；但所有关于系统核心功能的文字结论，均以代码阅读、路由统计、测试结构和已实际运行结果为依据，没有把模板中的旧示例稿或外部对话当作事实来源。</p>
+      </article>
+      <p class="footnote">图表数据文件：<code>testdoc/data/report_book_metrics.json</code>。图表脚本：<code>testdoc/scripts/generate_report_book_assets.py</code>。本页面建议最终导出为 PDF 后纳入正式参赛材料。</p>
+    </section>
+    </div>
+  </main>
+  <script>
+    (() => {
+      const buttons = Array.from(document.querySelectorAll('.chapter-tab'));
+      const panels = Array.from(document.querySelectorAll('.chapter-panel'));
+      if (!buttons.length || !panels.length) return;
+
+      function activate(tabId, syncHash = true) {
+        const targetPanel = panels.find((panel) => panel.id === tabId) || panels[0];
+        const targetId = targetPanel.id;
+        buttons.forEach((button) => {
+          const active = button.dataset.tabTarget === targetId;
+          button.classList.toggle('is-active', active);
+          button.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+        panels.forEach((panel) => {
+          const active = panel.id === targetId;
+          panel.classList.toggle('is-active', active);
+          panel.hidden = !active;
+        });
+        if (syncHash && window.location.hash !== `#${targetId}`) {
+          history.replaceState(null, '', `#${targetId}`);
+        }
+      }
+
+      buttons.forEach((button) => {
+        button.addEventListener('click', () => activate(button.dataset.tabTarget));
+      });
+
+      const initial = window.location.hash.replace('#', '');
+      activate(initial || panels[0].id, false);
+    })();
+  </script>
+</body>
+</html>

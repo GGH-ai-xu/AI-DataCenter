@@ -173,3 +173,101 @@ test('buildAgentWorkbenchThread prefers the stored original request when runtime
   assert.equal(view.interactions.length, 1)
   assert.equal(view.interactions[0].userMessage.content, '把 GPU 0 的功耗上限调到 220W')
 })
+
+test('buildAgentWorkbenchThread maps runtime cards to matching conversation rounds', () => {
+  const view = buildAgentWorkbenchThread({
+    chatMessages: [
+      { id: 'u1', role: 'user', content: '先分析当前状态', roundIndex: 1 },
+      { id: 'a1', role: 'assistant', content: '当前共有 3 张可用卡。', roundIndex: 1 },
+      { id: 'u2', role: 'user', content: '把 GPU 0 功耗限制到 220W', roundIndex: 2 },
+    ],
+    runtimeSession: {
+      session_id: 'sess-1',
+      status: 'awaiting_approval',
+      live_phase: 'awaiting_approval',
+      current_round: 2,
+      goal_json: { raw_message: '先分析当前状态' },
+    },
+    runtimeEvents: [
+      {
+        event_type: 'UserMessageSubmitted',
+        payload: { content: '先分析当前状态' },
+        round_index: 1,
+        sequence: 1,
+        timestamp: 1,
+      },
+      {
+        event_type: 'UserMessageSubmitted',
+        payload: { content: '把 GPU 0 功耗限制到 220W' },
+        round_index: 2,
+        sequence: 1,
+        timestamp: 2,
+      },
+      {
+        event_type: 'PlanCreated',
+        payload: { steps: [] },
+        round_index: 2,
+        sequence: 2,
+        timestamp: 3,
+      },
+      {
+        event_type: 'AwaitingApproval',
+        payload: { actions: [{ capability_name: 'scheduler.power_limit.set' }] },
+        round_index: 2,
+        sequence: 3,
+        timestamp: 4,
+      },
+    ],
+  })
+
+  assert.equal(view.interactions.length, 2)
+  assert.equal(view.interactions[0].userMessage.content, '先分析当前状态')
+  assert.equal(view.interactions[0].runtimeCards.length, 0)
+  assert.equal(view.interactions[1].userMessage.content, '把 GPU 0 功耗限制到 220W')
+  assert.equal(view.interactions[1].runtimeCards.length, 2)
+  assert.equal(view.interactions[1].status, 'awaiting_approval')
+})
+
+test('buildAgentWorkbenchThread ignores persisted assistant chat events as runtime cards', () => {
+  const view = buildAgentWorkbenchThread({
+    chatMessages: [
+      { id: 'u1', role: 'user', content: '你能查看当前任务吗', roundIndex: 1 },
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: '可以，我能查看当前导入范围内的 GPU 进程。',
+        roundIndex: 1,
+      },
+    ],
+    runtimeSession: {
+      session_id: 'sess-chat',
+      status: 'completed',
+      live_phase: 'completed',
+      current_round: 1,
+      goal_json: { raw_message: '你能查看当前任务吗' },
+    },
+    runtimeEvents: [
+      {
+        event_type: 'UserMessageSubmitted',
+        payload: { content: '你能查看当前任务吗' },
+        round_index: 1,
+        sequence: 0,
+        timestamp: 1,
+      },
+      {
+        event_type: 'AssistantMessageGenerated',
+        payload: { content: '可以，我能查看当前导入范围内的 GPU 进程。' },
+        round_index: 1,
+        sequence: 1,
+        timestamp: 2,
+      },
+    ],
+  })
+
+  assert.equal(view.interactions.length, 1)
+  assert.equal(view.interactions[0].runtimeCards.length, 0)
+  assert.equal(
+    view.interactions[0].assistantReply,
+    '可以，我能查看当前导入范围内的 GPU 进程。',
+  )
+})

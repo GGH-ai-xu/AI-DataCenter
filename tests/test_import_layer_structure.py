@@ -125,6 +125,7 @@ class ImportLayerStructureTests(unittest.TestCase):
         self.assertIn("ImportSavedHostSummaryBar", hardware_stage)
         self.assertIn("ImportSavedHostSummaryBar", selection_stage)
         self.assertIn(':saved-host-summary="workspace.savedHostSummary"', workspace_view)
+        self.assertIn(':feedback="workspace.feedback"', workspace_view)
         self.assertIn("当前复用主机", summary_bar.read_text(encoding="utf-8"))
 
     def test_import_workbench_keeps_tabs_body_and_footer_isolated(self):
@@ -155,6 +156,8 @@ class ImportLayerStructureTests(unittest.TestCase):
         self.assertIn("全部候选", selection_text)
         self.assertIn("已选清单", selection_text)
         self.assertIn("ImportGpuGrid", selection_text)
+        self.assertIn("import-selection-stage__feedback", selection_text)
+        self.assertIn("未选择 GPU 也可提交，控制台将以空作用域运行", selection_text)
         self.assertIn("import-selection-stage__grid-shell", selection_text)
         self.assertIn("overflow-y: auto", selection_text)
 

@@ -1,8 +1,16 @@
 import { computed, ref, watch } from 'vue'
 
 import { resolveWorkbenchDispatchResult } from '../lib/agentWorkbenchDispatch.js'
+import { buildTranscriptFromAgentEvents } from '../lib/agentWorkbenchEventTranscript.js'
 import { buildAgentWorkbenchThread } from '../lib/agentWorkbenchThread.js'
 import { reduceChatStreamEvent } from '../lib/agentChatStreaming.js'
+import {
+  DRAFT_TRANSCRIPT_KEY,
+  deleteSessionTranscript,
+  loadSessionTranscript,
+  moveTranscript,
+  saveSessionTranscript,
+} from '../lib/agentWorkbenchTranscript.js'
 import { parseSseFrames, readResponseTextChunks } from '../lib/sseFrameStream.js'
 import { dispatchAiWorkbenchMessage, openAiChatStream } from '../services/api'
 import { useAiAssistantRuntimeSession } from './useAiAssistantRuntimeSession.js'
@@ -25,8 +33,8 @@ function buildIntroMessage(ready) {
   }
 }
 
-function buildPendingAssistantMessage(id) {
-  return { id, role: 'assistant', content: '正在生成回复...' }
+function buildPendingAssistantMessage(id, roundIndex = 0) {
+  return { id, role: 'assistant', content: '正在生成回复...', roundIndex }
 }
 
 export function useAiAssistantWorkbench({
@@ -46,8 +54,42 @@ export function useAiAssistantWorkbench({
     return `${prefix}-${messageSequence}`
   }
 
-  function pushAssistantMessage(content) {
-    messages.value.push({ id: nextMessageId('assistant'), role: 'assistant', content })
+  function activeTranscriptKey() {
+    return runtime.activeSessionId.value || DRAFT_TRANSCRIPT_KEY
+  }
+
+  function transcriptMessages() {
+    return messages.value.filter((item) => item.id !== 'intro')
+  }
+
+  function loadTranscript(sessionId = '') {
+    const transcript = loadSessionTranscript(sessionId || DRAFT_TRANSCRIPT_KEY)
+    messages.value = [buildIntroMessage(llmReady.value), ...transcript]
+  }
+
+  function persistTranscript(sessionId = '') {
+    saveSessionTranscript(
+      sessionId || activeTranscriptKey(),
+      transcriptMessages(),
+    )
+  }
+
+  function nextRuntimeRound() {
+    const transcriptRound = transcriptMessages().reduce(
+      (maxRound, item) => Math.max(maxRound, Number(item.roundIndex || 0)),
+      0,
+    )
+    return Math.max(Number(runtime.runtimeSession.value?.current_round || 0), transcriptRound) + 1
+  }
+
+  function pushAssistantMessage(content, roundIndex = 0) {
+    messages.value.push({
+      id: nextMessageId('assistant'),
+      role: 'assistant',
+      content,
+      roundIndex,
+    })
+    persistTranscript()
   }
 
   const runtime = useAiAssistantRuntimeSession({
@@ -86,6 +128,24 @@ export function useAiAssistantWorkbench({
     }
   })
 
+  function syncSessionTranscript(sessionId) {
+    const transcript = buildTranscriptFromAgentEvents(runtime.runtimeEvents.value)
+    if (!transcript.length) {
+      loadTranscript(sessionId)
+      return
+    }
+    messages.value = [buildIntroMessage(llmReady.value), ...transcript]
+    saveSessionTranscript(sessionId, transcript)
+  }
+
+  function syncCreatedSession(session, previousSessionId) {
+    if (!session?.session_id) return
+    if (!previousSessionId) {
+      moveTranscript(DRAFT_TRANSCRIPT_KEY, session.session_id)
+    }
+    syncSessionTranscript(session.session_id)
+  }
+
   function resetThreadState() {
     messages.value = [buildIntroMessage(llmReady.value)]
     composerText.value = ''
@@ -109,16 +169,33 @@ export function useAiAssistantWorkbench({
       role: 'assistant',
       content: nextState.error || nextState.text || '正在生成回复...',
       suggestions: nextState.suggestions || [],
+      roundIndex: messages.value[index].roundIndex || 0,
     })
+    persistTranscript()
   }
 
   function appendUserMessage(text) {
-    messages.value.push({ id: nextMessageId('user'), role: 'user', content: text })
+    messages.value.push({ id: nextMessageId('user'), role: 'user', content: text, roundIndex: 0 })
+    persistTranscript()
+  }
+
+  function markLatestUserMessageRound(roundIndex) {
+    const latestIndex = [...messages.value]
+      .map((item, index) => ({ item, index }))
+      .reverse()
+      .find(({ item }) => item.role === 'user')?.index
+    if (latestIndex == null) return
+    messages.value.splice(latestIndex, 1, {
+      ...messages.value[latestIndex],
+      roundIndex,
+    })
+    persistTranscript()
   }
 
   async function streamChatReply(text) {
     const assistantIndex = messages.value.length
     messages.value.push(buildPendingAssistantMessage(nextMessageId('assistant')))
+    persistTranscript()
     let chatState = { text: '', suggestions: [], error: '' }
     try {
       const response = await openAiChatStream(text)
@@ -131,12 +208,22 @@ export function useAiAssistantWorkbench({
         text: 'AI 服务暂时不可用，请检查 LLM 配置。',
       })
     }
+    return chatState
   }
 
-  async function runRuntimeFromSubmittedMessage(message) {
+  async function runRuntimeFromSubmittedMessage(message, options = {}) {
     const text = String(message || '').trim()
     if (!text) return
-    await runtime.startRuntimeRequest(text)
+    return await runtime.startRuntimeRequest(text, options)
+  }
+
+  async function persistChatReply(message, reply, previousSessionId, options = {}) {
+    const session = await runtime.persistChatTurn(message, reply, {
+      sessionId: previousSessionId,
+      replyMode: options.replyMode || 'inline',
+      suggestions: options.suggestions || [],
+    })
+    syncCreatedSession(session, previousSessionId)
   }
 
   async function submitWorkbenchInput(message = composerText.value.trim()) {
@@ -148,19 +235,31 @@ export function useAiAssistantWorkbench({
     appendUserMessage(text)
     composerText.value = ''
     loading.value = true
+    const previousSessionId = runtime.activeSessionId.value
 
     try {
       const { data } = await dispatchAiWorkbenchMessage(text)
       const action = resolveWorkbenchDispatchResult(data)
       if (action.kind === 'chat_inline') {
         pushAssistantMessage(action.reply)
+        await persistChatReply(text, action.reply, previousSessionId)
         return
       }
       if (action.kind === 'chat_stream') {
-        await streamChatReply(text)
+        const chatState = await streamChatReply(text)
+        const reply = chatState.error || chatState.text || 'AI 服务暂时不可用，请检查 LLM 配置。'
+        await persistChatReply(text, reply, previousSessionId, {
+          replyMode: 'stream',
+          suggestions: chatState.suggestions || [],
+        })
         return
       }
-      await runRuntimeFromSubmittedMessage(action.message)
+      const roundIndex = previousSessionId ? nextRuntimeRound() : 1
+      markLatestUserMessageRound(roundIndex)
+      const session = await runRuntimeFromSubmittedMessage(action.message, {
+        sessionId: previousSessionId,
+      })
+      syncCreatedSession(session, previousSessionId)
     } catch (error) {
       pushAssistantMessage(
         error?.response?.data?.detail
@@ -174,8 +273,10 @@ export function useAiAssistantWorkbench({
   }
 
   async function selectSession(sessionId) {
-    resetThreadState()
+    composerText.value = ''
+    loading.value = false
     await runtime.selectSession(sessionId)
+    syncSessionTranscript(sessionId)
   }
 
   async function deleteSession(sessionId) {
@@ -186,6 +287,7 @@ export function useAiAssistantWorkbench({
     }
     try {
       const deletedActiveSession = await runtime.deleteSession(sessionId)
+      deleteSessionTranscript(sessionId)
       if (deletedActiveSession) {
         resetThreadState()
       }
@@ -197,11 +299,21 @@ export function useAiAssistantWorkbench({
   }
 
   function startNewSession() {
+    deleteSessionTranscript(DRAFT_TRANSCRIPT_KEY)
     resetThreadState()
     runtime.resetActiveSession()
   }
 
-  watch(llmReady, ensureIntroMessage, { immediate: true })
+  loadTranscript()
+
+  watch(llmReady, () => {
+    ensureIntroMessage()
+    if (runtime.activeSessionId.value) {
+      persistTranscript(runtime.activeSessionId.value)
+      return
+    }
+    persistTranscript(DRAFT_TRANSCRIPT_KEY)
+  }, { immediate: true })
 
   return {
     messages,

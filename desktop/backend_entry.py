@@ -44,6 +44,10 @@ def configure_environment():
     os.environ.setdefault("CONNECTION_CONFIG_PATH", str(runtime_dir / "connection.json"))
     os.environ.setdefault("LLM_CONFIG_PATH", str(runtime_dir / "llm.json"))
     os.environ.setdefault("FRONTEND_DIST_DIR", str(frontend_dist))
+    os.environ.setdefault("NEO4J_URI", "bolt://127.0.0.1:7687")
+    os.environ.setdefault("NEO4J_USER", "neo4j")
+    os.environ.setdefault("NEO4J_PASSWORD", "GpuGovNeo4j!2026")
+    os.environ.setdefault("NEO4J_DATABASE", "neo4j")
     os.environ.setdefault("HOST", "127.0.0.1")
     os.environ.setdefault("PORT", "8000")
 

@@ -72,6 +72,15 @@ class GovernanceWorkbenchStructureTests(unittest.TestCase):
         self.assertNotIn("resumeTask", text)
         self.assertNotIn("terminateTask", text)
 
+    def test_policies_view_routes_mutations_through_control_plane_only(self):
+        text = (ROOT / "frontend/src/views/GovernancePoliciesView.vue").read_text(encoding="utf-8")
+
+        self.assertIn("submitBuiltinCommand", text)
+        self.assertNotIn("setCarbonBudget", text)
+        self.assertNotIn("toggleAutoSchedule", text)
+        self.assertNotIn("saveGovernanceRule", text)
+        self.assertNotIn("deleteGovernanceRule", text)
+
     def test_policies_workspace_keeps_budget_first_and_action_dock_split(self):
         text = (ROOT / "frontend/src/components/governance/GovernancePoliciesWorkspace.vue").read_text(encoding="utf-8")
 
@@ -99,6 +108,17 @@ class GovernanceWorkbenchStructureTests(unittest.TestCase):
         self.assertIn("UserRuleCard", text)
         self.assertIn("rules-grid", text)
 
+    def test_cluster_job_ledger_exposes_manual_lifecycle_actions(self):
+        ledger_text = (ROOT / "frontend/src/components/cluster/ClusterJobLedger.vue").read_text(encoding="utf-8")
+        action_text = (ROOT / "frontend/src/lib/clusterConsoleActions.js").read_text(encoding="utf-8")
+        view_text = (ROOT / "frontend/src/views/ClusterJobs.vue").read_text(encoding="utf-8")
+
+        self.assertIn("availableJobActions", ledger_text)
+        self.assertIn("pause", action_text)
+        self.assertIn("resume", action_text)
+        self.assertIn("cancel", action_text)
+        self.assertIn("submitBuiltinCommand", view_text)
+
     def test_governance_task_ledger_uses_compact_rows_with_inline_details(self):
         parent_text = (ROOT / "frontend/src/components/tasks/TaskProcessLedger.vue").read_text(encoding="utf-8")
         row_text = (ROOT / "frontend/src/components/tasks/TaskProcessLedgerRow.vue").read_text(encoding="utf-8")
@@ -114,6 +134,22 @@ class GovernanceWorkbenchStructureTests(unittest.TestCase):
         self.assertIn("task-process-ledger-row__readonly", row_text)
         self.assertNotIn("task-process-ledger__governance", row_text)
         self.assertNotIn("task-process-ledger__actions", row_text)
+
+    def test_capability_drawer_supports_typed_forms_before_raw_json(self):
+        text = (ROOT / "frontend/src/components/governance/CapabilityCommandDrawer.vue").read_text(encoding="utf-8")
+
+        self.assertIn("buildCapabilityFormDraft", text)
+        self.assertIn("buildCapabilityFormArguments", text)
+        self.assertIn("当前能力未定义结构化表单", text)
+        self.assertIn("参数预览", text)
+
+    def test_control_command_ledger_supports_filters_and_detail_toggle(self):
+        text = (ROOT / "frontend/src/components/governance/ControlCommandLedger.vue").read_text(encoding="utf-8")
+
+        self.assertIn("statusFilter", text)
+        self.assertIn("approvalFilter", text)
+        self.assertIn("展开详情", text)
+        self.assertIn("argumentSummary", text)
 
 
 if __name__ == "__main__":

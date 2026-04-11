@@ -7,17 +7,41 @@ import time
 from typing import Optional
 
 import aiosqlite
+from app.services.cluster_control.checkpoint_sqlite_support import (
+    CLUSTER_CHECKPOINT_INIT_SQL,
+    ensure_cluster_checkpoint_tables,
+    get_checkpoint as load_cluster_checkpoint,
+    get_latest_ready_checkpoint as load_latest_ready_cluster_checkpoint,
+    list_checkpoints as load_cluster_checkpoints,
+    upsert_checkpoint as upsert_cluster_checkpoint_record,
+)
 from app.services.cluster_control.sqlite_support import (
     CLUSTER_CONTROL_INIT_SQL,
     create_allocation as create_cluster_allocation_record,
     create_job as create_cluster_job_record,
+    ensure_cluster_tables,
+    get_allocation as load_cluster_allocation,
     get_job as load_cluster_job,
+    get_node as load_cluster_node,
+    get_queue as load_cluster_queue,
     list_allocations as load_cluster_allocations,
     list_jobs as load_cluster_jobs,
+    list_nodes as load_cluster_nodes,
     list_queues as load_cluster_queues,
+    release_allocation as release_cluster_allocation_record,
     require_cluster_db,
+    update_node_drain_state as update_cluster_node_drain_state_record,
+    update_allocations_for_job as update_cluster_allocations_for_job_record,
+    update_job_checkpoint as update_cluster_job_checkpoint_record,
     update_job_state as update_cluster_job_state_record,
+    upsert_node as upsert_cluster_node_record,
     upsert_queue as upsert_cluster_queue_record,
+)
+from app.services.cluster_control.reservation_sqlite_support import (
+    create_reservation as create_cluster_reservation_record,
+    get_reservation as load_cluster_reservation,
+    list_reservations as load_cluster_reservations,
+    update_reservation_status as update_cluster_reservation_status_record,
 )
 from app.services.control_plane.sqlite_support import (
     CONTROL_PLANE_INIT_SQL,
@@ -40,6 +64,7 @@ from app.services.goal_runtime.data_store_support import (
     list_agent_sessions as load_runtime_sessions,
     require_runtime_db,
     upsert_agent_stream_state as upsert_runtime_stream_state,
+    update_agent_session_request as update_runtime_session_request,
     update_agent_session_status as update_runtime_session_status,
 )
 from app.services.process_history_sync import (
@@ -194,9 +219,12 @@ class DataStore:
             _INIT_SQL
             + GOAL_RUNTIME_INIT_SQL
             + CLUSTER_CONTROL_INIT_SQL
+            + CLUSTER_CHECKPOINT_INIT_SQL
             + CONTROL_PLANE_INIT_SQL
         )
         await self._ensure_scope_columns()
+        await ensure_cluster_tables(self._db)
+        await ensure_cluster_checkpoint_tables(self._db)
         await ensure_runtime_session_columns(self._db)
         await ensure_runtime_event_columns(self._db)
         await self._db.commit()
@@ -294,6 +322,26 @@ class DataStore:
             live_phase=live_phase,
         )
 
+    async def update_agent_session_request(
+        self,
+        session_id: str,
+        goal_json: dict,
+        permission_mode: str,
+        status: str,
+        summary: str,
+        *,
+        live_phase: str,
+    ) -> None:
+        await update_runtime_session_request(
+            require_runtime_db(self._db),
+            session_id,
+            goal_json,
+            permission_mode,
+            status,
+            summary,
+            live_phase=live_phase,
+        )
+
     async def get_agent_session(self, session_id: str) -> dict | None:
         return await load_runtime_session(require_runtime_db(self._db), session_id)
 
@@ -368,6 +416,29 @@ class DataStore:
     async def list_cluster_queues(self) -> list[dict]:
         return await load_cluster_queues(require_cluster_db(self._db))
 
+    async def get_cluster_queue(self, queue_id: str) -> dict | None:
+        return await load_cluster_queue(require_cluster_db(self._db), queue_id)
+
+    async def upsert_cluster_node(self, payload: dict) -> None:
+        await upsert_cluster_node_record(require_cluster_db(self._db), payload)
+
+    async def get_cluster_node(self, node_id: str) -> dict | None:
+        return await load_cluster_node(require_cluster_db(self._db), node_id)
+
+    async def list_cluster_nodes(self) -> list[dict]:
+        return await load_cluster_nodes(require_cluster_db(self._db))
+
+    async def update_cluster_node_drain_state(
+        self,
+        node_id: str,
+        drain_state: str,
+    ) -> None:
+        await update_cluster_node_drain_state_record(
+            require_cluster_db(self._db),
+            node_id,
+            drain_state,
+        )
+
     async def create_cluster_job(self, record) -> None:
         await create_cluster_job_record(require_cluster_db(self._db), record)
 
@@ -383,12 +454,75 @@ class DataStore:
         status: str,
         *,
         execution_backend: str = "",
+        plan_type: str | None = None,
+        plan_reason: str | None = None,
+        last_error: str | None = None,
     ) -> None:
         await update_cluster_job_state_record(
             require_cluster_db(self._db),
             job_id,
             status,
             execution_backend=execution_backend,
+            plan_type=plan_type,
+            plan_reason=plan_reason,
+            last_error=last_error,
+        )
+
+    async def update_cluster_job_checkpoint(self, job_id: str, **changes) -> None:
+        await update_cluster_job_checkpoint_record(
+            require_cluster_db(self._db),
+            job_id,
+            changes,
+        )
+
+    async def upsert_cluster_checkpoint(self, payload: dict) -> None:
+        await upsert_cluster_checkpoint_record(
+            require_cluster_db(self._db),
+            payload,
+        )
+
+    async def get_cluster_checkpoint(self, checkpoint_id: str) -> dict | None:
+        return await load_cluster_checkpoint(
+            require_cluster_db(self._db),
+            checkpoint_id,
+        )
+
+    async def list_cluster_checkpoints(self, *, job_id: str = "") -> list[dict]:
+        return await load_cluster_checkpoints(
+            require_cluster_db(self._db),
+            job_id=job_id,
+        )
+
+    async def get_latest_ready_cluster_checkpoint(self, job_id: str) -> dict | None:
+        return await load_latest_ready_cluster_checkpoint(
+            require_cluster_db(self._db),
+            job_id,
+        )
+
+    async def create_cluster_reservation(self, payload: dict) -> None:
+        await create_cluster_reservation_record(require_cluster_db(self._db), payload)
+
+    async def get_cluster_reservation(self, reservation_id: str) -> dict | None:
+        return await load_cluster_reservation(
+            require_cluster_db(self._db),
+            reservation_id,
+        )
+
+    async def list_cluster_reservations(self, *, job_id: str = "") -> list[dict]:
+        return await load_cluster_reservations(
+            require_cluster_db(self._db),
+            job_id=job_id,
+        )
+
+    async def update_cluster_reservation_status(
+        self,
+        reservation_id: str,
+        status: str,
+    ) -> None:
+        await update_cluster_reservation_status_record(
+            require_cluster_db(self._db),
+            reservation_id,
+            status,
         )
 
     async def create_cluster_allocation(self, payload: dict) -> None:
@@ -397,8 +531,31 @@ class DataStore:
             payload,
         )
 
+    async def get_cluster_allocation(self, allocation_id: str) -> dict | None:
+        return await load_cluster_allocation(
+            require_cluster_db(self._db),
+            allocation_id,
+        )
+
     async def list_cluster_allocations(self) -> list[dict]:
         return await load_cluster_allocations(require_cluster_db(self._db))
+
+    async def release_cluster_allocation(self, allocation_id: str) -> None:
+        await release_cluster_allocation_record(
+            require_cluster_db(self._db),
+            allocation_id,
+        )
+
+    async def update_cluster_allocations_for_job(
+        self,
+        job_id: str,
+        status: str,
+    ) -> None:
+        await update_cluster_allocations_for_job_record(
+            require_cluster_db(self._db),
+            job_id,
+            status,
+        )
 
     # ========== Control Plane ==========
 

@@ -1,0 +1,979 @@
+{
+  "metadata": {
+    "title": "智算中心导入式 GPU 治理与智能分析平台",
+    "subtitle": "保留六章结构的网页作品书，所有核心描述以当前代码库为准",
+    "real_validation": {
+      "passed": 26,
+      "failed": 0,
+      "duration_sec": 1.69,
+      "command": "cmd.exe /c \".venv\\Scripts\\python.exe -m pytest tests\\test_import_control_scope.py tests\\test_system_import_runtime_snapshot.py tests\\test_import_history_scope.py tests\\test_control_api.py tests\\test_governance_workbench_structure.py::GovernanceWorkbenchStructureTests::test_main_router_registers_governance_parent_and_subroutes tests\\test_governance_workbench_structure.py::GovernanceWorkbenchStructureTests::test_governance_data_uses_section_scoped_refresh tests\\test_governance_workbench_structure.py::GovernanceWorkbenchStructureTests::test_actions_view_only_hosts_object_actions_and_fairness_summary tests\\test_governance_workbench_structure.py::GovernanceWorkbenchStructureTests::test_policies_view_hosts_only_strategy_controls tests\\test_governance_workbench_structure.py::GovernanceWorkbenchStructureTests::test_policies_view_routes_mutations_through_control_plane_only tests\\test_governance_workbench_structure.py::GovernanceWorkbenchStructureTests::test_policies_view_uses_inline_execution_banner -q\""
+    }
+  },
+  "panorama": {
+    "layers": [
+      {
+        "name": "导入层",
+        "items": [
+          "已保存主机",
+          "连接来源",
+          "硬件概览",
+          "选卡导入"
+        ]
+      },
+      {
+        "name": "治理层",
+        "items": [
+          "即时处置",
+          "策略治理",
+          "集群作业",
+          "治理复盘"
+        ]
+      },
+      {
+        "name": "分析层",
+        "items": [
+          "能耗",
+          "观察",
+          "告警"
+        ]
+      },
+      {
+        "name": "智能层",
+        "items": [
+          "智能工作台",
+          "图谱工作台",
+          "Agent Runtime",
+          "控制能力目录"
+        ]
+      },
+      {
+        "name": "执行与采集层",
+        "items": [
+          "server-agent",
+          "HTTP/SSH provider",
+          "WebSocket",
+          "SQLite/Neo4j"
+        ]
+      }
+    ]
+  },
+  "workflow": {
+    "steps": [
+      "登录与权限判断",
+      "进入导入层",
+      "扫描目标主机与 GPU",
+      "提交 import context",
+      "刷新 scoped 快照",
+      "进入控制台壳层",
+      "治理 / 分析 / 智能工作区联动",
+      "复盘导出与历史回放"
+    ]
+  },
+  "workspace_map": {
+    "import_stages": [
+      "已保存主机",
+      "连接来源",
+      "硬件概览",
+      "选卡导入"
+    ],
+    "primary_nav": [
+      "总览",
+      "治理",
+      "能耗",
+      "观察",
+      "告警",
+      "智能"
+    ],
+    "governance_tabs": [
+      "即时处置",
+      "策略治理",
+      "集群作业",
+      "治理复盘"
+    ],
+    "ai_tabs": [
+      "智能工作台",
+      "图谱工作台"
+    ],
+    "named_views": [
+      "Login",
+      "ChangePassword",
+      "ImportWorkspace",
+      "Dashboard",
+      "GpuDetail",
+      "GovernanceActions",
+      "GovernancePolicies",
+      "ClusterJobs",
+      "GovernanceReview",
+      "EnergyOptimization",
+      "AIAssistant",
+      "AIGraphWorkspace",
+      "AlertCenter",
+      "MonitorCenter"
+    ]
+  },
+  "api_domains": {
+    "total": 111,
+    "domains": [
+      {
+        "name": "导入与运行时",
+        "value": 20
+      },
+      {
+        "name": "治理与控制",
+        "value": 25
+      },
+      {
+        "name": "分析与复盘",
+        "value": 18
+      },
+      {
+        "name": "AI 与图谱",
+        "value": 21
+      },
+      {
+        "name": "集群作业",
+        "value": 18
+      },
+      {
+        "name": "平台接入",
+        "value": 9
+      }
+    ]
+  },
+  "persistence": {
+    "total": 22,
+    "groups": [
+      {
+        "name": "运行时历史",
+        "tables": [
+          "gpu_history",
+          "process_history",
+          "alerts",
+          "task_priorities"
+        ],
+        "count": 4
+      },
+      {
+        "name": "治理复盘",
+        "tables": [
+          "schedule_log",
+          "optimization_snapshots",
+          "governance_audit_log"
+        ],
+        "count": 3
+      },
+      {
+        "name": "用户与连接",
+        "tables": [
+          "platform_users",
+          "platform_sessions",
+          "saved_hosts"
+        ],
+        "count": 3
+      },
+      {
+        "name": "治理规则",
+        "tables": [
+          "user_governance_rules",
+          "control_commands"
+        ],
+        "count": 2
+      },
+      {
+        "name": "AI Runtime",
+        "tables": [
+          "agent_runtime_sessions",
+          "agent_runtime_events",
+          "agent_runtime_stream_state"
+        ],
+        "count": 3
+      },
+      {
+        "name": "集群状态",
+        "tables": [
+          "cluster_checkpoints",
+          "cluster_nodes",
+          "cluster_devices",
+          "cluster_queues",
+          "cluster_jobs",
+          "cluster_reservations",
+          "cluster_allocations"
+        ],
+        "count": 7
+      }
+    ]
+  },
+  "agent_chain": {
+    "collectors": 4,
+    "controllers": 2,
+    "runtime_units": [
+      "JobRuntime",
+      "RuntimeStore"
+    ],
+    "outputs": [
+      "gpus",
+      "system",
+      "processes",
+      "training",
+      "power-limit",
+      "task-control"
+    ]
+  },
+  "extensions": {
+    "modules": [
+      {
+        "name": "AI Runtime",
+        "routes": 8,
+        "focus": "session / approval / event stream"
+      },
+      {
+        "name": "Graph",
+        "routes": 10,
+        "focus": "view / neighbors / qa / strategy"
+      },
+      {
+        "name": "Cluster",
+        "routes": 18,
+        "focus": "job / queue / checkpoint / reconcile"
+      }
+    ],
+    "capabilities": [
+      {
+        "name": "allocation",
+        "value": 1
+      },
+      {
+        "name": "job",
+        "value": 11
+      },
+      {
+        "name": "node",
+        "value": 2
+      },
+      {
+        "name": "policy",
+        "value": 2
+      },
+      {
+        "name": "queue",
+        "value": 2
+      },
+      {
+        "name": "reschedule",
+        "value": 1
+      },
+      {
+        "name": "runtime",
+        "value": 1
+      },
+      {
+        "name": "scheduler",
+        "value": 5
+      },
+      {
+        "name": "tasks",
+        "value": 4
+      }
+    ],
+    "total_capabilities": 29
+  },
+  "problem_matrix": [
+    {
+      "pain": "接入后看得见但管不住",
+      "modules": [
+        "导入层",
+        "runtime_snapshot",
+        "tasks/scheduler scope"
+      ],
+      "proof": "commit_import_context + refresh_runtime_snapshot_scope"
+    },
+    {
+      "pain": "危险动作缺少统一审批与追踪",
+      "modules": [
+        "control_plane",
+        "GovernanceActions",
+        "GovernanceReview"
+      ],
+      "proof": "approval_state / execution_state / command ledger"
+    },
+    {
+      "pain": "策略写入与复盘脱节",
+      "modules": [
+        "GovernancePolicies",
+        "governance full-report"
+      ],
+      "proof": "refreshPolicies + refreshReview + export_full_governance_report"
+    },
+    {
+      "pain": "运行数据多源异构，难以统一分析",
+      "modules": [
+        "server-agent",
+        "DataStore",
+        "EnergyAnalytics",
+        "GovernanceService"
+      ],
+      "proof": "collector -> store -> analysis/replay"
+    },
+    {
+      "pain": "智能、图谱、集群能力容易与主平台割裂",
+      "modules": [
+        "agent_runtime",
+        "graph",
+        "cluster_jobs",
+        "ConsoleShell"
+      ],
+      "proof": "统一挂载到主控制台与工作区"
+    }
+  ],
+  "kernel_metrics": {
+    "import_scope": {
+      "raw_gpu": 4,
+      "raw_proc": 11,
+      "scoped_gpu": 2,
+      "scoped_proc": 5,
+      "out_scope_visible": 0
+    },
+    "scope_rows": [
+      [
+        "实时 GPU 列表",
+        "读路径",
+        2,
+        0,
+        null
+      ],
+      [
+        "实时任务列表",
+        "读路径",
+        5,
+        0,
+        null
+      ],
+      [
+        "公平治理报告",
+        "读路径",
+        3,
+        0,
+        null
+      ],
+      [
+        "历史功率汇总",
+        "历史查询",
+        1,
+        0,
+        null
+      ],
+      [
+        "告警历史",
+        "历史查询",
+        1,
+        0,
+        null
+      ],
+      [
+        "调度历史",
+        "历史查询",
+        1,
+        0,
+        null
+      ],
+      [
+        "pause_task 越界 PID",
+        "写路径",
+        1,
+        0,
+        100
+      ],
+      [
+        "power_limit 越界 GPU",
+        "写路径",
+        1,
+        0,
+        100
+      ],
+      [
+        "run_once 空作用域",
+        "写路径",
+        0,
+        0,
+        100
+      ],
+      [
+        "acknowledge_alert 越界告警",
+        "写路径",
+        1,
+        0,
+        100
+      ]
+    ],
+    "command_lifecycle": {
+      "total": 60,
+      "approval": 18,
+      "queue": 42,
+      "success": 54,
+      "failed": 4,
+      "rejected": 2
+    },
+    "policy_linkage": {
+      "writes": 28,
+      "review_visible": 28,
+      "exported": 28,
+      "avg_sync_sec": 1.05
+    }
+  },
+  "test_domains": {
+    "total": 280,
+    "domains": [
+      {
+        "name": "导入边界",
+        "value": 34
+      },
+      {
+        "name": "治理控制",
+        "value": 84
+      },
+      {
+        "name": "能耗观察",
+        "value": 51
+      },
+      {
+        "name": "AI Runtime",
+        "value": 44
+      },
+      {
+        "name": "图谱能力",
+        "value": 23
+      },
+      {
+        "name": "集群扩展",
+        "value": 44
+      }
+    ]
+  },
+  "testing_detail": {
+    "agent_effectiveness": {
+      "endpoint_groups": [
+        {
+          "name": "采集接口",
+          "value": 7
+        },
+        {
+          "name": "控制接口",
+          "value": 4
+        },
+        {
+          "name": "运行时接口",
+          "value": 10
+        }
+      ],
+      "telemetry_fields": [
+        "temperature",
+        "power_usage",
+        "power_limit",
+        "gpu_utilization",
+        "memory_used",
+        "memory_total",
+        "fan_speed",
+        "clock_sm",
+        "clock_mem",
+        "timestamp"
+      ],
+      "sampling": {
+        "cached_accesses": 3,
+        "real_scans": 2,
+        "cache_hits": 1,
+        "cpu_sampling": "interval=None/0"
+      },
+      "real_checks": {
+        "passed": 21,
+        "duration_sec": 0.73,
+        "files": [
+          "tests/test_agent_sampling_structure.py",
+          "tests/test_monitor_api.py",
+          "tests/test_agent_startup_logging.py",
+          "tests/test_cluster_job_api.py",
+          "backend/tests/test_graph_store_view.py"
+        ]
+      },
+      "integration_points": [
+        {
+          "name": "远程 Provider 兼容",
+          "detail": "system-detail 路由可透过 HttpAgentProvider 读取远程系统详情",
+          "state": "passed"
+        },
+        {
+          "name": "导入后训练日志过滤",
+          "detail": "training 路由只保留 imported GPUs 对应日志",
+          "state": "passed"
+        },
+        {
+          "name": "缺失 NVML 时明确提示",
+          "detail": "启动日志不会伪造 GPU 结果，而是给出 SSH Linux / 远程 Agent 提示",
+          "state": "passed"
+        },
+        {
+          "name": "进程缓存采样",
+          "detail": "连续 3 次读取仅触发 2 次真实扫描，降低采样阻塞",
+          "state": "passed"
+        }
+      ]
+    },
+    "extension_validation": {
+      "stable": [
+        {
+          "name": "Agent / Monitor / Cluster / Graph",
+          "passed": 21,
+          "duration_sec": 0.73
+        },
+        {
+          "name": "Agent Runtime API",
+          "passed": 3,
+          "duration_sec": 0.38
+        }
+      ],
+      "drift": [
+        {
+          "name": "tests/test_goal_runtime_api.py",
+          "kind": "collection_error",
+          "reason": "append_agent_runtime_chat_turn 与现有 agent_runtime.py 接口不一致"
+        },
+        {
+          "name": "backend/tests/test_ai_control.py",
+          "kind": "collection_error",
+          "reason": "SUPPORTED_ACTIONS 与现有 control_heuristics 接口不一致"
+        }
+      ]
+    }
+  },
+  "experiments": {
+    "scope_refresh": {
+      "selected_gpu_indexes": [
+        1,
+        3
+      ],
+      "raw_gpu_count": 4,
+      "raw_process_count": 11,
+      "scoped_gpu_count": 2,
+      "scoped_process_count": 5,
+      "realtime_gpu_count": 2,
+      "task_visible_count": 5,
+      "allowed_pause_pid": 1004,
+      "blocked_out_scope": {
+        "blocked": true,
+        "status_code": 400,
+        "detail": "PID 1001 不在当前导入范围内，请重新导入管理卡"
+      },
+      "snapshot_refresh_ok": true
+    },
+    "history_filter": {
+      "selected_gpu_indexes": [
+        1,
+        3
+      ],
+      "power_visible_gpus": 2,
+      "alerts_visible": 2,
+      "timeline_visible": 5,
+      "schedule_visible": 2,
+      "optimization_visible": 1,
+      "replay_active_gpu_count": 2,
+      "query_coverage": 6,
+      "query_leakage": 0,
+      "blocked_out_scope_ack": {
+        "blocked": true,
+        "status_code": 400
+      }
+    },
+    "agent_pipeline": {
+      "cpu_non_blocking": true,
+      "cpu_call_count": 4,
+      "cpu_per_core_count": 3,
+      "cache_reads": 3,
+      "real_scans": 2,
+      "scan_reduction_pct": 33.3,
+      "remote_detail_keys": [
+        "cpu_per_core",
+        "cpu_percent",
+        "network"
+      ],
+      "training_logs_input": 3,
+      "training_logs_visible": 2,
+      "training_reduction_pct": 33.3,
+      "startup_hint_visible": true,
+      "startup_level": "warning"
+    },
+    "control_plane": {
+      "direct_state": "succeeded",
+      "confirm_blocked_without_ack": true,
+      "confirm_state": "succeeded",
+      "approval_waiting_state": "awaiting_approval",
+      "approval_final_state": "succeeded",
+      "rejected_final_state": "rejected",
+      "persisted_commands": 4,
+      "succeeded_commands": 3,
+      "rejected_commands": 1
+    }
+  },
+  "real_remote_budget_experiment": {
+    "host": "10.151.225.108",
+    "gpu_index": 3,
+    "workload_pid": 1856343,
+    "workload_log": "/tmp/aidc_budget_gpu3_1775890437.log",
+    "original_power_limit": 350,
+    "managed_power_limit": 261,
+    "budget_limit": 492,
+    "power_alert_threshold": 320,
+    "alert_message": "GPU3 功耗较高: 324.24W (阈值320W)",
+    "baseline": {
+      "sample_count": 4,
+      "avg_power": 20.98,
+      "peak_power": 28.91,
+      "avg_temperature": 41.25,
+      "above_alert_samples": 0
+    },
+    "ramp": {
+      "sample_count": 3,
+      "avg_power": 135.14,
+      "peak_power": 324.24,
+      "avg_temperature": 48.67,
+      "above_alert_samples": 1
+    },
+    "post_action": {
+      "sample_count": 18,
+      "avg_power": 260.71,
+      "peak_power": 265.42,
+      "avg_temperature": 66.39,
+      "above_alert_samples": 0
+    },
+    "effective": true,
+    "peak_sample": {
+      "timestamp": 1775890442.388,
+      "elapsed_s": 15.21,
+      "phase": "load_ramp",
+      "gpu_index": 3,
+      "power_usage": 324.24,
+      "power_limit": 350.0,
+      "temperature": 59,
+      "gpu_utilization": 100,
+      "total_power": 545.3,
+      "above_power_alert": true
+    },
+    "first_post_sample": {
+      "timestamp": 1775890443.377,
+      "elapsed_s": 16.2,
+      "phase": "post_action",
+      "gpu_index": 3,
+      "power_usage": 265.42,
+      "power_limit": 261.0,
+      "temperature": 58,
+      "gpu_utilization": 100,
+      "total_power": 479.66,
+      "above_power_alert": false
+    },
+    "power_drop_watts": 63.53,
+    "power_drop_pct": 19.6,
+    "total_power_drop_watts": 65.64,
+    "action_success": true,
+    "post_clean_ratio_pct": 100.0,
+    "samples": [
+      {
+        "timestamp": 1775890428.226,
+        "elapsed_s": 1.05,
+        "phase": "baseline",
+        "gpu_index": 3,
+        "power_usage": 18.36,
+        "power_limit": 350.0,
+        "temperature": 41,
+        "gpu_utilization": 0,
+        "total_power": 244.69,
+        "above_power_alert": false
+      },
+      {
+        "timestamp": 1775890430.492,
+        "elapsed_s": 3.32,
+        "phase": "baseline",
+        "gpu_index": 3,
+        "power_usage": 18.34,
+        "power_limit": 350.0,
+        "temperature": 41,
+        "gpu_utilization": 0,
+        "total_power": 226.33,
+        "above_power_alert": false
+      },
+      {
+        "timestamp": 1775890432.797,
+        "elapsed_s": 5.62,
+        "phase": "baseline",
+        "gpu_index": 3,
+        "power_usage": 28.91,
+        "power_limit": 350.0,
+        "temperature": 42,
+        "gpu_utilization": 0,
+        "total_power": 234.42,
+        "above_power_alert": false
+      },
+      {
+        "timestamp": 1775890435.298,
+        "elapsed_s": 8.12,
+        "phase": "baseline",
+        "gpu_index": 3,
+        "power_usage": 18.3,
+        "power_limit": 350.0,
+        "temperature": 41,
+        "gpu_utilization": 0,
+        "total_power": 240.19,
+        "above_power_alert": false
+      },
+      {
+        "timestamp": 1775890437.722,
+        "elapsed_s": 10.55,
+        "phase": "load_ramp",
+        "gpu_index": 3,
+        "power_usage": 18.32,
+        "power_limit": 350.0,
+        "temperature": 41,
+        "gpu_utilization": 0,
+        "total_power": 227.46,
+        "above_power_alert": false
+      },
+      {
+        "timestamp": 1775890440.037,
+        "elapsed_s": 12.86,
+        "phase": "load_ramp",
+        "gpu_index": 3,
+        "power_usage": 62.87,
+        "power_limit": 350.0,
+        "temperature": 46,
+        "gpu_utilization": 3,
+        "total_power": 268.29,
+        "above_power_alert": false
+      },
+      {
+        "timestamp": 1775890442.388,
+        "elapsed_s": 15.21,
+        "phase": "load_ramp",
+        "gpu_index": 3,
+        "power_usage": 324.24,
+        "power_limit": 350.0,
+        "temperature": 59,
+        "gpu_utilization": 100,
+        "total_power": 545.3,
+        "above_power_alert": true
+      },
+      {
+        "timestamp": 1775890443.377,
+        "elapsed_s": 16.2,
+        "phase": "post_action",
+        "gpu_index": 3,
+        "power_usage": 265.42,
+        "power_limit": 261.0,
+        "temperature": 58,
+        "gpu_utilization": 100,
+        "total_power": 479.66,
+        "above_power_alert": false
+      },
+      {
+        "timestamp": 1775890445.606,
+        "elapsed_s": 18.43,
+        "phase": "post_action",
+        "gpu_index": 3,
+        "power_usage": 260.72,
+        "power_limit": 261.0,
+        "temperature": 58,
+        "gpu_utilization": 100,
+        "total_power": 468.26,
+        "above_power_alert": false
+      },
+      {
+        "timestamp": 1775890447.821,
+        "elapsed_s": 20.65,
+        "phase": "post_action",
+        "gpu_index": 3,
+        "power_usage": 259.82,
+        "power_limit": 261.0,
+        "temperature": 59,
+        "gpu_utilization": 100,
+        "total_power": 467.69,
+        "above_power_alert": false
+      },
+      {
+        "timestamp": 1775890450.329,
+        "elapsed_s": 23.16,
+        "phase": "post_action",
+        "gpu_index": 3,
+        "power_usage": 261.03,
+        "power_limit": 261.0,
+        "temperature": 61,
+        "gpu_utilization": 100,
+        "total_power": 487.18,
+        "above_power_alert": false
+      },
+      {
+        "timestamp": 1775890452.798,
+        "elapsed_s": 25.62,
+        "phase": "post_action",
+        "gpu_index": 3,
+        "power_usage": 260.96,
+        "power_limit": 261.0,
+        "temperature": 62,
+        "gpu_utilization": 100,
+        "total_power": 468.71,
+        "above_power_alert": false
+      },
+      {
+        "timestamp": 1775890455.042,
+        "elapsed_s": 27.87,
+        "phase": "post_action",
+        "gpu_index": 3,
+        "power_usage": 259.82,
+        "power_limit": 261.0,
+        "temperature": 63,
+        "gpu_utilization": 100,
+        "total_power": 467.64,
+        "above_power_alert": false
+      },
+      {
+        "timestamp": 1775890457.317,
+        "elapsed_s": 30.14,
+        "phase": "post_action",
+        "gpu_index": 3,
+        "power_usage": 260.23,
+        "power_limit": 261.0,
+        "temperature": 64,
+        "gpu_utilization": 100,
+        "total_power": 476.0,
+        "above_power_alert": false
+      },
+      {
+        "timestamp": 1775890459.536,
+        "elapsed_s": 32.36,
+        "phase": "post_action",
+        "gpu_index": 3,
+        "power_usage": 259.74,
+        "power_limit": 261.0,
+        "temperature": 65,
+        "gpu_utilization": 100,
+        "total_power": 467.95,
+        "above_power_alert": false
+      },
+      {
+        "timestamp": 1775890461.915,
+        "elapsed_s": 34.74,
+        "phase": "post_action",
+        "gpu_index": 3,
+        "power_usage": 261.29,
+        "power_limit": 261.0,
+        "temperature": 66,
+        "gpu_utilization": 100,
+        "total_power": 469.31,
+        "above_power_alert": false
+      },
+      {
+        "timestamp": 1775890464.254,
+        "elapsed_s": 37.08,
+        "phase": "post_action",
+        "gpu_index": 3,
+        "power_usage": 261.27,
+        "power_limit": 261.0,
+        "temperature": 67,
+        "gpu_utilization": 100,
+        "total_power": 487.31,
+        "above_power_alert": false
+      },
+      {
+        "timestamp": 1775890466.548,
+        "elapsed_s": 39.37,
+        "phase": "post_action",
+        "gpu_index": 3,
+        "power_usage": 260.39,
+        "power_limit": 261.0,
+        "temperature": 68,
+        "gpu_utilization": 100,
+        "total_power": 468.51,
+        "above_power_alert": false
+      },
+      {
+        "timestamp": 1775890468.845,
+        "elapsed_s": 41.67,
+        "phase": "post_action",
+        "gpu_index": 3,
+        "power_usage": 259.9,
+        "power_limit": 261.0,
+        "temperature": 69,
+        "gpu_utilization": 100,
+        "total_power": 467.95,
+        "above_power_alert": false
+      },
+      {
+        "timestamp": 1775890471.185,
+        "elapsed_s": 44.01,
+        "phase": "post_action",
+        "gpu_index": 3,
+        "power_usage": 259.56,
+        "power_limit": 261.0,
+        "temperature": 70,
+        "gpu_utilization": 100,
+        "total_power": 485.08,
+        "above_power_alert": false
+      },
+      {
+        "timestamp": 1775890473.522,
+        "elapsed_s": 46.35,
+        "phase": "post_action",
+        "gpu_index": 3,
+        "power_usage": 260.95,
+        "power_limit": 261.0,
+        "temperature": 71,
+        "gpu_utilization": 100,
+        "total_power": 468.8,
+        "above_power_alert": false
+      },
+      {
+        "timestamp": 1775890475.759,
+        "elapsed_s": 48.59,
+        "phase": "post_action",
+        "gpu_index": 3,
+        "power_usage": 260.06,
+        "power_limit": 261.0,
+        "temperature": 72,
+        "gpu_utilization": 100,
+        "total_power": 467.38,
+        "above_power_alert": false
+      },
+      {
+        "timestamp": 1775890478.049,
+        "elapsed_s": 50.88,
+        "phase": "post_action",
+        "gpu_index": 3,
+        "power_usage": 260.95,
+        "power_limit": 261.0,
+        "temperature": 73,
+        "gpu_utilization": 100,
+        "total_power": 483.31,
+        "above_power_alert": false
+      },
+      {
+        "timestamp": 1775890480.322,
+        "elapsed_s": 53.15,
+        "phase": "post_action",
+        "gpu_index": 3,
+        "power_usage": 261.1,
+        "power_limit": 261.0,
+        "temperature": 74,
+        "gpu_utilization": 100,
+        "total_power": 469.29,
+        "above_power_alert": false
+      },
+      {
+        "timestamp": 1775890482.593,
+        "elapsed_s": 55.42,
+        "phase": "post_action",
+        "gpu_index": 3,
+        "power_usage": 259.5,
+        "power_limit": 261.0,
+        "temperature": 75,
+        "gpu_utilization": 100,
+        "total_power": 465.57,
+        "above_power_alert": false
+      }
+    ]
+  }
+}

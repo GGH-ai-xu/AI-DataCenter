@@ -17,12 +17,14 @@ class FakePersistence:
     def __init__(self):
         self.events = []
 
-    async def append_event(self, session_id, event_type, payload):
+    async def append_event(self, session_id, event_type, payload, **metadata):
         self.events.append(
             {
                 "session_id": session_id,
                 "event_type": event_type,
                 "payload": payload,
+                "round_index": int(metadata.get("round_index") or 0),
+                "sequence": int(metadata.get("sequence") or 0),
             }
         )
 
@@ -73,6 +75,7 @@ class GoalRuntimeSupervisorTests(unittest.IsolatedAsyncioTestCase):
         async def working_fallback(_context, _arguments):
             return {"success": True, "action": "paused"}
 
+        persistence = FakePersistence()
         result = await execute_plan_session(
             session_id="sess-1",
             goal_spec=GoalSpec(
@@ -98,11 +101,13 @@ class GoalRuntimeSupervisorTests(unittest.IsolatedAsyncioTestCase):
                 ),
             ),
             registry=build_registry(failing_primary, working_fallback),
-            persistence=FakePersistence(),
+            persistence=persistence,
         )
 
         self.assertEqual(result["status"], "completed")
         self.assertIn("PlanRevised", result["event_types"])
+        self.assertEqual(persistence.events[0]["round_index"], 1)
+        self.assertEqual(persistence.events[0]["sequence"], 1)
 
     async def test_low_permission_blocks_when_react_introduces_runtime_action(self):
         async def failing_primary(_context, _arguments):
@@ -111,6 +116,7 @@ class GoalRuntimeSupervisorTests(unittest.IsolatedAsyncioTestCase):
         async def working_fallback(_context, _arguments):
             return {"success": True, "action": "paused"}
 
+        persistence = FakePersistence()
         result = await execute_plan_session(
             session_id="sess-2",
             goal_spec=GoalSpec(
@@ -136,13 +142,17 @@ class GoalRuntimeSupervisorTests(unittest.IsolatedAsyncioTestCase):
                 ),
             ),
             registry=build_registry(failing_primary, working_fallback),
-            persistence=FakePersistence(),
+            persistence=persistence,
         )
 
         self.assertEqual(result["status"], "awaiting_approval")
         self.assertEqual(
             result["pending_approval"]["actions"][0]["capability_name"],
             "tasks.pause",
+        )
+        self.assertEqual(
+            [item["sequence"] for item in persistence.events],
+            list(range(1, len(persistence.events) + 1)),
         )
 
 

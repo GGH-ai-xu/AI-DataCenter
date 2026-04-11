@@ -7,6 +7,7 @@ import ImportSavedHostSummaryBar from './ImportSavedHostSummaryBar.vue'
 
 const props = defineProps({
   savedHostSummary: { type: Object, default: null },
+  feedback: { type: Object, default: null },
   gpus: { type: Array, default: () => [] },
   modelValue: { type: Array, default: () => [] },
 })
@@ -74,6 +75,13 @@ function clearSelection() {
         </section>
 
         <section class="tech-card import-selection-stage__grid-shell">
+          <div
+            v-if="props.feedback"
+            class="import-selection-stage__feedback"
+            :class="`import-selection-stage__feedback--${props.feedback.tone || 'warning'}`"
+          >
+            {{ props.feedback.text }}
+          </div>
           <ImportGpuGrid
             :model-value="props.modelValue"
             :gpus="visibleGpus"
@@ -95,7 +103,7 @@ function clearSelection() {
           </article>
           <article class="import-selection-stage__fact">
             <span>进入条件</span>
-            <strong>{{ props.modelValue.length > 0 ? '已满足，可直接提交导入' : '至少选择 1 张卡才能进入控制台' }}</strong>
+            <strong>{{ props.modelValue.length > 0 ? '已满足，可直接提交导入' : '未选择 GPU 也可提交，控制台将以空作用域运行' }}</strong>
           </article>
         </div>
       </aside>
@@ -175,6 +183,33 @@ function clearSelection() {
   min-height: 0;
   overflow-y: auto;
   padding: 18px;
+}
+
+.import-selection-stage__feedback {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  font-size: 0.8rem;
+  line-height: 1.75;
+}
+
+.import-selection-stage__feedback--ok {
+  background: var(--state-ok-bg);
+  border-color: var(--state-ok-border);
+  color: var(--state-ok-text);
+}
+
+.import-selection-stage__feedback--warning {
+  background: var(--state-warning-bg);
+  border-color: var(--state-warning-border);
+  color: var(--state-warning-text);
+}
+
+.import-selection-stage__feedback--error {
+  background: var(--state-critical-bg);
+  border-color: var(--state-critical-border);
+  color: var(--state-critical-text);
 }
 
 .import-selection-stage__facts {

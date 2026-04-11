@@ -1,7 +1,13 @@
 """Pydantic数据模型 - 统一的请求/响应Schema"""
 
+from typing import Any, Optional
+
 from pydantic import BaseModel, Field
-from typing import Optional
+
+
+TASK_KIND_PATTERN = r"^(training|inference_service|interactive_session|batch_compute|maintenance)$"
+LIFECYCLE_KIND_PATTERN = r"^(batch|service|session)$"
+CHECKPOINT_POLICY_PATTERN = r"^(none|app_managed)$"
 
 
 # ========== GPU相关 ==========
@@ -103,9 +109,14 @@ class ClusterJobResponse(BaseModel):
     project_id: str
     submitter_id: str
     job_type: str
+    task_kind: str = Field(default="batch_compute", pattern=TASK_KIND_PATTERN)
+    lifecycle_kind: str = Field(default="batch", pattern=LIFECYCLE_KIND_PATTERN)
     entrypoint: str
     status: str
     priority: int
+    service_ports: list[int] = Field(default_factory=list)
+    checkpoint_policy: str = Field(default="none", pattern=CHECKPOINT_POLICY_PATTERN)
+    runtime_profile: dict[str, Any] = Field(default_factory=dict)
 
 
 class ClusterAllocationResponse(BaseModel):
@@ -123,6 +134,8 @@ class ClusterJobSubmitRequest(BaseModel):
     queue_id: str = Field(min_length=1, max_length=120)
     submitter_id: str = Field(min_length=1, max_length=120)
     job_type: str = Field(min_length=1, max_length=80)
+    task_kind: str = Field(default="batch_compute", pattern=TASK_KIND_PATTERN)
+    lifecycle_kind: str = Field(default="batch", pattern=LIFECYCLE_KIND_PATTERN)
     entrypoint: str = Field(min_length=1, max_length=500)
     args: list[str] = Field(default_factory=list)
     env: dict[str, str] = Field(default_factory=dict)
@@ -132,12 +145,28 @@ class ClusterJobSubmitRequest(BaseModel):
     preemptible: bool = True
     max_retries: int = Field(default=0, ge=0, le=20)
     timeout_seconds: int = Field(default=0, ge=0)
+    service_ports: list[int] = Field(default_factory=list)
+    checkpoint_policy: str = Field(default="none", pattern=CHECKPOINT_POLICY_PATTERN)
+    runtime_profile: dict[str, Any] = Field(default_factory=dict)
 
 
 class ClusterJobSubmitResponse(BaseModel):
     job_id: str
     state: str
     plan_type: str
+
+
+class ClusterControllerConfigRequest(BaseModel):
+    enabled: Optional[bool] = None
+    interval_seconds: Optional[float] = Field(default=None, ge=1, le=3600)
+
+
+class ClusterJobCheckpointRequest(BaseModel):
+    timeout_seconds: int = Field(default=30, ge=1, le=3600)
+
+
+class ClusterJobRestoreRequest(BaseModel):
+    checkpoint_id: str = Field(default="", max_length=120)
 
 
 # ========== 统一控制面 ==========
@@ -304,6 +333,16 @@ class LLMConfigRequest(BaseModel):
 class AgentRuntimeStartRequest(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
     permission_mode: str = Field(default="low", pattern=r"^(high|low)$")
+    session_id: str = Field(default="", max_length=120)
+
+
+class AgentRuntimeChatTurnRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=2000)
+    reply: str = Field(min_length=1, max_length=8000)
+    permission_mode: str = Field(default="low", pattern=r"^(high|low)$")
+    session_id: str = Field(default="", max_length=120)
+    reply_mode: str = Field(default="inline", pattern=r"^(inline|stream)$")
+    suggestions: list[str] = Field(default_factory=list, max_length=8)
 
 
 class AgentRuntimeApprovalRequest(BaseModel):

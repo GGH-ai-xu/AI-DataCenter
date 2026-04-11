@@ -1,0 +1,5 @@
+stage,sample_count,avg_power_w,peak_power_w,avg_temperature_c,above_alert_samples,notes
+baseline,4,20.98,28.91,41.25,0,GPU3 空闲基线
+load_ramp,3,135.14,324.24,48.67,1,第三个样本越过 320W 阈值并触发真实告警
+post_action,18,260.71,265.42,66.39,0,人工预算治理后连续 18 个样本均低于阈值
+action,1,0,0,0,0,预算 492W; 功耗上限 350W -> 261W; 相对峰值降幅 63.53W

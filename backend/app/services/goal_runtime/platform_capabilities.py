@@ -5,6 +5,15 @@ from app.services.goal_runtime.capability import (
     CapabilityDefinition,
     CapabilityManualControl,
 )
+from app.services.goal_runtime.cluster_object_capabilities import (
+    register_cluster_object_capabilities,
+)
+from app.services.goal_runtime.cluster_execution_capabilities import (
+    register_cluster_execution_capabilities,
+)
+from app.services.goal_runtime.cluster_planning_capabilities import (
+    register_cluster_planning_capabilities,
+)
 from app.services.goal_runtime.capability_registry import CapabilityRegistry
 from app.services.goal_runtime.schedule_once import run_schedule_once
 from app.services.cluster_control.models import JobSpecRecord
@@ -54,6 +63,11 @@ def _job_record_from_arguments(arguments: dict) -> JobSpecRecord:
         preemptible=bool(arguments.get("preemptible", True)),
         max_retries=int(arguments.get("max_retries", 0)),
         timeout_seconds=int(arguments.get("timeout_seconds", 0)),
+        task_kind=str(arguments.get("task_kind") or "batch_compute"),
+        lifecycle_kind=str(arguments.get("lifecycle_kind") or "batch"),
+        service_ports=tuple(arguments.get("service_ports", ())),
+        checkpoint_policy=str(arguments.get("checkpoint_policy") or "none"),
+        runtime_profile=dict(arguments.get("runtime_profile", {})),
     )
 
 
@@ -111,6 +125,27 @@ def build_platform_capability_registry(app_state) -> CapabilityRegistry:
             "total_power_budget": total_power_budget,
         }
 
+    async def configure_auto_schedule(_context, arguments):
+        enabled = bool(arguments.get("enabled", True))
+        app_state.scheduler.set_auto(enabled)
+        return {
+            "success": True,
+            "auto_enabled": enabled,
+        }
+
+    async def configure_carbon_budget(_context, arguments):
+        enabled = bool(arguments.get("enabled", True))
+        daily_budget_kg = float(arguments["daily_budget_kg"])
+        app_state.scheduler.configure_carbon_budget(enabled, daily_budget_kg)
+        gpus = await app_state.agent.get_all_gpus()
+        filtered_gpus = app_state.import_context.filter_gpus(gpus or [])
+        return {
+            "success": True,
+            "carbon_budget": app_state.scheduler.get_carbon_budget_status(
+                filtered_gpus,
+            ),
+        }
+
     async def run_schedule_once_capability(_context, _arguments):
         return await run_schedule_once(app_state)
 
@@ -130,14 +165,61 @@ def build_platform_capability_registry(app_state) -> CapabilityRegistry:
     async def queue_status_read(_context, _arguments):
         return {"queues": await app_state.cluster_control.list_queues()}
 
-    async def pause_job(_context, _arguments):
-        raise NotImplementedError("job pause capability is not implemented yet")
+    async def _resolve_rule_username(username: str) -> str:
+        privacy = getattr(app_state, "privacy", None)
+        resolver = getattr(privacy, "resolve_username", None)
+        if not callable(resolver):
+            return username
+        known_usernames = await app_state.store.get_known_usernames()
+        return resolver(username, known_usernames)
 
-    async def resume_job(_context, _arguments):
-        raise NotImplementedError("job resume capability is not implemented yet")
+    def _sanitize_rule(rule: dict | None) -> dict | None:
+        privacy = getattr(app_state, "privacy", None)
+        sanitizer = getattr(privacy, "sanitize_governance_rule", None)
+        if callable(sanitizer) and rule is not None:
+            return sanitizer(rule)
+        return rule
 
-    async def cancel_job(_context, _arguments):
-        raise NotImplementedError("job cancel capability is not implemented yet")
+    def _mask_username(username: str) -> str:
+        privacy = getattr(app_state, "privacy", None)
+        masker = getattr(privacy, "mask_username", None)
+        if callable(masker):
+            return masker(username)
+        return username
+
+    async def upsert_user_rule(_context, arguments):
+        username = await _resolve_rule_username(str(arguments["username"]))
+        await app_state.store.upsert_user_governance_rule(
+            username=username,
+            role=str(arguments["role"]),
+            max_tasks=int(arguments["max_tasks"]),
+            max_gpu_count=int(arguments["max_gpu_count"]),
+            max_memory_gb=float(arguments["max_memory_gb"]),
+            allow_preempt=bool(arguments.get("allow_preempt", True)),
+            note=str(arguments.get("note", "")),
+        )
+        rules = await app_state.store.get_user_governance_rules()
+        return {
+            "success": True,
+            "rule": _sanitize_rule(rules.get(username)),
+        }
+
+    async def delete_user_rule(_context, arguments):
+        username = await _resolve_rule_username(str(arguments["username"]))
+        await app_state.store.delete_user_governance_rule(username)
+        return {
+            "success": True,
+            "username": _mask_username(username),
+        }
+
+    async def pause_job(_context, arguments):
+        return await app_state.cluster_control.pause_job(str(arguments["job_id"]))
+
+    async def resume_job(_context, arguments):
+        return await app_state.cluster_control.resume_job(str(arguments["job_id"]))
+
+    async def cancel_job(_context, arguments):
+        return await app_state.cluster_control.cancel_job(str(arguments["job_id"]))
 
     registry.register(
         CapabilityDefinition(
@@ -251,6 +333,36 @@ def build_platform_capability_registry(app_state) -> CapabilityRegistry:
     )
     registry.register(
         CapabilityDefinition(
+            "scheduler.auto.configure",
+            "scheduler",
+            "runtime_action",
+            False,
+            SUPPORTED_PROVIDERS,
+            manual_control=_manual(
+                label="切换自动调度",
+                description="启用或禁用平台自动调度",
+                risk_level="operate",
+            ),
+        ),
+        handler=configure_auto_schedule,
+    )
+    registry.register(
+        CapabilityDefinition(
+            "scheduler.carbon_budget.configure",
+            "scheduler",
+            "runtime_action",
+            False,
+            SUPPORTED_PROVIDERS,
+            manual_control=_manual(
+                label="配置碳预算",
+                description="调整碳预算治理参数",
+                risk_level="operate",
+            ),
+        ),
+        handler=configure_carbon_budget,
+    )
+    registry.register(
+        CapabilityDefinition(
             "scheduler.run_once",
             "scheduler",
             "runtime_action",
@@ -312,6 +424,36 @@ def build_platform_capability_registry(app_state) -> CapabilityRegistry:
     )
     registry.register(
         CapabilityDefinition(
+            "policy.user_rule.upsert",
+            "policy",
+            "runtime_action",
+            False,
+            SUPPORTED_PROVIDERS,
+            manual_control=_manual(
+                label="保存用户治理规则",
+                description="新增或更新单个用户治理规则",
+                risk_level="operate",
+            ),
+        ),
+        handler=upsert_user_rule,
+    )
+    registry.register(
+        CapabilityDefinition(
+            "policy.user_rule.delete",
+            "policy",
+            "runtime_action",
+            False,
+            SUPPORTED_PROVIDERS,
+            manual_control=_manual(
+                label="删除用户治理规则",
+                description="删除单个用户治理规则并恢复默认额度",
+                risk_level="operate",
+            ),
+        ),
+        handler=delete_user_rule,
+    )
+    registry.register(
+        CapabilityDefinition(
             "job.pause",
             "jobs",
             "runtime_action",
@@ -320,10 +462,8 @@ def build_platform_capability_registry(app_state) -> CapabilityRegistry:
             manual_control=_manual(
                 label="暂停作业",
                 description="暂停指定作业",
-                required_role="admin",
-                risk_level="dangerous",
-                approval_policy="approval_required",
-                enabled=False,
+                risk_level="control",
+                approval_policy="confirm_required",
             ),
         ),
         handler=pause_job,
@@ -338,10 +478,8 @@ def build_platform_capability_registry(app_state) -> CapabilityRegistry:
             manual_control=_manual(
                 label="恢复作业",
                 description="恢复指定作业",
-                required_role="admin",
-                risk_level="dangerous",
-                approval_policy="approval_required",
-                enabled=False,
+                risk_level="control",
+                approval_policy="confirm_required",
             ),
         ),
         handler=resume_job,
@@ -359,7 +497,6 @@ def build_platform_capability_registry(app_state) -> CapabilityRegistry:
                 required_role="admin",
                 risk_level="dangerous",
                 approval_policy="approval_required",
-                enabled=False,
             ),
         ),
         handler=cancel_job,
@@ -378,5 +515,23 @@ def build_platform_capability_registry(app_state) -> CapabilityRegistry:
             ),
         ),
         handler=queue_status_read,
+    )
+    register_cluster_planning_capabilities(
+        registry,
+        app_state,
+        supported_providers=SUPPORTED_PROVIDERS,
+        manual_factory=_manual,
+    )
+    register_cluster_execution_capabilities(
+        registry,
+        app_state,
+        supported_providers=SUPPORTED_PROVIDERS,
+        manual_factory=_manual,
+    )
+    register_cluster_object_capabilities(
+        registry,
+        app_state,
+        supported_providers=SUPPORTED_PROVIDERS,
+        manual_factory=_manual,
     )
     return registry

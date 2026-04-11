@@ -45,6 +45,7 @@ def build_agent_startup_message() -> tuple[int, str]:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
+    runtime_store.reset()
     gpu_monitor.init()
     level, message = build_agent_startup_message()
     logger.log(level, message)
@@ -92,6 +93,33 @@ class RuntimeJobLaunchRequest(BaseModel):
     command: list[str] = Field(min_length=1)
     env: dict[str, str] = Field(default_factory=dict)
     working_dir: str | None = Field(default=None, max_length=500)
+    task_kind: str = Field(default="batch_compute", max_length=80)
+    lifecycle_kind: str = Field(default="batch", max_length=40)
+    service_ports: list[int] = Field(default_factory=list)
+    checkpoint_policy: str = Field(default="none", max_length=40)
+    runtime_profile: dict = Field(default_factory=dict)
+
+
+class RuntimeCheckpointRequest(BaseModel):
+    checkpoint_id: str = Field(min_length=1, max_length=120)
+    timeout_seconds: int = Field(default=30, ge=1, le=3600)
+    reason: str = Field(default="", max_length=500)
+
+
+class RuntimeJobRestoreRequest(BaseModel):
+    job_handle: str = Field(min_length=1, max_length=120)
+    job_id: str = Field(min_length=1, max_length=120)
+    reservation_id: str = Field(min_length=1, max_length=120)
+    checkpoint_id: str = Field(min_length=1, max_length=120)
+    manifest_path: str = Field(min_length=1, max_length=500)
+    command: list[str] = Field(min_length=1)
+    env: dict[str, str] = Field(default_factory=dict)
+    working_dir: str | None = Field(default=None, max_length=500)
+    task_kind: str = Field(default="batch_compute", max_length=80)
+    lifecycle_kind: str = Field(default="batch", max_length=40)
+    service_ports: list[int] = Field(default_factory=list)
+    checkpoint_policy: str = Field(default="app_managed", max_length=40)
+    runtime_profile: dict = Field(default_factory=dict)
 
 
 runtime_store = RuntimeStore()
@@ -200,6 +228,77 @@ def launch_runtime_job(req: RuntimeJobLaunchRequest):
     if reservation is None:
         raise HTTPException(status_code=404, detail="reservation not found")
     return job_runtime.launch(req.model_dump())
+
+
+@app.get("/api/runtime/jobs")
+def list_runtime_jobs():
+    return {"jobs": job_runtime.list_jobs()}
+
+
+@app.get("/api/runtime/jobs/{job_handle}")
+def get_runtime_job(job_handle: str):
+    item = job_runtime.get_job(job_handle)
+    if item is None:
+        raise HTTPException(status_code=404, detail="runtime job not found")
+    return item
+
+
+@app.post("/api/runtime/jobs/{job_handle}/pause")
+def pause_runtime_job(job_handle: str):
+    return _apply_runtime_job_action(job_runtime.pause, job_handle)
+
+
+@app.post("/api/runtime/jobs/{job_handle}/resume")
+def resume_runtime_job(job_handle: str):
+    return _apply_runtime_job_action(job_runtime.resume, job_handle)
+
+
+@app.post("/api/runtime/jobs/{job_handle}/checkpoint")
+def checkpoint_runtime_job(job_handle: str, req: RuntimeCheckpointRequest):
+    return _apply_runtime_job_action(
+        job_runtime.request_checkpoint,
+        job_handle,
+        req.model_dump(),
+    )
+
+
+@app.get("/api/runtime/jobs/{job_handle}/checkpoint")
+def get_runtime_checkpoint(job_handle: str):
+    item = job_runtime.get_checkpoint(job_handle)
+    if item is None:
+        raise HTTPException(status_code=404, detail="runtime job not found")
+    return item
+
+
+@app.post("/api/runtime/jobs/{job_handle}/restore")
+def restore_runtime_job(job_handle: str, req: RuntimeJobRestoreRequest):
+    if job_handle != req.job_handle:
+        raise HTTPException(status_code=400, detail="runtime restore handle mismatch")
+    reservation = runtime_store.get_reservation(req.reservation_id)
+    if reservation is None:
+        raise HTTPException(status_code=404, detail="reservation not found")
+    try:
+        return job_runtime.restore(req.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/runtime/jobs/{job_handle}/terminate")
+def terminate_runtime_job(job_handle: str):
+    item = job_runtime.terminate(job_handle)
+    if item is None:
+        raise HTTPException(status_code=404, detail="runtime job not found")
+    return item
+
+
+def _apply_runtime_job_action(action, job_handle: str, payload: dict | None = None):
+    try:
+        item = action(job_handle, payload) if payload is not None else action(job_handle)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if item is None:
+        raise HTTPException(status_code=404, detail="runtime job not found")
+    return item
 
 
 if __name__ == "__main__":

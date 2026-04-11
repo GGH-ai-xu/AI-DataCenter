@@ -45,13 +45,15 @@ class PagePrimaryContentLayoutStructureTests(unittest.TestCase):
         self.assertNotIn('source-strip', page_text)
         self.assertNotIn('绿色计算 · 智慧能源', page_text)
 
-    def test_ai_page_uses_shared_workspace_summary(self):
+    def test_ai_page_uses_shared_workspace_toolbar_layout(self):
         page_text = (ROOT / 'frontend/src/views/AIAssistant.vue').read_text(encoding='utf-8')
         layout_text = (ROOT / 'frontend/src/views/AIWorkspaceLayout.vue').read_text(encoding='utf-8')
 
-        self.assertIn('WorkspaceSummary', page_text)
+        self.assertNotIn('WorkspaceSummary', page_text)
         self.assertNotIn('WorkspaceTabs', page_text)
         self.assertIn('WorkspaceTabs', layout_text)
+        self.assertIn('workspace-action-rail__meta', layout_text)
+        self.assertIn('AgentModelConfigDialog', layout_text)
 
 
 if __name__ == '__main__':

@@ -32,6 +32,12 @@ function mapRuntimeEventTone(eventType) {
 }
 
 function buildRuntimeItem(event) {
+  if (
+    event.event_type === 'UserMessageSubmitted'
+    || event.event_type === 'AssistantMessageGenerated'
+  ) {
+    return null
+  }
   if (event.event_type === 'PlanCreated') return buildPlanCard(event)
   if (event.event_type === 'AwaitingApproval') return buildApprovalCard(event)
   if (event.event_type === 'SessionCompleted') return buildResultCard(event)
@@ -89,6 +95,7 @@ function buildMessageItem(message, index) {
     role: message.role,
     content: message.content,
     suggestions: message.suggestions || [],
+    roundIndex: Number(message.roundIndex || 0),
   }
 }
 
@@ -101,29 +108,34 @@ function createInteractionFromMessage(message, index) {
     runtimeCards: [],
     status: 'processing',
     steps: [],
+    roundIndex: Number(message.roundIndex || 0),
   }
 }
 
-function createRuntimeOnlyInteraction(runtimeSession) {
-  const content = runtimeSession?.goal_json?.raw_message
+function createRuntimeOnlyInteraction(runtimeSession, roundIndex, content = '') {
+  const fallbackContent = content
+    || runtimeSession?.goal_json?.last_message
+    || runtimeSession?.goal_json?.raw_message
     || runtimeSession?.goal_json?.message
     || runtimeSession?.summary
     || '执行请求'
   return {
-    id: `interaction-runtime-${runtimeSession?.session_id || 'active'}`,
+    id: `interaction-runtime-${runtimeSession?.session_id || 'active'}-${roundIndex || 'latest'}`,
     userMessage: {
-      id: `runtime-user-${runtimeSession?.session_id || 'active'}`,
+      id: `runtime-user-${runtimeSession?.session_id || 'active'}-${roundIndex || 'latest'}`,
       kind: 'user_message',
       source: 'runtime',
       role: 'user',
-      content,
+      content: fallbackContent,
       suggestions: [],
+      roundIndex,
     },
     assistantMessages: [],
     assistantReply: '',
     runtimeCards: [],
     status: 'processing',
     steps: [],
+    roundIndex,
   }
 }
 
@@ -146,6 +158,7 @@ function isLeadMessage(message, index, interactions) {
 
 function normalizeChatInteractions(chatMessages) {
   const interactions = []
+  const roundMap = new Map()
   let leadMessage = null
   let currentInteraction = null
   chatMessages.forEach((message, index) => {
@@ -153,9 +166,17 @@ function normalizeChatInteractions(chatMessages) {
       leadMessage = buildMessageItem(message, index)
       return
     }
+    const roundIndex = Number(message.roundIndex || 0)
     if (message.role === 'user') {
       currentInteraction = createInteractionFromMessage(message, index)
       interactions.push(currentInteraction)
+      if (roundIndex > 0) {
+        roundMap.set(roundIndex, currentInteraction)
+      }
+      return
+    }
+    if (roundIndex > 0 && roundMap.has(roundIndex)) {
+      appendAssistantMessage(roundMap.get(roundIndex), message, index)
       return
     }
     appendAssistantMessage(currentInteraction, message, index)
@@ -163,7 +184,11 @@ function normalizeChatInteractions(chatMessages) {
   return { leadMessage, interactions }
 }
 
-function findRuntimeTargetInteraction(interactions, runtimeSession) {
+function findRuntimeTargetInteraction(interactions, runtimeSession, roundIndex = 0) {
+  if (roundIndex > 0) {
+    const roundMatched = interactions.find((item) => Number(item.roundIndex || 0) === roundIndex)
+    if (roundMatched) return roundMatched
+  }
   const rawMessage = runtimeSession?.goal_json?.raw_message || runtimeSession?.goal_json?.message
   if (rawMessage) {
     const matched = [...interactions].reverse().find(
@@ -174,14 +199,20 @@ function findRuntimeTargetInteraction(interactions, runtimeSession) {
   return interactions[interactions.length - 1] || null
 }
 
-function mapInteractionStatus(runtimeSession, runtimeCards, interaction) {
-  const mappedStatus = RUNTIME_STATUS_MAP[runtimeSession?.status]
-  if (mappedStatus) return mappedStatus
+function inferRuntimeStatus(runtimeCards, interaction) {
   if (runtimeCards.some((card) => card.kind === 'error_card')) return 'failed'
   if (runtimeCards.some((card) => card.kind === 'approval_card')) return 'awaiting_approval'
   if (runtimeCards.some((card) => card.kind === 'result_card')) return 'completed'
   if (runtimeCards.length > 0) return 'processing'
   return interaction.assistantReply ? 'completed' : 'processing'
+}
+
+function mapInteractionStatus(runtimeSession, runtimeCards, interaction, isLatestRound) {
+  if (isLatestRound) {
+    const mappedStatus = RUNTIME_STATUS_MAP[runtimeSession?.status]
+    if (mappedStatus) return mappedStatus
+  }
+  return inferRuntimeStatus(runtimeCards, interaction)
 }
 
 function pushStep(steps, key, state) {
@@ -247,17 +278,70 @@ function buildRuntimeAssistantReply(runtimeSession, interaction) {
   return interaction.assistantReply
 }
 
+function buildHistoricalRuntimeReply(runtimeCards, interaction) {
+  if (interaction.assistantReply) return interaction.assistantReply
+  const errorCard = runtimeCards.find((card) => card.kind === 'error_card')
+  if (errorCard) return errorCard.summary
+  const resultCard = runtimeCards.find((card) => card.kind === 'result_card')
+  if (resultCard) return resultCard.summary
+  if (runtimeCards.some((card) => card.kind === 'approval_card')) return '计划已生成，等待审批。'
+  if (runtimeCards.length > 0) return '已进入执行链，正在生成计划。'
+  return interaction.assistantReply
+}
+
+function groupRuntimeEvents(runtimeEvents) {
+  const grouped = new Map()
+  runtimeEvents.forEach((event) => {
+    const roundIndex = Number(event.round_index || 0)
+    const bucket = grouped.get(roundIndex) || []
+    bucket.push(event)
+    grouped.set(roundIndex, bucket)
+  })
+  return [...grouped.entries()].sort((left, right) => left[0] - right[0])
+}
+
+function runtimeRoundPrompt(roundEvents, runtimeSession) {
+  return [...roundEvents].reverse().find((event) => event.event_type === 'UserMessageSubmitted')?.payload?.content
+    || runtimeSession?.goal_json?.last_message
+    || runtimeSession?.goal_json?.raw_message
+    || runtimeSession?.goal_json?.message
+    || runtimeSession?.summary
+    || ''
+}
+
 function applyRuntimeState(interactions, runtimeSession, runtimeEvents) {
   if (!runtimeSession && runtimeEvents.length === 0) return interactions
-  let target = findRuntimeTargetInteraction(interactions, runtimeSession)
-  if (!target) {
-    target = createRuntimeOnlyInteraction(runtimeSession)
-    interactions.push(target)
+  const grouped = groupRuntimeEvents(runtimeEvents)
+  if (!grouped.length) {
+    let target = findRuntimeTargetInteraction(interactions, runtimeSession)
+    if (!target) {
+      target = createRuntimeOnlyInteraction(runtimeSession, Number(runtimeSession?.current_round || 0))
+      interactions.push(target)
+    }
+    target.status = mapInteractionStatus(runtimeSession, [], target, true)
+    target.steps = []
+    target.assistantReply = buildRuntimeAssistantReply(runtimeSession, target)
+    return interactions
   }
-  target.runtimeCards = runtimeEvents.map(buildRuntimeItem)
-  target.status = mapInteractionStatus(runtimeSession, target.runtimeCards, target)
-  target.steps = buildInteractionSteps(target.runtimeCards, target.status)
-  target.assistantReply = buildRuntimeAssistantReply(runtimeSession, target)
+  const latestRoundIndex = Number(runtimeSession?.current_round || grouped.at(-1)?.[0] || 0)
+  grouped.forEach(([roundIndex, roundEvents]) => {
+    let target = findRuntimeTargetInteraction(interactions, runtimeSession, roundIndex)
+    if (!target) {
+      target = createRuntimeOnlyInteraction(
+        runtimeSession,
+        roundIndex,
+        runtimeRoundPrompt(roundEvents, runtimeSession),
+      )
+      interactions.push(target)
+    }
+    target.runtimeCards = roundEvents.map(buildRuntimeItem).filter(Boolean)
+    const isLatestRound = roundIndex === latestRoundIndex || (roundIndex === 0 && grouped.length === 1)
+    target.status = mapInteractionStatus(runtimeSession, target.runtimeCards, target, isLatestRound)
+    target.steps = buildInteractionSteps(target.runtimeCards, target.status)
+    target.assistantReply = isLatestRound
+      ? buildRuntimeAssistantReply(runtimeSession, target)
+      : buildHistoricalRuntimeReply(target.runtimeCards, target)
+  })
   return interactions
 }
 

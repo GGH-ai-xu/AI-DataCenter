@@ -4,12 +4,6 @@ import { computed, ref, watch } from 'vue'
 import GovernancePoliciesWorkspace from '../components/governance/GovernancePoliciesWorkspace.vue'
 import UserRulesGrid from '../components/tasks/UserRulesGrid.vue'
 import {
-  deleteGovernanceRule,
-  saveGovernanceRule,
-  setCarbonBudget,
-  toggleAutoSchedule,
-} from '../services/api.js'
-import {
   buildDraftCardState,
   buildExecutionBannerModel,
 } from '../lib/governancePoliciesConsoleState.js'
@@ -186,18 +180,39 @@ async function saveBudget() {
 
 async function saveCarbon() {
   const amount = Number(carbonDraft.value.daily_budget_kg)
-  const { data } = await setCarbonBudget(Boolean(carbonDraft.value.enabled), amount)
-  carbonBudget.value = applyCarbonState(carbonBudget.value, data.carbon_budget)
-  carbonDraft.value = createCarbonDraft(carbonBudget.value)
-  showNotice('ok', '碳预算已更新', `每日碳预算已设置为 ${carbonBudget.value.daily_budget_kg} kgCO2。`)
-  await refreshPolicies()
+  try {
+    await props.control.submitBuiltinCommand?.(
+      'scheduler.carbon_budget.configure',
+      {
+        enabled: Boolean(carbonDraft.value.enabled),
+        daily_budget_kg: amount,
+      },
+      { section: 'policies' },
+    )
+    showNotice('ok', '碳预算已更新', `每日碳预算已设置为 ${amount} kgCO2。`)
+    await refreshPolicies()
+    await refreshReview()
+  } catch (error) {
+    console.error(error)
+    showNotice('critical', '碳预算更新失败', error?.message || '请稍后重试。')
+  }
 }
 
 async function toggleAuto() {
   const next = !autoEnabled.value
-  await toggleAutoSchedule(next)
-  showNotice('ok', '自动调度已更新', next ? '自动调度已开启。' : '自动调度已关闭。')
-  await refreshPolicies()
+  try {
+    await props.control.submitBuiltinCommand?.(
+      'scheduler.auto.configure',
+      { enabled: next },
+      { section: 'policies' },
+    )
+    showNotice('ok', '自动调度已更新', next ? '自动调度已开启。' : '自动调度已关闭。')
+    await refreshPolicies()
+    await refreshReview()
+  } catch (error) {
+    console.error(error)
+    showNotice('critical', '自动调度更新失败', error?.message || '请稍后重试。')
+  }
 }
 
 async function setPower(gpuIndex) {
@@ -252,15 +267,35 @@ async function runOnce() {
 }
 
 async function saveRule(payload) {
-  await saveGovernanceRule(payload)
-  showNotice('ok', '高级策略已更新', `用户 ${payload.username} 的规则已保存。`)
-  await refreshPolicies()
+  try {
+    await props.control.submitBuiltinCommand?.(
+      'policy.user_rule.upsert',
+      payload,
+      { section: 'policies' },
+    )
+    showNotice('ok', '高级策略已更新', `用户 ${payload.username} 的规则已保存。`)
+    await refreshPolicies()
+    await refreshReview()
+  } catch (error) {
+    console.error(error)
+    showNotice('critical', '高级策略保存失败', error?.message || '请稍后重试。')
+  }
 }
 
 async function resetRule(username) {
-  await deleteGovernanceRule(username)
-  showNotice('ok', '高级策略已重置', `用户 ${username} 的规则已恢复默认。`)
-  await refreshPolicies()
+  try {
+    await props.control.submitBuiltinCommand?.(
+      'policy.user_rule.delete',
+      { username },
+      { section: 'policies' },
+    )
+    showNotice('ok', '高级策略已重置', `用户 ${username} 的规则已恢复默认。`)
+    await refreshPolicies()
+    await refreshReview()
+  } catch (error) {
+    console.error(error)
+    showNotice('critical', '高级策略重置失败', error?.message || '请稍后重试。')
+  }
 }
 
 function openAdvancedCapabilities() {

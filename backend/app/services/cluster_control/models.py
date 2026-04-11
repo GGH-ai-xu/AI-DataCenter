@@ -1,8 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Mapping
+
+
+DEFAULT_TASK_KIND = "batch_compute"
+DEFAULT_LIFECYCLE_KIND = "batch"
+DEFAULT_CHECKPOINT_POLICY = "none"
 
 
 def _freeze_mapping(value: Mapping[str, Any] | None) -> Mapping[str, Any]:
@@ -13,12 +18,23 @@ def _freeze_strings(value: tuple[str, ...] | list[str] | None) -> tuple[str, ...
     return tuple(value or ())
 
 
+def _freeze_ints(value: tuple[int, ...] | list[int] | None) -> tuple[int, ...]:
+    return tuple(int(item) for item in (value or ()))
+
+
+def _freeze_actions(
+    value: tuple[Mapping[str, Any], ...] | list[Mapping[str, Any]] | None,
+) -> tuple[Mapping[str, Any], ...]:
+    return tuple(MappingProxyType(dict(item)) for item in (value or ()))
+
+
 @dataclass(frozen=True)
 class NodeRecord:
     node_id: str
     cluster_id: str
     label: str
     state: str
+    drain_state: str
     execution_backend: str
     metadata: Mapping[str, Any]
 
@@ -48,9 +64,11 @@ class QueueRecord:
     name: str
     state: str
     default_priority: int
+    max_concurrency: int = 0
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "default_priority", int(self.default_priority))
+        object.__setattr__(self, "max_concurrency", int(self.max_concurrency))
 
 
 @dataclass(frozen=True)
@@ -70,6 +88,11 @@ class JobSpecRecord:
     preemptible: bool
     max_retries: int
     timeout_seconds: int
+    task_kind: str = DEFAULT_TASK_KIND
+    lifecycle_kind: str = DEFAULT_LIFECYCLE_KIND
+    service_ports: tuple[int, ...] = ()
+    checkpoint_policy: str = DEFAULT_CHECKPOINT_POLICY
+    runtime_profile: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "args", _freeze_strings(self.args))
@@ -88,6 +111,23 @@ class JobSpecRecord:
         object.__setattr__(self, "preemptible", bool(self.preemptible))
         object.__setattr__(self, "max_retries", int(self.max_retries))
         object.__setattr__(self, "timeout_seconds", int(self.timeout_seconds))
+        object.__setattr__(self, "task_kind", str(self.task_kind or DEFAULT_TASK_KIND))
+        object.__setattr__(
+            self,
+            "lifecycle_kind",
+            str(self.lifecycle_kind or DEFAULT_LIFECYCLE_KIND),
+        )
+        object.__setattr__(self, "service_ports", _freeze_ints(self.service_ports))
+        object.__setattr__(
+            self,
+            "checkpoint_policy",
+            str(self.checkpoint_policy or DEFAULT_CHECKPOINT_POLICY),
+        )
+        object.__setattr__(
+            self,
+            "runtime_profile",
+            _freeze_mapping(self.runtime_profile),
+        )
 
 
 @dataclass(frozen=True)
@@ -146,8 +186,28 @@ class PlacementPlan:
     execution_backend: str = ""
     alternatives: tuple[str, ...] = ()
     reason: str = ""
+    victim_job_ids: tuple[str, ...] = ()
+    victim_allocation_ids: tuple[str, ...] = ()
+    followup_job_ids: tuple[str, ...] = ()
+    required_actions: tuple[Mapping[str, Any], ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "selected_devices", _freeze_strings(self.selected_devices))
         object.__setattr__(self, "score_breakdown", _freeze_mapping(self.score_breakdown))
         object.__setattr__(self, "alternatives", _freeze_strings(self.alternatives))
+        object.__setattr__(self, "victim_job_ids", _freeze_strings(self.victim_job_ids))
+        object.__setattr__(
+            self,
+            "victim_allocation_ids",
+            _freeze_strings(self.victim_allocation_ids),
+        )
+        object.__setattr__(
+            self,
+            "followup_job_ids",
+            _freeze_strings(self.followup_job_ids),
+        )
+        object.__setattr__(
+            self,
+            "required_actions",
+            _freeze_actions(self.required_actions),
+        )

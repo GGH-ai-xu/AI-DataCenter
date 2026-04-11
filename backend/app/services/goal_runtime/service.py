@@ -13,6 +13,9 @@ from app.services.goal_runtime.session_runtime import (
 from app.services.goal_runtime.session_stream import GoalRuntimeSessionStreamBroker
 
 
+ACTIVE_SESSION_STATUSES = {"running", "awaiting_approval"}
+
+
 class GoalRuntimeService:
     def __init__(
         self,
@@ -43,6 +46,98 @@ class GoalRuntimeService:
             self.session_runtime,
         )
         self._background_tasks: set[asyncio.Task] = set()
+
+    async def _next_round_index(self, session_id: str) -> int:
+        events = await self.store.get_agent_events(session_id)
+        return max((int(item.get("round_index") or 0) for item in events), default=0) + 1
+
+    @staticmethod
+    def _initial_goal_json(message: str) -> dict:
+        return {
+            "message": message,
+            "raw_message": message,
+            "title": message,
+            "last_message": message,
+        }
+
+    async def _prepare_session(
+        self,
+        session_id: str,
+        message: str,
+        permission_mode: str,
+    ) -> int:
+        session = await self.store.get_agent_session(session_id)
+        if session is None:
+            raise ValueError(f"session not found: {session_id}")
+        if str(session.get("status") or "") in ACTIVE_SESSION_STATUSES:
+            raise RuntimeError("session already has an active round")
+        goal_json = dict(session.get("goal_json") or {})
+        goal_json["last_message"] = message
+        await self.store.update_agent_session_request(
+            session_id,
+            goal_json,
+            permission_mode,
+            "running",
+            message,
+            live_phase="planning",
+        )
+        return await self._next_round_index(session_id)
+
+    async def _prepare_chat_session(
+        self,
+        session_id: str,
+        message: str,
+        permission_mode: str,
+    ) -> int:
+        session = await self.store.get_agent_session(session_id)
+        if session is None:
+            raise ValueError(f"session not found: {session_id}")
+        if str(session.get("status") or "") in ACTIVE_SESSION_STATUSES:
+            raise RuntimeError("session already has an active round")
+        goal_json = dict(session.get("goal_json") or {})
+        goal_json.setdefault("message", goal_json.get("raw_message") or message)
+        goal_json.setdefault("raw_message", goal_json.get("message") or message)
+        goal_json["last_message"] = message
+        await self.store.update_agent_session_request(
+            session_id,
+            goal_json,
+            permission_mode,
+            "completed",
+            message,
+            live_phase="completed",
+        )
+        return await self._next_round_index(session_id)
+
+    async def _append_chat_events(
+        self,
+        session_id: str,
+        message: str,
+        reply: str,
+        *,
+        round_index: int,
+        reply_mode: str,
+        suggestions: list[str] | None,
+    ) -> None:
+        await self.session_runtime.append_event(
+            session_id,
+            "UserMessageSubmitted",
+            {"content": message},
+            round_index=round_index,
+            sequence=0,
+            source="chat",
+        )
+        await self.session_runtime.append_event(
+            session_id,
+            "AssistantMessageGenerated",
+            {
+                "content": reply,
+                "reply_mode": reply_mode,
+                "suggestions": list(suggestions or ()),
+            },
+            round_index=round_index,
+            sequence=1,
+            source="chat",
+        )
 
     async def append_event(
         self,
@@ -93,28 +188,97 @@ class GoalRuntimeService:
             return
         await asyncio.gather(*tuple(self._background_tasks))
 
-    async def start_session(self, message: str, permission_mode: str) -> dict:
-        session_id = uuid4().hex
-        await self.store.create_agent_session(
-            session_id,
-            {"message": message, "raw_message": message},
-            permission_mode,
-            "running",
-            message,
+    async def start_session(
+        self,
+        message: str,
+        permission_mode: str,
+        *,
+        session_id: str = "",
+    ) -> dict:
+        session_key = str(session_id or "").strip() or uuid4().hex
+        round_index = 1
+        if session_id:
+            round_index = await self._prepare_session(session_key, message, permission_mode)
+        else:
+            await self.store.create_agent_session(
+                session_key,
+                self._initial_goal_json(message),
+                permission_mode,
+                "running",
+                message,
+            )
+        await self.session_runtime.append_event(
+            session_key,
+            "UserMessageSubmitted",
+            {"content": message},
+            round_index=round_index,
+            sequence=0,
+            source="chat",
         )
         task = self.task_spawner(
-            self.session_runtime.run_session(session_id, message, permission_mode)
+            self.session_runtime.run_session(
+                session_key,
+                message,
+                permission_mode,
+                round_index=round_index,
+            )
         )
         self._track_task(task)
         return {
-            "session_id": session_id,
+            "session_id": session_key,
             "status": "running",
             "live_phase": "planning",
             "permission_mode": permission_mode,
             "summary": message,
+            "current_round": round_index,
             "requires_approval": False,
             "pending_approval": None,
             "event_types": [],
+        }
+
+    async def append_chat_turn(
+        self,
+        message: str,
+        reply: str,
+        permission_mode: str,
+        *,
+        session_id: str = "",
+        reply_mode: str = "inline",
+        suggestions: list[str] | None = None,
+    ) -> dict:
+        session_key = str(session_id or "").strip() or uuid4().hex
+        if session_id:
+            round_index = await self._prepare_chat_session(
+                session_key,
+                message,
+                permission_mode,
+            )
+        else:
+            await self.store.create_agent_session(
+                session_key,
+                self._initial_goal_json(message),
+                permission_mode,
+                "completed",
+                message,
+            )
+            round_index = 1
+        await self._append_chat_events(
+            session_key,
+            round_index=round_index,
+            message=message,
+            reply=reply,
+            reply_mode=reply_mode,
+            suggestions=suggestions,
+        )
+        await self.store.update_agent_session_status(
+            session_key,
+            "completed",
+            message,
+            live_phase="completed",
+        )
+        return {
+            "session": await self.get_session(session_key),
+            "events": await self.get_events(session_key),
         }
 
     async def resolve_approval(self, session_id: str, approved: bool) -> dict:

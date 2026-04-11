@@ -5,6 +5,7 @@ from fastapi.responses import StreamingResponse
 
 from app.models.schemas import (
     AgentRuntimeApprovalRequest,
+    AgentRuntimeChatTurnRequest,
     AgentRuntimeStartRequest,
 )
 from app.services.sse import encode_sse_event
@@ -17,10 +18,35 @@ router = APIRouter(prefix="/api/agent-runtime", tags=["Agent Runtime"])
 async def start_agent_runtime_session(req: AgentRuntimeStartRequest):
     from app.main import app_state
 
-    return await app_state.goal_runtime.start_session(
-        req.message,
-        req.permission_mode,
-    )
+    try:
+        return await app_state.goal_runtime.start_session(
+            req.message,
+            req.permission_mode,
+            session_id=req.session_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/sessions/chat-turn")
+async def append_agent_runtime_chat_turn(req: AgentRuntimeChatTurnRequest):
+    from app.main import app_state
+
+    try:
+        return await app_state.goal_runtime.append_chat_turn(
+            req.message,
+            req.reply,
+            req.permission_mode,
+            session_id=req.session_id,
+            reply_mode=req.reply_mode,
+            suggestions=req.suggestions,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.get("/sessions")

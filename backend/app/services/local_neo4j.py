@@ -6,6 +6,7 @@ import asyncio
 import os
 import socket
 import subprocess
+import sys
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -15,8 +16,32 @@ LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
 class LocalNeo4jService:
     def __init__(self, repo_root: str | None = None):
-        self.repo_root = Path(repo_root or Path(__file__).resolve().parents[3])
-        self.start_script = self.repo_root / "scripts" / "start-local-neo4j.ps1"
+        self.repo_root, self.start_script = self._resolve_start_script(repo_root)
+
+    @staticmethod
+    def _resolve_start_script(repo_root: str | None) -> tuple[Path, Path]:
+        if repo_root:
+            root = Path(repo_root)
+            return root, root / "scripts" / "start-local-neo4j.ps1"
+
+        source_root = Path(__file__).resolve().parents[3]
+        candidates: list[tuple[Path, Path]] = [
+            (source_root, source_root / "scripts" / "start-local-neo4j.ps1"),
+        ]
+
+        if getattr(sys, "frozen", False):
+            exe_root = Path(sys.executable).resolve().parent
+            candidates = [
+                (exe_root / "_internal", exe_root / "_internal" / "scripts" / "start-local-neo4j.ps1"),
+                (exe_root, exe_root / "scripts" / "start-local-neo4j.ps1"),
+                *candidates,
+            ]
+
+        for root, script in candidates:
+            if script.is_file():
+                return root, script
+
+        return candidates[0]
 
     @staticmethod
     def _parse_uri(uri: str) -> tuple[str, int]:

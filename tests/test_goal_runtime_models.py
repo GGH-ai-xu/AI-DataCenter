@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.join(ROOT, "backend"))
 
 from app.models.schemas import (  # noqa: E402
     AgentRuntimeApprovalRequest,
+    AgentRuntimeChatTurnRequest,
     AgentRuntimeSessionResponse,
     AgentRuntimeStartRequest,
 )
@@ -76,7 +77,15 @@ def test_goal_parsed_event_payload_contains_summary_fields():
 
 
 def test_agent_runtime_request_and_response_schemas_expose_session_fields():
-    request = AgentRuntimeStartRequest(message="分析当前集群")
+    request = AgentRuntimeStartRequest(message="分析当前集群", session_id="sess-1")
+    chat_turn = AgentRuntimeChatTurnRequest(
+        message="你能查看当前任务吗",
+        reply="可以，我能查看当前导入范围内的 GPU 进程。",
+        permission_mode="low",
+        session_id="sess-1",
+        reply_mode="inline",
+        suggestions=["查看当前任务列表"],
+    )
     approval = AgentRuntimeApprovalRequest(approved=True)
     response = AgentRuntimeSessionResponse(
         session_id="sess-1",
@@ -85,5 +94,9 @@ def test_agent_runtime_request_and_response_schemas_expose_session_fields():
     )
 
     assert request.permission_mode == "low"
+    assert request.session_id == "sess-1"
+    assert chat_turn.session_id == "sess-1"
+    assert chat_turn.reply_mode == "inline"
+    assert chat_turn.suggestions == ["查看当前任务列表"]
     assert approval.approved is True
     assert response.requires_approval is False

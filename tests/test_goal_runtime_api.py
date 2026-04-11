@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.join(ROOT, "backend"))
 
 from app.api.agent_runtime import (  # noqa: E402
     approve_agent_runtime_session,
+    append_agent_runtime_chat_turn,
     delete_agent_runtime_session,
     get_agent_runtime_events,
     get_agent_runtime_session,
@@ -20,6 +21,7 @@ from app.api.agent_runtime import (  # noqa: E402
 )
 from app.models.schemas import (  # noqa: E402
     AgentRuntimeApprovalRequest,
+    AgentRuntimeChatTurnRequest,
     AgentRuntimeStartRequest,
 )
 from app.services.goal_runtime.capability import CapabilityDefinition  # noqa: E402
@@ -82,6 +84,22 @@ class FakeStore:
 
     async def get_agent_events(self, session_id):
         return list(self.events.get(session_id, []))
+
+    async def update_agent_session_request(
+        self,
+        session_id,
+        goal_json,
+        permission_mode,
+        status,
+        summary,
+        *,
+        live_phase,
+    ):
+        self.sessions[session_id]["goal_json"] = dict(goal_json)
+        self.sessions[session_id]["permission_mode"] = permission_mode
+        self.sessions[session_id]["status"] = status
+        self.sessions[session_id]["summary"] = summary
+        self.sessions[session_id]["live_phase"] = live_phase
 
     async def upsert_agent_stream_state(
         self,
@@ -156,10 +174,10 @@ class FakeGoalRuntimeService:
     def __init__(self):
         self.calls = []
 
-    async def start_session(self, message, permission_mode):
-        self.calls.append(("start", message, permission_mode))
+    async def start_session(self, message, permission_mode, session_id=""):
+        self.calls.append(("start", message, permission_mode, session_id))
         return {
-            "session_id": "sess-route",
+            "session_id": session_id or "sess-route",
             "status": "running",
             "live_phase": "planning",
         }
@@ -167,6 +185,61 @@ class FakeGoalRuntimeService:
     async def resolve_approval(self, session_id, approved):
         self.calls.append(("approve", session_id, approved))
         return {"session_id": session_id, "status": "completed" if approved else "aborted"}
+
+    async def append_chat_turn(
+        self,
+        message,
+        reply,
+        permission_mode,
+        *,
+        session_id="",
+        reply_mode="inline",
+        suggestions=None,
+    ):
+        self.calls.append(
+            (
+                "chat_turn",
+                message,
+                reply,
+                permission_mode,
+                session_id,
+                reply_mode,
+                tuple(suggestions or []),
+            )
+        )
+        session_key = session_id or "sess-chat"
+        return {
+            "session": {
+                "session_id": session_key,
+                "status": "completed",
+                "live_phase": "completed",
+                "summary": message,
+                "current_round": 1,
+                "goal_json": {"message": message, "raw_message": message},
+            },
+            "events": [
+                {
+                    "session_id": session_key,
+                    "event_type": "UserMessageSubmitted",
+                    "payload": {"content": message},
+                    "round_index": 1,
+                    "sequence": 0,
+                    "source": "chat",
+                },
+                {
+                    "session_id": session_key,
+                    "event_type": "AssistantMessageGenerated",
+                    "payload": {
+                        "content": reply,
+                        "reply_mode": reply_mode,
+                        "suggestions": list(suggestions or []),
+                    },
+                    "round_index": 1,
+                    "sequence": 1,
+                    "source": "chat",
+                },
+            ],
+        }
 
     async def get_session(self, session_id):
         self.calls.append(("session", session_id))
@@ -216,6 +289,114 @@ class FakeGoalRuntimeService:
 
 
 class GoalRuntimeServiceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_append_chat_turn_creates_backend_session_and_persists_reply(self):
+        store = FakeStore()
+        runtime = GoalRuntimeService(
+            store=store,
+            registry=build_registry(),
+            import_context=FakeImportContext(),
+            runtime_status_reader=None,
+            llm_service_reader=lambda: None,
+            task_spawner=lambda coro: asyncio.create_task(coro),
+        )
+
+        payload = await runtime.append_chat_turn(
+            "你能查看当前任务吗",
+            "可以，我能查看当前导入范围内的 GPU 进程。",
+            "low",
+            reply_mode="inline",
+            suggestions=["查看当前任务列表"],
+        )
+
+        session = payload["session"]
+        events = payload["events"]
+        self.assertEqual(session["status"], "completed")
+        self.assertEqual(session["live_phase"], "completed")
+        self.assertEqual(session["summary"], "你能查看当前任务吗")
+        self.assertEqual(session["current_round"], 1)
+        self.assertEqual(
+            [item["event_type"] for item in events],
+            ["UserMessageSubmitted", "AssistantMessageGenerated"],
+        )
+        self.assertEqual(events[0]["payload"]["content"], "你能查看当前任务吗")
+        self.assertEqual(
+            events[1]["payload"]["content"],
+            "可以，我能查看当前导入范围内的 GPU 进程。",
+        )
+        self.assertEqual(events[1]["payload"]["reply_mode"], "inline")
+        self.assertEqual(events[1]["payload"]["suggestions"], ["查看当前任务列表"])
+
+    async def test_append_chat_turn_reuses_completed_session_and_appends_new_round(self):
+        store = FakeStore()
+        runtime = GoalRuntimeService(
+            store=store,
+            registry=build_registry(),
+            import_context=FakeImportContext(),
+            runtime_status_reader=None,
+            llm_service_reader=lambda: None,
+            task_spawner=lambda coro: asyncio.create_task(coro),
+        )
+
+        created = await runtime.append_chat_turn(
+            "第一轮问题",
+            "第一轮回答",
+            "low",
+        )
+        continued = await runtime.append_chat_turn(
+            "第二轮问题",
+            "第二轮回答",
+            "high",
+            session_id=created["session"]["session_id"],
+            reply_mode="stream",
+        )
+
+        session_id = created["session"]["session_id"]
+        session = await runtime.get_session(session_id)
+        events = await runtime.get_events(session_id)
+        self.assertEqual(continued["session"]["session_id"], session_id)
+        self.assertEqual(session["status"], "completed")
+        self.assertEqual(session["permission_mode"], "high")
+        self.assertEqual(session["summary"], "第二轮问题")
+        self.assertEqual(session["current_round"], 2)
+        self.assertEqual(
+            [
+                (item["event_type"], item["payload"]["content"], item["round_index"])
+                for item in events
+            ],
+            [
+                ("UserMessageSubmitted", "第一轮问题", 1),
+                ("AssistantMessageGenerated", "第一轮回答", 1),
+                ("UserMessageSubmitted", "第二轮问题", 2),
+                ("AssistantMessageGenerated", "第二轮回答", 2),
+            ],
+        )
+
+    async def test_append_chat_turn_rejects_running_session(self):
+        store = FakeStore()
+        runtime = GoalRuntimeService(
+            store=store,
+            registry=build_registry(),
+            import_context=FakeImportContext(),
+            runtime_status_reader=None,
+            llm_service_reader=lambda: None,
+            task_spawner=lambda coro: asyncio.create_task(coro),
+        )
+        await store.create_agent_session(
+            "sess-running-chat",
+            {"message": "执行一次调度", "raw_message": "执行一次调度"},
+            "low",
+            "running",
+            "执行一次调度",
+        )
+
+        with self.assertRaises(RuntimeError):
+            await runtime.append_chat_turn(
+                "继续问一个问题",
+                "这条回复不应写入运行中的会话",
+                "low",
+                session_id="sess-running-chat",
+            )
+
     async def test_start_session_emits_llm_trace_events_when_llm_available(self):
         store = FakeStore()
         runtime = GoalRuntimeService(
@@ -309,6 +490,80 @@ class GoalRuntimeServiceTests(unittest.IsolatedAsyncioTestCase):
         session = await runtime.get_session(result["session_id"])
         self.assertIn("live_phase", session)
         self.assertIn("planner_stream", session)
+
+    async def test_start_session_reuses_completed_session_and_appends_new_round(self):
+        store = FakeStore()
+        runtime = GoalRuntimeService(
+            store=store,
+            registry=build_registry(),
+            import_context=FakeImportContext(),
+            runtime_status_reader=None,
+            llm_service_reader=lambda: None,
+            task_spawner=lambda coro: asyncio.create_task(coro),
+        )
+
+        started = await runtime.start_session(
+            "总结当前导入范围的状态",
+            "low",
+        )
+        await runtime.wait_for_idle()
+        continued = await runtime.start_session(
+            "重新检查当前执行状态",
+            "high",
+            session_id=started["session_id"],
+        )
+        await runtime.wait_for_idle()
+
+        session = await runtime.get_session(started["session_id"])
+        events = await runtime.get_events(started["session_id"])
+        user_events = [
+            item for item in events
+            if item["event_type"] == "UserMessageSubmitted"
+        ]
+
+        self.assertEqual(continued["session_id"], started["session_id"])
+        self.assertEqual(len(store.sessions), 1)
+        self.assertEqual(session["status"], "completed")
+        self.assertEqual(session["summary"], "重新检查当前执行状态")
+        self.assertEqual(session["permission_mode"], "high")
+        self.assertEqual(session["current_round"], 2)
+        self.assertEqual(
+            [item["payload"]["content"] for item in user_events],
+            ["总结当前导入范围的状态", "重新检查当前执行状态"],
+        )
+        self.assertEqual(
+            [item["round_index"] for item in user_events],
+            [1, 2],
+        )
+
+    async def test_start_session_rejects_reusing_non_terminal_session(self):
+        class SlowStreamingLLM:
+            def supports_control_plan_stream(self):
+                return True
+
+            async def generate_control_plan_stream(self, _message, _context):
+                yield '{"summary":"执行一次调度","risk_level":"low",'
+                await asyncio.sleep(0.05)
+                yield '"requires_confirmation":false,"warnings":[],"actions":[]}'
+
+        store = FakeStore()
+        runtime = GoalRuntimeService(
+            store=store,
+            registry=build_registry(),
+            import_context=FakeImportContext(),
+            runtime_status_reader=None,
+            llm_service_reader=lambda: SlowStreamingLLM(),
+            task_spawner=lambda coro: asyncio.create_task(coro),
+        )
+
+        started = await runtime.start_session("执行一次调度", "low")
+        with self.assertRaises(RuntimeError):
+            await runtime.start_session(
+                "继续执行",
+                "low",
+                session_id=started["session_id"],
+            )
+        await runtime.wait_for_idle()
 
     async def test_start_session_persists_original_message_in_goal_json_raw_message(self):
         store = FakeStore()
@@ -516,6 +771,7 @@ class GoalRuntimeRouteTests(unittest.IsolatedAsyncioTestCase):
                 AgentRuntimeStartRequest(
                     message="暂停当前低优先级任务",
                     permission_mode="low",
+                    session_id="sess-route",
                 )
             )
             approved = await approve_agent_runtime_session(
@@ -527,11 +783,45 @@ class GoalRuntimeRouteTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(started["status"], "running")
         self.assertEqual(started["live_phase"], "planning")
+        self.assertIn(("start", "暂停当前低优先级任务", "low", "sess-route"), fake_runtime.calls)
         self.assertEqual(approved["status"], "completed")
         self.assertEqual(session["status"], "completed")
         self.assertIn("event_count", session)
         self.assertIn("awaiting_approval", session)
         self.assertEqual(events["events"][0]["event_type"], "GoalParsed")
+
+    async def test_chat_turn_route_delegates_to_goal_runtime_service(self):
+        fake_runtime = FakeGoalRuntimeService()
+        fake_main = types.SimpleNamespace(
+            app_state=types.SimpleNamespace(goal_runtime=fake_runtime)
+        )
+
+        with mock.patch.dict(sys.modules, {"app.main": fake_main}):
+            payload = await append_agent_runtime_chat_turn(
+                AgentRuntimeChatTurnRequest(
+                    message="你能查看当前任务吗",
+                    reply="可以，我能查看当前导入范围内的 GPU 进程。",
+                    permission_mode="low",
+                    session_id="sess-chat-route",
+                    reply_mode="inline",
+                    suggestions=["查看当前任务列表"],
+                )
+            )
+
+        self.assertEqual(payload["session"]["session_id"], "sess-chat-route")
+        self.assertEqual(payload["events"][1]["event_type"], "AssistantMessageGenerated")
+        self.assertIn(
+            (
+                "chat_turn",
+                "你能查看当前任务吗",
+                "可以，我能查看当前导入范围内的 GPU 进程。",
+                "low",
+                "sess-chat-route",
+                "inline",
+                ("查看当前任务列表",),
+            ),
+            fake_runtime.calls,
+        )
 
     async def test_stream_route_delegates_to_goal_runtime_service(self):
         fake_runtime = FakeGoalRuntimeService()
