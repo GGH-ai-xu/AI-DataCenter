@@ -73,6 +73,8 @@ def render_plot_shell(
         f'<rect x="{area.x:.1f}" y="{area.y:.1f}" width="{area.width:.1f}" height="{area.height:.1f}" fill="#FFFFFF" stroke="{PALETTE["line"]}" stroke-width="1.2"/>'
     ]
     for tick in y_ticks:
+        if not _in_domain(tick, y_domain):
+            continue
         y = scale_y(tick, y_domain, area)
         parts.append(
             f'<line x1="{area.x:.1f}" y1="{y:.1f}" x2="{area.x2:.1f}" y2="{y:.1f}" stroke="#E6EDF5" stroke-width="1"/>'
@@ -81,6 +83,8 @@ def render_plot_shell(
             f'<text class="s" x="{area.x - 10:.1f}" y="{y + 4:.1f}" text-anchor="end">{esc(y_formatter(tick))}</text>'
         )
     for tick in x_ticks:
+        if not _in_domain(tick, x_domain):
+            continue
         x = scale_x(tick, x_domain, area)
         parts.append(
             f'<line x1="{x:.1f}" y1="{area.y:.1f}" x2="{x:.1f}" y2="{area.y2:.1f}" stroke="#F1F5F9" stroke-width="1"/>'
@@ -250,6 +254,11 @@ def _nice_step(raw_step: float) -> float:
     else:
         factor = 10
     return factor * magnitude
+
+
+def _in_domain(value: float, domain: tuple[float, float]) -> bool:
+    epsilon = max(abs(domain[1] - domain[0]) * 1e-6, 1e-9)
+    return domain[0] - epsilon <= value <= domain[1] + epsilon
 
 
 def _scale_linear(value: float, src_min: float, src_max: float, dst_min: float, dst_max: float) -> float:

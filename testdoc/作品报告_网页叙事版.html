@@ -11,7 +11,7 @@
     <section class="hero">
       <div class="hero__eyebrow">2025 大数据应用赛 · 六章结构网页作品书</div>
       <h1>智算中心导入式 GPU 治理与智能分析平台</h1>
-      <p class="hero__lead">这份网页作品书严格保留大赛模板的六章结构，但展示方式改为更适合答辩的证据型叙事。所有对系统核心能力的描述均来自当前代码库：前端存在独立导入层、治理/能耗/观察/告警/智能工作区，后端存在导入与运行时、治理与控制、能耗分析、监控回放、AI Runtime、图谱、集群作业等能力域，并由 server-agent、SQLite 与 Neo4j 共同支撑。</p>
+      <p class="hero__lead">这份网页作品书严格保留大赛模板的六章结构，但展示方式改为更适合答辩的证据型叙事。所有对系统核心能力的描述均来自当前代码库：前端存在独立导入层、治理/能耗/观察/告警/智能工作区，后端存在导入与运行时、治理与控制、能耗分析、监控回放、AI Runtime、图谱、集群作业等能力域，并由运行时接入层（server-agent / SSH Linux）、SQLite 与 Neo4j 共同支撑。</p>
       <div class="hero__meta">
         <span class="tag">作品编号：待填</span>
         <span class="tag">作品形式：系统实现</span>
@@ -107,7 +107,7 @@
       <p class="chapter__lead">从代码结构看，本系统的技术路线可以概括为五步：一是通过本机 Agent、远程 Agent 或 SSH Linux 导入目标主机；二是建立 import context 并刷新 scoped 快照；三是在控制台工作区内对同一作用域进行治理、能耗、观察和告警分析；四是通过控制平面为动作、策略与集群对象提供统一能力目录；五是在统一平台上叠加 AI Runtime、Graph 和 Cluster 等扩展能力。</p>
       <div class="figure-grid">
         <article class="figure"><h3 class="figure__title">前端工作区层级结构</h3><img src="assets/book_workspace_map.svg" alt="前端工作区层级结构"><p class="caption">导入层、一级工作区、治理二级页和智能二级页共同构成用户可见的交互框架，证据来自 <code>frontend/src/main.js</code>、<code>useConsoleShell.js</code>、<code>importWorkbench.js</code> 与 <code>governancePageModels.js</code>。</p></article>
-        <article class="figure"><h3 class="figure__title">Agent 采集与回传链路</h3><img src="assets/book_agent_chain.svg" alt="Agent 采集链路"><p class="caption">这张图说明 server-agent 不是装饰性组件，而是平台接入、采集和控制动作的真实执行层。当前支持 GPU、系统、进程、训练日志采集，以及功耗与任务控制。</p></article>
+        <article class="figure"><h3 class="figure__title">运行时接入与回传链路</h3><img src="assets/book_agent_chain.svg" alt="运行时接入链路"><p class="caption">这张图说明运行时接入层并不只有一种实现。当前后端统一兼容 <code>http_local</code>、<code>http_remote</code> 与 <code>ssh_linux</code> 三类 Provider；server-agent 是重要接入方式之一，但 SSH Linux 也能直接进入同一导入、治理与回传链路。无论来自 Agent 还是 SSH，GPU、系统、进程与训练日志最终都会进入 import context 与 scoped snapshot，再推送到控制台页面。</p></article>
       </div>
       <div class="figure-grid">
         <article class="figure"><h3 class="figure__title">智能、图谱与集群扩展能力</h3><img src="assets/book_extension_map.svg" alt="扩展能力图"><p class="caption">AI Runtime、Graph 和 Cluster 在代码中都拥有独立路由与能力面，不是附会在主平台上的零散组件。作品书将其写为“扩展层”，而不是主内核替代物。</p></article>
@@ -125,7 +125,7 @@
         <div><div class="section-eyebrow">Chapter 4</div><h2>第4章 系统实现</h2></div>
         <div class="tag">模板要求：软件设计、界面、数据来源、部署与实现过程</div>
       </div>
-      <p class="chapter__lead">工程实现上，前端负责导入层、控制台壳层和各工作区页面；后端负责路由注册、作用域刷新、治理与分析服务、控制平面、AI Runtime、图谱与集群服务；server-agent 负责在目标主机上采集 GPU / 系统 / 进程状态并执行部分控制动作。数据方面，系统同时维护实时快照与持久历史，前者用于页面即时响应，后者用于能耗、回放、治理复盘与导出。</p>
+      <p class="chapter__lead">工程实现上，前端负责导入层、控制台壳层和各工作区页面；后端负责路由注册、作用域刷新、治理与分析服务、控制平面、AI Runtime、图谱与集群服务；运行时接入层则统一兼容 <code>http_local</code>、<code>http_remote</code> 与 <code>ssh_linux</code> 三类 Provider，其中既可以通过 server-agent 接入，也可以直接通过 SSH Linux 采集与控制。数据方面，系统同时维护实时快照与持久历史，前者用于页面即时响应，后者用于能耗、回放、治理复盘与导出。</p>
       <div class="figure-grid">
         <article class="figure"><h3 class="figure__title">后端 API 能力域分布</h3><img src="assets/book_api_domains.svg" alt="后端 API 能力域分布"><p class="caption">111 个端点的分布直接来自后端代码统计。该图回答了“项目是否真的是综合平台”这个问题。答案是肯定的，而且治理、分析、AI、图谱、集群都已形成独立域。</p></article>
         <article class="figure"><h3 class="figure__title">持久化数据资产分布</h3><img src="assets/book_persistence_map.svg" alt="持久化数据资产"><p class="caption">22 张持久化表来自 SQLite 支撑代码，覆盖运行时历史、治理复盘、平台身份、控制命令、AI Runtime 会话与集群状态。该图证明作品并非无状态演示。</p></article>
@@ -134,10 +134,11 @@
         <article class="panel">
           <h2>数据来源与格式</h2>
           <ul class="point-list">
-            <li>实时数据：由 server-agent 的 GPU、系统、进程与训练日志采集接口提供。</li>
-            <li>历史数据：写入 SQLite，形成功耗历史、告警、进程时间线、调度日志、优化快照、控制命令、运行时会话等结构化数据。</li>
+            <li>实时数据：由统一运行时 Provider 提供，既可来自本机 / 远程 Agent，也可来自 <code>ssh_linux</code> 直连采集链路；GPU、系统、进程与训练日志都会先进入当前导入作用域，再供前端页面消费。</li>
+            <li>运行时历史：写入 SQLite，形成 <code>gpu_history</code>、<code>process_history</code>、<code>alerts</code>、<code>schedule_log</code>、<code>optimization_snapshots</code> 等结构化数据，用于能耗分析、告警回放与治理复盘。</li>
+            <li>控制平面数据：危险动作不会只停留在按钮层，而是进入 <code>control_commands</code> 命令台账，显式记录 <code>approval_state</code> 与 <code>execution_state</code>，用于审计和回查。</li>
+            <li>智能运行时数据：AI Runtime 的 <code>agent_runtime_sessions</code>、<code>agent_runtime_events</code> 与 <code>agent_runtime_stream_state</code> 独立持久化，专门用于保存会话过程、事件流与流式输出状态。</li>
             <li>图谱数据：通过图草稿、Demo 重建、Cypher 执行与图问答逻辑进入 Neo4j 相关工作流。</li>
-            <li>智能数据：AI Runtime 会话、事件流与审批状态由后端会话数据结构持久维护。</li>
           </ul>
         </article>
         <article class="panel">
@@ -145,11 +146,37 @@
           <ul class="point-list">
             <li>接入方式支持 <code>http_local</code>、<code>http_remote</code> 与 <code>ssh_linux</code> 三类 Provider。</li>
             <li>前端路由采用独立导入页 + 控制台壳层结构，保证工作区之间能共享当前导入作用域。</li>
-            <li>后端主入口在 <code>backend/app/main.py</code> 中统一注册所有主能力路由，并通过 WebSocket 回传实时状态。</li>
-            <li>server-agent 可部署在 GPU 主机上提供采集、功耗控制和任务控制接口。</li>
+            <li>后端主入口在 <code>backend/app/main.py</code> 中统一注册所有主能力路由；前端通过 <code>/ws</code> 实时订阅当前工作区状态，保证导入后的控制台能持续收到最新快照。</li>
+            <li>server-agent 适合部署在 GPU 主机上作为常驻采集端；而 <code>ssh_linux</code> 更适合快速接管远端 Linux 主机，两类接入方式共用后续治理与分析链路。</li>
+            <li>因此，本系统的实现重点不是单一 Agent 部署，而是“多接入方式进入同一治理平台”。这也是第 5 章真实实验既能使用 SSH 路径，也能复用平台调度逻辑的原因。</li>
           </ul>
         </article>
       </div>
+      <div class="panel-grid">
+        <article class="panel">
+          <h2>界面与工作区落点</h2>
+          <ul class="point-list">
+            <li>前端不是单个大屏页面，而是先进入 <code>ImportWorkspace</code> 建立导入边界，再切入 <code>ConsoleShell</code> 统一壳层。</li>
+            <li>一级工作区入口共 6 类：总览、治理、能耗、告警、观察、智能；对应当前路由中的 Dashboard、Governance、Energy、Alerts、Monitor、AI。</li>
+            <li>治理工作区继续拆成 actions、policies、cluster、review 四个子页，说明平台既有动作执行，也有规则、集群对象和审批复核。</li>
+            <li>智能工作区拆成 workbench 与 graph 两个子页，说明 AI 对话和图谱能力是挂接在控制台壳层中的扩展能力，而不是游离的独立 Demo。</li>
+          </ul>
+        </article>
+        <article class="panel">
+          <h2>实现链路如何转化为平台能力</h2>
+          <table>
+            <thead><tr><th>实现环节</th><th>代码落点</th><th>对应能力</th></tr></thead>
+            <tbody>
+              <tr><td>运行时接入</td><td><code>build_runtime_provider()</code>、<code>scan_import_context()</code></td><td>本机 Agent、远程 Agent 与 SSH Linux 可以进入同一平台，而不是三套孤立工具</td></tr>
+              <tr><td>作用域建立</td><td><code>commit_import_context()</code>、<code>refresh_runtime_snapshot_scope()</code></td><td>导入选中的 GPU 会被写入 scoped snapshot，后续页面共享同一治理边界</td></tr>
+              <tr><td>实时回传</td><td><code>/ws</code>、workspace snapshot</td><td>导入后的状态变化不是停在后端内存，而是会持续推送到当前工作区页面</td></tr>
+              <tr><td>控制审计</td><td><code>control_commands</code></td><td>危险动作具备审批态、执行态和结果摘要，便于复核与追责</td></tr>
+              <tr><td>智能运行时</td><td><code>agent_runtime_sessions</code>、<code>agent_runtime_events</code>、<code>agent_runtime_stream_state</code></td><td>AI 会话与控制台动作分账持久化，既能保留过程，又不污染治理审计链路</td></tr>
+            </tbody>
+          </table>
+        </article>
+      </div>
+      <div class="callout">第 4 章的工程结论是：系统真正统一的是“导入边界、控制平面、历史存储和前端工作区”，而不是强依赖某一种接入方式。评审若追问“为什么 SSH 实验也算系统能力”，答案就在这里。</div>
     </section>
 
     <section id="chapter5" class="chapter chapter-panel" role="tabpanel" hidden>
@@ -329,15 +356,15 @@
         </article>
       </div>
       <div class="figure-grid">
-        <article class="figure"><h3 class="figure__title">实验 E：双 GPU 并发竞争治理时间线</h3><img src="assets/dual_gpu_competition_timeline.svg" alt="双 GPU 并发竞争治理时间线"><p class="caption">实验 E 在同一台 4×3090 主机上同时拉高 <strong>GPU1</strong> 与 <strong>GPU3</strong>，并仅通过系统预算调度对 GPU1 下发一次 <code>set_power_limit 279W</code>。图中蓝线是治理卡 GPU1，橙线是对照卡 GPU3；治理动作之后，蓝线快速回落到 268W 左右，而橙线继续维持 328W 高位，形成同机同负载下的清晰分离。</p></article>
+        <article class="figure"><h3 class="figure__title">实验 E：双 GPU 并发竞争治理时间线</h3><img src="assets/dual_gpu_competition_timeline.svg" alt="双 GPU 并发竞争治理时间线"><p class="caption">实验 E 在同一台 4×3090 主机上同时拉高 <strong>GPU1</strong> 与 <strong>GPU3</strong>，并仅通过系统预算调度对 GPU1 下发一次 <code>set_power_limit 279W</code>。上图横轴是采样时间、纵轴是单卡功耗；下图横轴同样是采样时间、纵轴是整机总功率。蓝线代表治理卡 GPU1，橙线代表对照卡 GPU3。治理动作之后，蓝线快速回落到 268W 左右，而橙线继续维持 328W 高位，形成同机同负载下的清晰分离。</p></article>
         <article class="panel">
           <h2>5.7 实验 E 说明了什么</h2>
           <p>实验 E 的意义不在于再次证明“功率可以被压低”，而在于证明系统具备<strong>针对性治理</strong>能力。两张卡在相同主机、相同时间窗、相同负载脚本下同时进入高功耗区间，但系统只对 GPU1 生成了一条预算动作，GPU3 完全保持未治理状态。也就是说，实验 E 证明的不是“整机自然波动”，而是“系统能选中目标对象并改变其状态”。</p>
         </article>
       </div>
       <div class="figure-grid">
-        <article class="figure"><h3 class="figure__title">实验 E：治理卡与对照卡效果对比</h3><img src="assets/dual_gpu_competition_comparison.svg" alt="治理卡与对照卡效果对比"><p class="caption">这张图把实验 E 压缩成评审最容易读懂的 4 个指标。治理卡峰值 <strong>348.37W</strong>，治理后均值 <strong>268.44W</strong>；对照卡峰值 <strong>325.77W</strong>，治理后均值 <strong>328.26W</strong>。两张卡在治理后窗口形成 <strong>59.82W</strong> 的平均功耗差，而且治理卡后窗清洁率 <strong>100%</strong>，对照卡为 <strong>0%</strong>。</p></article>
-        <article class="figure"><h3 class="figure__title">实验 E：治理时延与清洁率</h3><img src="assets/dual_gpu_competition_latency.svg" alt="治理时延与清洁率"><p class="caption">实验 E 的时延图把“什么时候越阈、什么时候下发动作、什么时候治理卡回到阈值以下”直接串成事件链。双卡首次越阈都发生在 <strong>22.09s</strong>，系统在 <strong>23.18s</strong> 对 GPU1 下发动作，治理卡在同一采样时刻就已经落回阈值下方，而对照卡直到观测窗口结束仍保持 <strong>18/18</strong> 越阈。</p></article>
+        <article class="figure"><h3 class="figure__title">实验 E：治理卡与对照卡效果对比</h3><img src="assets/dual_gpu_competition_comparison.svg" alt="治理卡与对照卡效果对比"><p class="caption">这张图把实验 E 压缩成三组标准柱状测试图：左图横轴为功耗指标、纵轴为功耗；中图横轴为温度指标、纵轴为温度；右图横轴为治理结果、纵轴为比例。治理卡峰值 <strong>348.37W</strong>，治理后均值 <strong>268.44W</strong>；对照卡峰值 <strong>325.77W</strong>，治理后均值 <strong>328.26W</strong>。两张卡在治理后窗口形成 <strong>59.82W</strong> 的平均功耗差，而且治理卡后窗清洁率 <strong>100%</strong>，对照卡为 <strong>0%</strong>。</p></article>
+        <article class="figure"><h3 class="figure__title">实验 E：治理时延与清洁率</h3><img src="assets/dual_gpu_competition_latency.svg" alt="治理时延与清洁率"><p class="caption">这张图把“什么时候越阈、什么时候下发动作、什么时候治理卡回到阈值以下”直接串成事件链。横轴为采样时间，纵轴把治理卡和对照卡分成两条事件轨。双卡首次越阈都发生在 <strong>22.09s</strong>，系统在 <strong>23.18s</strong> 对 GPU1 下发动作，治理卡在同一采样时刻就已经落回阈值下方，而对照卡直到观测窗口结束仍保持 <strong>18/18</strong> 越阈。</p></article>
       </div>
       <div class="panel-grid">
         <article class="panel">
@@ -383,15 +410,15 @@
         </article>
       </div>
       <div class="figure-grid">
-        <article class="figure"><h3 class="figure__title">实验 F：跨 GPU 检查点恢复时间线</h3><img src="assets/checkpoint_restore_timeline.svg" alt="跨 GPU 检查点恢复时间线"><p class="caption">实验 F 在同一台 4×3090 主机上先把高负载任务启动在 <strong>GPU1</strong>，随后通过当前 <code>ssh_linux</code> 管理链路执行暂停、检查点写出，再在 <strong>GPU2</strong> 上恢复继续。图中蓝线是源卡 GPU1，橙线是目标卡 GPU2。暂停阶段蓝线从运行时的 <strong>249.27W</strong> 回落到 <strong>134.92W</strong> 左右且利用率降为 0；恢复后橙线抬升到 <strong>299.10W</strong>，而蓝线回到 33-65W 空闲区间，说明负载位置发生了真实切换。</p></article>
+        <article class="figure"><h3 class="figure__title">实验 F：跨 GPU 检查点恢复时间线</h3><img src="assets/checkpoint_restore_timeline.svg" alt="跨 GPU 检查点恢复时间线"><p class="caption">实验 F 在同一台 4×3090 主机上先把高负载任务启动在 <strong>GPU1</strong>，随后通过当前 <code>ssh_linux</code> 管理链路执行暂停、检查点写出，再在 <strong>GPU2</strong> 上恢复继续。上图横轴是采样时间、纵轴是两张卡的功耗；下图横轴同样是采样时间、纵轴是源卡与目标卡上的进程数。蓝线是源卡 GPU1，橙线是目标卡 GPU2。暂停阶段蓝线从运行时的 <strong>249.27W</strong> 回落到 <strong>134.92W</strong> 左右且进程仍保留；恢复后橙线抬升到 <strong>299.10W</strong> 且目标卡进程数变为 1，而蓝线回到 33-65W 空闲区间，说明负载位置发生了真实切换。</p></article>
         <article class="panel">
           <h2>5.8 实验 F 说明了什么</h2>
           <p>实验 F 证明的不是“暂停按钮存在”或“脚本支持恢复参数”，而是<strong>任务治理可以跨越单次动作并形成连续事件链</strong>。这组数据清楚显示：源卡任务先运行，再被冻结，接着写出 manifest，最后在目标卡上以更高的步数继续前进。也就是说，实验 F 支持的结论是“系统已经具备基于检查点的任务迁移恢复能力雏形”，而不是只会对现存进程做就地控制。</p>
         </article>
       </div>
       <div class="figure-grid">
-        <article class="figure"><h3 class="figure__title">实验 F：进度连续性与控制效果</h3><img src="assets/checkpoint_restore_progress.svg" alt="进度连续性与控制效果"><p class="caption">这张图专门回答评审最敏感的问题：恢复后的任务是不是从 0 重跑。实验中检查点步数为 <strong>29</strong>，恢复后第一批可见步数已经来到 <strong>34</strong>，最终增长到 <strong>42</strong>。这意味着恢复链路不是重新启动一个“同名任务”，而是沿着已有进度继续向前。</p></article>
-        <article class="figure"><h3 class="figure__title">实验 F：暂停、恢复与跨卡切换压缩图</h3><img src="assets/checkpoint_restore_comparison.svg" alt="暂停恢复与跨卡切换压缩图"><p class="caption">这张图把实验 F 压缩成三组最关键的证据：第一，暂停窗口内源卡平均功耗只有 <strong>134.92W</strong>，且 3 个暂停样本的 GPU 利用率均为 0；第二，恢复窗口内目标卡平均功耗达到 <strong>299.10W</strong> 且利用率维持 100%；第三，从检查点 ready 到目标卡启动恢复的切换时延仅 <strong>0.65s</strong>。三者合在一起，才足以说明任务不是“停了又重开”，而是完成了真正的跨卡接续。</p></article>
+        <article class="figure"><h3 class="figure__title">实验 F：进度连续性与控制效果</h3><img src="assets/checkpoint_restore_progress.svg" alt="进度连续性与控制效果"><p class="caption">这张图专门回答评审最敏感的问题：恢复后的任务是不是从 0 重跑。左图横轴是关键事件、纵轴是 progress.json 中记录的 step；右图横轴是增量项、纵轴是对应的步数增量。实验中检查点步数为 <strong>29</strong>，恢复后第一批可见步数已经来到 <strong>34</strong>，最终增长到 <strong>42</strong>。这意味着恢复链路不是重新启动一个“同名任务”，而是沿着已有进度继续向前。</p></article>
+        <article class="figure"><h3 class="figure__title">实验 F：暂停、恢复与跨卡切换压缩图</h3><img src="assets/checkpoint_restore_comparison.svg" alt="暂停恢复与跨卡切换压缩图"><p class="caption">这张图把实验 F 压缩成三组标准柱状测试图：左图横轴为阶段窗口、纵轴为功耗；中图横轴为阶段窗口、纵轴为利用率；右图横轴为阶段窗口、纵轴为进程数。暂停窗口内源卡平均功耗只有 <strong>134.92W</strong>，且 3 个暂停样本的 GPU 利用率均为 0；恢复窗口内目标卡平均功耗达到 <strong>299.10W</strong> 且利用率维持 100%；从检查点 ready 到目标卡启动恢复的切换时延仅 <strong>0.65s</strong>。三者合在一起，才足以说明任务不是“停了又重开”，而是完成了真正的跨卡接续。</p></article>
       </div>
       <div class="panel-grid">
         <article class="panel">
@@ -455,7 +482,7 @@
         <div><div class="section-eyebrow">Chapter 6</div><h2>第6章 作品总结</h2></div>
         <div class="tag">模板要求：特色创新、应用推广、展望</div>
       </div>
-      <p class="chapter__lead">综合前述章节，可以将本作品概括为一个以“导入边界”为起点、以“统一控制平面”为核心、以“历史分析与复盘”为支撑、并能挂接 AI / 图谱 / 集群扩展能力的智算中心 GPU 治理平台。它既覆盖了接入与实时控制，也覆盖了历史分析与扩展能力，因此在工程完整性上明显强于单点工具。</p>
+      <p class="chapter__lead">综合前述章节，可以将本作品概括为一个以“导入边界”为起点、以“统一控制平面”为核心、以“历史分析与复盘”为支撑、并能挂接 AI / 图谱 / 集群扩展能力的智算中心 GPU 治理平台。它既覆盖了接入与实时控制，也覆盖了历史分析与扩展能力；更重要的是，第 5 章已经用真实远端闭环、同机双卡对照和跨卡恢复三组实验，把“系统能力”从代码结构落实到了可复核现象上。</p>
       <div class="panel-grid">
         <article class="panel">
           <h2>6.1 作品特色与创新点</h2>
@@ -464,20 +491,23 @@
             <li>统一控制平面：任务动作、调度策略、用户规则、集群对象均可进入统一能力目录与命令台账。</li>
             <li>多能力工作区：治理、能耗、观察、告警、智能在同一控制台壳层中协同存在。</li>
             <li>扩展层清晰：AI Runtime、Graph、Cluster 三类能力没有脱离主平台，而是沿同一平台结构继续扩展。</li>
+            <li>证据链完整：作品不仅展示结构，还已经形成“发现风险 - 选中对象 - 执行动作 - 回写状态 - 接续任务”的多段实验闭环。</li>
           </ul>
         </article>
         <article class="panel">
           <h2>6.2 应用推广与 6.3 作品展望</h2>
           <ul class="point-list">
             <li>应用推广方面，平台可服务实验室 GPU 共享治理、训练机资源看护、导入式运维和历史复盘场景。</li>
-            <li>作品展望方面，可继续补强多机长稳测试、集群调度实跑、图谱知识注入和 AI 自动治理闭环。</li>
-            <li>当前代码已具备继续延展的接口基础，因此后续工作重点是把现有扩展能力从“可用”推进到“规模化验证”。</li>
+            <li>从当前验证结果看，最成熟的落地方向是单机多卡治理、远端接入运维、告警闭环和带检查点的任务接续，这些都已经有真实实验支撑。</li>
+            <li>需要明确的是，当前作品书没有把多机长稳、全自动治理闭环或大规模集群调度写成已完成事实；这些方向在代码中已有接口基础，但仍属于下一阶段的重点验证对象。</li>
+            <li>作品展望方面，可继续补强多机长稳测试、集群调度实跑、图谱知识注入和 AI 自动治理闭环，把当前“可验证能力”进一步推进到“规模化能力”。</li>
           </ul>
         </article>
       </div>
       <article class="panel">
         <h2>大模型使用说明</h2>
-        <p>按照模板要求，本作品书需要说明大模型的使用方式。基于当前代码，可确认系统中存在 LLM 配置、Graph 问答、Graph 策略、AI Runtime 会话规划与能耗 AI 洞察等相关能力。与此同时，本次网页作品书的撰写过程也使用了大模型辅助整理结构、生成图表脚本和完成页面排版；但所有关于系统核心功能的文字结论，均以代码阅读、路由统计、测试结构和已实际运行结果为依据，没有把模板中的旧示例稿或外部对话当作事实来源。</p>
+        <p>按照模板要求，本作品书需要说明大模型的使用方式。基于当前代码，可将系统中的大模型能力分成三类：第一类是<strong>强依赖 LLM</strong> 的能力，例如 AI 工作台对话、图谱草稿生成等，没有 LLM 时相关接口会直接返回未配置；第二类是<strong>可降级运行</strong> 的能力，例如 Graph 问答、Graph 策略生成，这些能力在有 LLM 时会输出更强的自然语言答案和策略建议，在无 LLM 时仍可基于规则与上下文返回 fallback 结果；第三类是<strong>可选增强</strong> 的能力，例如能耗 AI 洞察与 AI 异常分析，在无 LLM 时系统会明确返回“不可用”，不会伪造智能结论。</p>
+        <p>需要特别说明的是：本次参赛作品书把核心可信口径严格建立在<strong>代码可核查事实 + 已跑出的真实测试结果</strong>之上。也就是说，作品的主结论来自导入边界、控制平面、集群治理和真实实验 A/E/F，而不是来自大模型生成的解释文本。大模型在本系统中的定位是“增强分析与交互效率”，不是替代治理证据本身；在本次文档整理过程中，也只用于辅助结构梳理、图表脚本编写和页面排版，没有把外部对话内容直接当作系统事实写入作品书。</p>
       </article>
       <p class="footnote">图表数据文件：<code>testdoc/data/report_book_metrics.json</code>。图表脚本：<code>testdoc/scripts/generate_report_book_assets.py</code>。本页面建议最终导出为 PDF 后纳入正式参赛材料。</p>
     </section>

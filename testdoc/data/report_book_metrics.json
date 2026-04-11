@@ -421,7 +421,7 @@
     }
   },
   "test_domains": {
-    "total": 280,
+    "total": 284,
     "domains": [
       {
         "name": "导入边界",
@@ -437,7 +437,7 @@
       },
       {
         "name": "AI Runtime",
-        "value": 44
+        "value": 48
       },
       {
         "name": "图谱能力",
