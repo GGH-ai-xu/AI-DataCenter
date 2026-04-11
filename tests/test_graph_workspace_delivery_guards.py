@@ -12,7 +12,7 @@ class GraphWorkspaceDeliveryGuardTests(unittest.TestCase):
         )
 
         self.assertIn('title="智算中心优化代码生成系统"', backend_text)
-        self.assertIn('version="1.1.5"', backend_text)
+        self.assertIn('version="1.1.6"', backend_text)
         self.assertNotIn('title="GPU 共享治理平台"', backend_text)
 
     def test_backend_runtime_bundles_local_neo4j_scripts(self):
