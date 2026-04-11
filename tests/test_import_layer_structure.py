@@ -85,6 +85,12 @@ class ImportLayerStructureTests(unittest.TestCase):
         self.assertIn("硬件概览", tabs_text)
         self.assertIn("选卡导入", tabs_text)
 
+    def test_import_sidebar_branding_uses_new_product_name(self):
+        sidebar_text = (ROOT / "frontend/src/components/import/ImportPrepSidebar.vue").read_text(encoding="utf-8")
+
+        self.assertIn("智算中心优化代码生成系统", sidebar_text)
+        self.assertNotIn("GPU GOVERNANCE SETUP", sidebar_text)
+
     def test_import_view_recomposes_stage_components_instead_of_flat_panels(self):
         text = (ROOT / "frontend/src/views/ImportWorkspace.vue").read_text(encoding="utf-8")
 

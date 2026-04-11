@@ -489,6 +489,24 @@ class StartDevScriptTests(unittest.TestCase):
         self.assertIn("function agentSourceLabel()", script)
         self.assertIn("AGENT_URL: agentBaseUrl(agentPort)", script)
 
+    def test_desktop_shell_release_runtime_bootstraps_persisted_master_key(self):
+        script = (ROOT / "desktop-shell" / "main.js").read_text(encoding="utf-8")
+
+        self.assertIn("function runtimeMasterKeyPath()", script)
+        self.assertIn("path.join(runtimeRoot(), 'runtime', '.gpu-gov-master-key')", script)
+        self.assertIn("function ensureRuntimeMasterKey()", script)
+        self.assertIn("randomBytes(32).toString('base64')", script)
+        self.assertIn("const runtimeMasterKey = ensureRuntimeMasterKey()", script)
+        self.assertIn("GPU_GOV_MASTER_KEY: runtimeMasterKey", script)
+
+    def test_desktop_shell_redacts_sensitive_spawn_env_from_logs(self):
+        script = (ROOT / "desktop-shell" / "main.js").read_text(encoding="utf-8")
+
+        self.assertIn("const SENSITIVE_ENV_NAME_PATTERN = /(KEY|TOKEN|SECRET|PASSWORD)/i", script)
+        self.assertIn("function redactEnvForLog(extraEnv = {})", script)
+        self.assertIn("SENSITIVE_ENV_NAME_PATTERN.test(name) ? '[redacted]' : value", script)
+        self.assertIn("JSON.stringify(redactEnvForLog(extraEnv))", script)
+
 
 if __name__ == "__main__":
     unittest.main()

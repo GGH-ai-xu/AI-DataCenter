@@ -11,7 +11,7 @@ const props = defineProps({
   <aside class="tech-card import-prep-sidebar">
     <div class="import-prep-sidebar__brand">
       <img class="import-prep-sidebar__logo" src="/logo.svg" alt="AI-DataCenter logo" />
-      <div class="import-prep-sidebar__eyebrow">GPU GOVERNANCE SETUP</div>
+      <div class="import-prep-sidebar__eyebrow">智算中心优化代码生成系统</div>
     </div>
 
     <div class="import-prep-sidebar__brand-copy">

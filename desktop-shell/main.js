@@ -4,6 +4,7 @@ const os = require('node:os')
 const path = require('node:path')
 const http = require('node:http')
 const net = require('node:net')
+const { randomBytes } = require('node:crypto')
 const { spawn } = require('node:child_process')
 const DESKTOP_PACKAGE = require('./package.json')
 const DEV_SESSION_BINDING_FALLBACK = Object.freeze({
@@ -46,6 +47,7 @@ const RELEASE_EXE_PATTERN = /^GPUGovernanceWorkbench-Setup-.*\.exe$/i
 const AGENT_EXPORT_DIRNAME = 'GPU-Server-Agent'
 const AGENT_START_SCRIPT_NAME = 'Start-Agent.bat'
 const AGENT_README_NAME = 'README-REMOTE.txt'
+const SENSITIVE_ENV_NAME_PATTERN = /(KEY|TOKEN|SECRET|PASSWORD)/i
 
 let mainWindow = null
 let splashWindow = null
@@ -424,6 +426,50 @@ function runtimeRoot() {
 
 function logsRoot() {
   return path.join(runtimeRoot(), 'logs')
+}
+
+function runtimeMasterKeyPath() {
+  return path.join(runtimeRoot(), 'runtime', '.gpu-gov-master-key')
+}
+
+function createRuntimeMasterKey() {
+  return randomBytes(32).toString('base64')
+}
+
+function ensureRuntimeMasterKey() {
+  const existingKey = String(process.env.GPU_GOV_MASTER_KEY || '').trim()
+  if (existingKey) {
+    return existingKey
+  }
+
+  const keyPath = runtimeMasterKeyPath()
+  fs.mkdirSync(path.dirname(keyPath), { recursive: true })
+
+  try {
+    const storedKey = fs.readFileSync(keyPath, 'utf-8').trim()
+    if (storedKey) {
+      process.env.GPU_GOV_MASTER_KEY = storedKey
+      return storedKey
+    }
+  } catch (error) {
+    if (error?.code !== 'ENOENT') {
+      throw error
+    }
+  }
+
+  const generatedKey = createRuntimeMasterKey()
+  fs.writeFileSync(keyPath, generatedKey, 'utf-8')
+  process.env.GPU_GOV_MASTER_KEY = generatedKey
+  return generatedKey
+}
+
+function redactEnvForLog(extraEnv = {}) {
+  return Object.fromEntries(
+    Object.entries(extraEnv).map(([name, value]) => [
+      name,
+      SENSITIVE_ENV_NAME_PATTERN.test(name) ? '[redacted]' : value,
+    ]),
+  )
 }
 
 function connectionConfigPath() {
@@ -1295,7 +1341,7 @@ function spawnManagedProcess(spec) {
     stdio: ['ignore', 'pipe', 'pipe'],
   })
 
-  writeLog('spawn ', `${executable} env=${JSON.stringify(extraEnv)}`)
+  writeLog('spawn ', `${executable} env=${JSON.stringify(redactEnvForLog(extraEnv))}`)
   child.stdout?.pipe(logStream, { end: false })
   child.stderr?.pipe(logStream, { end: false })
   setManagedServiceProcess(key, child)
@@ -1467,6 +1513,7 @@ async function restartManagedService(key, failureDetail) {
 
 async function ensureServices(onStatus = () => {}) {
   const mode = currentConnectionMode()
+  const runtimeMasterKey = ensureRuntimeMasterKey()
 
   updateManagedServiceState('backend', {
     status: 'starting',
@@ -1562,6 +1609,7 @@ async function ensureServices(onStatus = () => {}) {
       HOST: LOCAL_HOST,
       PORT: String(backendPort),
       AGENT_URL: agentBaseUrl(agentPort),
+      GPU_GOV_MASTER_KEY: runtimeMasterKey,
     },
     healthUrl: backendHealthUrl(),
     healthTimeoutMs: 18000,
